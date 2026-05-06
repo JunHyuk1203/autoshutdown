@@ -61,9 +61,10 @@ with open("version.json", "w", encoding="utf-8") as f:
 
 print("\n☁️ 5단계: GitHub로 업로드 중...")
 try:
-    subprocess.run(["git", "add", "."], check=True)
-    subprocess.run(["git", "commit", "-m", f"🚀 Release v{new_v}"], check=True)
-    subprocess.run(["git", "push", "origin", "main"], check=True)
+    git_exe = r"C:\Program Files\Git\cmd\git.exe"
+    subprocess.run([git_exe, "add", "."], check=True)
+    subprocess.run([git_exe, "commit", "-m", f"🚀 Release v{new_v}"], check=True)
+    subprocess.run([git_exe, "push", "origin", "main"], check=True)
     print(f"\n✅ 배포 성공! GitHub에 버전 {new_v}이(가) 업로드되었습니다.")
 except Exception as e:
     print(f"\n❌ GitHub 업로드 실패: {e}")
