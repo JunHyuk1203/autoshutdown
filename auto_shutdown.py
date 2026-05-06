@@ -211,8 +211,7 @@ class AutoShutdownAppV2:
                 os.rename(current_exe, old_exe_path)
                 os.rename(update_exe_path, current_exe)
                 
-                # 완전히 독립적인 새 프로세스로 실행 (부모 프로세스가 종료되어도 같이 죽지 않음)
-                os.startfile(current_exe)
+                subprocess.Popen([current_exe, "--wait-update"])
                 self.quit_app()
         except Exception as e:
             print("업데이트 적용 실패:", e)
@@ -786,6 +785,11 @@ class AutoShutdownAppV2:
             time.sleep(1)
 
 if __name__ == "__main__":
+    import sys
+    import time
+    if "--wait-update" in sys.argv:
+        time.sleep(3)
+
     mutex_name = "Global\\AutoShutdownAppV2_Mutex"
     mutex = ctypes.windll.kernel32.CreateMutexW(None, False, mutex_name)
     if ctypes.windll.kernel32.GetLastError() == 183: sys.exit(0)
