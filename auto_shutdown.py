@@ -16,7 +16,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.0.11"
+CURRENT_VERSION = "1.0.12"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -213,9 +213,9 @@ class AutoShutdownAppV2:
                 
                 # PyInstaller 환경 변수 상속 방지 (새 프로세스가 삭제될 이전 프로세스의 임시 폴더를 참조하지 않도록 함)
                 env = os.environ.copy()
-                env.pop("TCL_LIBRARY", None)
-                env.pop("TK_LIBRARY", None)
-                env.pop("_MEIPASS2", None)
+                keys_to_remove = [k for k in env if k.upper() in ["TCL_LIBRARY", "TK_LIBRARY", "_MEIPASS2", "_MEIPASS"]]
+                for k in keys_to_remove:
+                    env.pop(k, None)
                 
                 subprocess.Popen([current_exe, "--wait-update"], env=env)
                 self.quit_app()
