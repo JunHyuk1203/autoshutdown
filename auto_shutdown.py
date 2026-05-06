@@ -16,7 +16,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.0.6"
+CURRENT_VERSION = "1.0.7"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -377,8 +377,11 @@ del "%~f0"
             if self._is_newer_version(remote_version, CURRENT_VERSION) and download_url:
                 if messagebox.askyesno("업데이트 알림", f"새로운 버전(v{remote_version})이 발견되었습니다!\n지금 바로 업데이트하시겠습니까?", parent=getattr(self, 'settings_win', self.root)):
                     self.perform_auto_update(download_url)
+            elif download_url:
+                if messagebox.askyesno("업데이트 확인", f"현재 최신 버전(v{CURRENT_VERSION})을 사용 중입니다.\n강제로 최신 버전을 다시 다운로드하여 재설치하시겠습니까?", parent=getattr(self, 'settings_win', self.root)):
+                    self.perform_auto_update(download_url)
             else:
-                messagebox.showinfo("업데이트 확인", f"현재 최신 버전(v{CURRENT_VERSION})을 사용 중입니다.", parent=getattr(self, 'settings_win', self.root))
+                messagebox.showinfo("업데이트 오류", "다운로드 링크를 찾을 수 없습니다.", parent=getattr(self, 'settings_win', self.root))
         except Exception as e:
             messagebox.showerror("업데이트 오류", f"서버와 통신 중 오류가 발생했습니다.\n인터넷 연결 상태를 확인해 주세요.\n{e}", parent=getattr(self, 'settings_win', self.root))
 
