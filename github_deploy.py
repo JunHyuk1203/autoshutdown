@@ -32,7 +32,14 @@ content = content.replace(f'CURRENT_VERSION = "{current_v}"', f'CURRENT_VERSION 
 with open(app_path, "w", encoding="utf-8") as f:
     f.write(content)
 
-print("\n🔨 2단계: PyInstaller 빌드 중... (시간이 걸릴 수 있습니다)")
+print("\n🔨 2단계: 기존 실행 중인 프로그램 강제 종료 중...")
+try:
+    subprocess.run(["taskkill", "/F", "/IM", "auto_shutdown.exe"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+except:
+    pass
+time.sleep(1)
+
+print("\n🔨 3단계: PyInstaller 빌드 중... (시간이 걸릴 수 있습니다)")
 try:
     subprocess.run(["pyinstaller", "--noconfirm", "auto_shutdown.spec"], check=True)
 except Exception as e:
@@ -44,7 +51,7 @@ except Exception as e:
     time.sleep(3)
     exit(1)
 
-print("\n📝 3단계: version.json 업데이트 중...")
+print("\n📝 4단계: version.json 업데이트 중...")
 version_data = {
     "version": new_v,
     "download_url": "https://raw.githubusercontent.com/JunHyuk1203/autoshutdown/main/dist/auto_shutdown.exe"
@@ -52,7 +59,7 @@ version_data = {
 with open("version.json", "w", encoding="utf-8") as f:
     json.dump(version_data, f, indent=4)
 
-print("\n☁️ 4단계: GitHub로 업로드 중...")
+print("\n☁️ 5단계: GitHub로 업로드 중...")
 try:
     subprocess.run(["git", "add", "."], check=True)
     subprocess.run(["git", "commit", "-m", f"🚀 Release v{new_v}"], check=True)
