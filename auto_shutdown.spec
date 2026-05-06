@@ -5,7 +5,10 @@ a = Analysis(
     ['auto_shutdown.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[
+        (r'C:\Users\tntdr\AppData\Local\Programs\Python\Python313\tcl\tcl8.6', '_tcl_data'),
+        (r'C:\Users\tntdr\AppData\Local\Programs\Python\Python313\tcl\tk8.6', '_tk_data'),
+    ],
     hiddenimports=['pycaw', 'customtkinter'],
     hookspath=[],
     hooksconfig={},
