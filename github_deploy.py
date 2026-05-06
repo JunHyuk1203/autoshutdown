@@ -45,7 +45,7 @@ time.sleep(1)
 
 print("\n[3단계] PyInstaller 빌드 중... (시간이 걸릴 수 있습니다)")
 try:
-    subprocess.run(["pyinstaller", "--noconfirm", "auto_shutdown.spec"], check=True)
+    subprocess.run(["pyinstaller", "--clean", "--noconfirm", "auto_shutdown.spec"], check=True)
 except Exception as e:
     print(f"[Error] 빌드 실패: {e}")
     # 원상 복구
