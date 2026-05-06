@@ -16,7 +16,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.0.7"
+CURRENT_VERSION = "1.0.8"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -73,6 +73,15 @@ ctk.set_default_color_theme("blue")
 class AutoShutdownAppV2:
     def __init__(self, root):
         self.root = root
+        
+        # 이전 업데이트에서 남겨진 .old 파일 삭제 시도
+        try:
+            current_exe = sys.executable if getattr(sys, 'frozen', False) else None
+            if current_exe:
+                old_exe = current_exe + ".old"
+                if os.path.exists(old_exe):
+                    os.remove(old_exe)
+        except: pass
         
         available_fonts = tkfont.families(root=self.root)
         self.font_family = "Malgun Gothic"
@@ -191,20 +200,18 @@ class AutoShutdownAppV2:
             with urllib.request.urlopen(req, timeout=60) as response, open(update_exe_path, 'wb') as out_file:
                 out_file.write(response.read())
                 
-            bat_path = os.path.join(application_path, "update.bat")
             current_exe = sys.executable if getattr(sys, 'frozen', False) else None
             
             if current_exe and current_exe.endswith('.exe'):
-                bat_content = f"""@echo off
-timeout /t 3 /nobreak > NUL
-move /y "{update_exe_path}" "{current_exe}"
-start "" "{current_exe}"
-del "%~f0"
-"""
-                with open(bat_path, 'w', encoding='utf-8') as f:
-                    f.write(bat_content)
-                    
-                subprocess.Popen(bat_path, creationflags=subprocess.CREATE_NO_WINDOW)
+                old_exe_path = current_exe + ".old"
+                if os.path.exists(old_exe_path):
+                    try: os.remove(old_exe_path)
+                    except: pass
+                
+                os.rename(current_exe, old_exe_path)
+                os.rename(update_exe_path, current_exe)
+                
+                subprocess.Popen([current_exe])
                 self.quit_app()
         except Exception as e:
             print("업데이트 적용 실패:", e)
