@@ -3,7 +3,8 @@
     "autostart": true,
     "global_lunch_enabled": true,
     "global_lunch_action": "시스템 종료",
-    "skip_date": "2026-05-01",
+    "show_popup_alert": false,
+    "skip_date": "",
     "월": {
         "1교시 (08:40)": {
             "enabled": false,
