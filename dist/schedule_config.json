@@ -1,0 +1,245 @@
+{
+    "minutes_before": 5,
+    "autostart": true,
+    "global_lunch_enabled": true,
+    "global_lunch_action": "시스템 종료",
+    "skip_date": "2026-05-01",
+    "월": {
+        "1교시 (08:40)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "2교시 (09:40)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "3교시 (10:40)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "4교시 (11:40)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "5교시 (13:30)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "6교시 (14:30)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "7교시 (15:30)": {
+            "enabled": true,
+            "action": "시스템 종료"
+        },
+        "방과후/기타 (16:30)": {
+            "enabled": true,
+            "action": "시스템 종료"
+        }
+    },
+    "화": {
+        "1교시 (08:40)": {
+            "enabled": true,
+            "action": "시스템 종료"
+        },
+        "2교시 (09:40)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "3교시 (10:40)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "4교시 (11:40)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "5교시 (13:30)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "6교시 (14:30)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "7교시 (15:30)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "방과후/기타 (16:30)": {
+            "enabled": true,
+            "action": "시스템 종료"
+        }
+    },
+    "수": {
+        "1교시 (08:40)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "2교시 (09:40)": {
+            "enabled": true,
+            "action": "시스템 종료"
+        },
+        "3교시 (10:40)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "4교시 (11:40)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "5교시 (13:30)": {
+            "enabled": true,
+            "action": "시스템 종료"
+        },
+        "6교시 (14:30)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "7교시 (15:30)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "방과후/기타 (16:30)": {
+            "enabled": true,
+            "action": "시스템 종료"
+        }
+    },
+    "목": {
+        "1교시 (08:40)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "2교시 (09:40)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "3교시 (10:40)": {
+            "enabled": true,
+            "action": "시스템 종료"
+        },
+        "4교시 (11:40)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "5교시 (13:30)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "6교시 (14:30)": {
+            "enabled": true,
+            "action": "시스템 종료"
+        },
+        "7교시 (15:30)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "방과후/기타 (16:30)": {
+            "enabled": true,
+            "action": "시스템 종료"
+        }
+    },
+    "금": {
+        "1교시 (08:40)": {
+            "enabled": true,
+            "action": "시스템 종료"
+        },
+        "2교시 (09:40)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "3교시 (10:40)": {
+            "enabled": true,
+            "action": "시스템 종료"
+        },
+        "4교시 (11:40)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "5교시 (13:30)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "6교시 (14:30)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "7교시 (15:30)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "방과후/기타 (16:30)": {
+            "enabled": true,
+            "action": "시스템 종료"
+        }
+    },
+    "토": {
+        "1교시 (08:40)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "2교시 (09:40)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "3교시 (10:40)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "4교시 (11:40)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "5교시 (13:30)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "6교시 (14:30)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "7교시 (15:30)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "방과후/기타 (16:30)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        }
+    },
+    "일": {
+        "1교시 (08:40)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "2교시 (09:40)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "3교시 (10:40)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "4교시 (11:40)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "5교시 (13:30)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "6교시 (14:30)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "7교시 (15:30)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "방과후/기타 (16:30)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        }
+    }
+}
