@@ -16,7 +16,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.0.8"
+CURRENT_VERSION = "1.0.9"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -211,7 +211,8 @@ class AutoShutdownAppV2:
                 os.rename(current_exe, old_exe_path)
                 os.rename(update_exe_path, current_exe)
                 
-                subprocess.Popen([current_exe])
+                # 완전히 독립적인 새 프로세스로 실행 (부모 프로세스가 종료되어도 같이 죽지 않음)
+                os.startfile(current_exe)
                 self.quit_app()
         except Exception as e:
             print("업데이트 적용 실패:", e)
