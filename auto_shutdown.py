@@ -16,7 +16,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.0.5"
+CURRENT_VERSION = "1.0.6"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -358,6 +358,29 @@ del "%~f0"
                 
         auto_chk = ctk.CTkSwitch(scroll, text="윈도우 시작 시 백그라운드로 자동 실행", variable=self.autostart_var, font=ctk.CTkFont(family=self.font_family, size=11), switch_width=32, switch_height=16)
         auto_chk.pack(pady=(10, 5))
+
+        update_card = ctk.CTkFrame(scroll, fg_color=("gray95", "gray15"), corner_radius=15)
+        update_card.pack(fill="x", pady=5, ipady=5)
+        ctk.CTkLabel(update_card, text=f"ℹ️ 현재 버전: v{CURRENT_VERSION}", font=ctk.CTkFont(family=self.font_family, size=12, weight="bold")).pack(pady=(8, 2))
+        update_btn = ctk.CTkButton(update_card, text="🔄 수동 업데이트 확인", command=self.manual_update_check, width=150, height=28, font=ctk.CTkFont(family=self.font_family, size=11))
+        update_btn.pack(pady=(5, 8))
+
+    def manual_update_check(self):
+        try:
+            url = "https://raw.githubusercontent.com/JunHyuk1203/autoshutdown/main/version.json"
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=5) as response:
+                data = json.loads(response.read().decode('utf-8'))
+                remote_version = data.get("version", CURRENT_VERSION)
+                download_url = data.get("download_url")
+                
+            if self._is_newer_version(remote_version, CURRENT_VERSION) and download_url:
+                if messagebox.askyesno("업데이트 알림", f"새로운 버전(v{remote_version})이 발견되었습니다!\n지금 바로 업데이트하시겠습니까?", parent=getattr(self, 'settings_win', self.root)):
+                    self.perform_auto_update(download_url)
+            else:
+                messagebox.showinfo("업데이트 확인", f"현재 최신 버전(v{CURRENT_VERSION})을 사용 중입니다.", parent=getattr(self, 'settings_win', self.root))
+        except Exception as e:
+            messagebox.showerror("업데이트 오류", f"서버와 통신 중 오류가 발생했습니다.\n인터넷 연결 상태를 확인해 주세요.\n{e}", parent=getattr(self, 'settings_win', self.root))
 
     def cancel_shutdown(self, icon=None, item=None):
         self.pending_shutdown = False
