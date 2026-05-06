@@ -16,7 +16,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.0.13"
+CURRENT_VERSION = "1.0.14"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -802,7 +802,10 @@ if __name__ == "__main__":
 
     mutex_name = "Global\\AutoShutdownAppV2_Mutex"
     mutex = ctypes.windll.kernel32.CreateMutexW(None, False, mutex_name)
-    if ctypes.windll.kernel32.GetLastError() == 183: sys.exit(0)
+    if ctypes.windll.kernel32.GetLastError() == 183:
+        import tkinter.messagebox
+        tkinter.messagebox.showinfo("알림", "프로그램이 이미 실행 중입니다.\n작업 표시줄 우측 하단의 숨겨진 아이콘(^)을 확인해주세요.")
+        sys.exit(0)
 
     root = ctk.CTk()
     app = AutoShutdownAppV2(root)
