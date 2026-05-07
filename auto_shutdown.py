@@ -16,7 +16,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.0.16"
+CURRENT_VERSION = "1.0.17"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -208,19 +208,20 @@ class AutoShutdownAppV2:
                     try: os.remove(old_exe_path)
                     except: pass
                 
-                # PyInstaller 환경 변수 상속 및 핸들 잠금 방지를 위해 os.startfile 사용 (완전 독립 실행)
-                if hasattr(os, 'startfile'):
-                    try:
-                        os.startfile(current_exe, arguments="--wait-update")
-                    except TypeError:
-                        # Python 3.9 이하 호환성 대비
-                        env = os.environ.copy()
-                        for k in [k for k in env if k.upper() in ["TCL_LIBRARY", "TK_LIBRARY", "_MEIPASS2", "_MEIPASS"]]: env.pop(k, None)
-                        subprocess.Popen([current_exe, "--wait-update"], env=env, creationflags=subprocess.DETACHED_PROCESS)
-                else:
-                    env = os.environ.copy()
-                    for k in [k for k in env if k.upper() in ["TCL_LIBRARY", "TK_LIBRARY", "_MEIPASS2", "_MEIPASS"]]: env.pop(k, None)
-                    subprocess.Popen([current_exe, "--wait-update"], env=env, creationflags=subprocess.DETACHED_PROCESS)
+                try:
+                    os.rename(current_exe, old_exe_path)
+                    os.rename(update_exe_path, current_exe)
+                except Exception as e:
+                    print(f"실행 파일 교체 실패: {e}")
+                    pass
+                
+                # 완전 독립 실행 및 PyInstaller 환경 변수 상속(init.tcl 오류) 방지
+                # (os.startfile은 부모 프로세스의 환경변수를 상속하므로 subprocess.Popen 사용)
+                env = os.environ.copy()
+                for k in [k for k in env if k.upper() in ["TCL_LIBRARY", "TK_LIBRARY", "_MEIPASS2", "_MEIPASS"]]: 
+                    env.pop(k, None)
+                    
+                subprocess.Popen([current_exe, "--wait-update"], env=env, creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP)
                 
                 self.quit_app()
         except Exception as e:
