@@ -7,13 +7,16 @@ import urllib.request
 import urllib.error
 from datetime import datetime, timedelta
 
-# PyInstaller 환경 변수 백슬래시 파싱(init.tcl) 오류 방지 및 강제 경로 지정 패치
+# PyInstaller 환경 변수 오염(init.tcl) 방지 패치
+# 업데이트 후 부모 프로세스의 환경변수가 상속되면 삭제된 임시 폴더를 참조하므로
+# 항상 현재 _MEIPASS 기준으로 강제 재설정
 if getattr(sys, 'frozen', False):
-    for _k, _folder in [('TCL_LIBRARY', '_tcl_data'), ('TK_LIBRARY', '_tk_data')]:
-        if _k in os.environ:
-            os.environ[_k] = os.environ[_k].replace('\\', '/')
-        else:
-            os.environ[_k] = os.path.join(sys._MEIPASS, _folder).replace('\\', '/')
+    # _MEIPASS2가 남아있으면 PyInstaller 부트로더가 혼동할 수 있으므로 제거
+    os.environ.pop('_MEIPASS2', None)
+    # 항상 현재 _MEIPASS 기준으로 TCL/TK 경로를 강제 설정 (기존 값 무시)
+    _meipass = sys._MEIPASS.replace('\\', '/')
+    os.environ['TCL_LIBRARY'] = _meipass + '/_tcl_data'
+    os.environ['TK_LIBRARY'] = _meipass + '/_tk_data'
 
 import tkinter as tk
 from tkinter import messagebox
@@ -25,7 +28,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.0.19"
+CURRENT_VERSION = "1.0.20"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -83,13 +86,16 @@ class AutoShutdownAppV2:
     def __init__(self, root):
         self.root = root
         
-        # 이전 업데이트에서 남겨진 .old 파일 삭제 시도
+        # 이전 업데이트에서 남겨진 임시 파일들 삭제 시도
         try:
             current_exe = sys.executable if getattr(sys, 'frozen', False) else None
             if current_exe:
                 old_exe = current_exe + ".old"
                 if os.path.exists(old_exe):
                     os.remove(old_exe)
+                launcher_bat = os.path.join(os.path.dirname(current_exe), "_update_launcher.bat")
+                if os.path.exists(launcher_bat):
+                    os.remove(launcher_bat)
         except: pass
         
         available_fonts = tkfont.families(root=self.root)
@@ -224,13 +230,24 @@ class AutoShutdownAppV2:
                     print(f"실행 파일 교체 실패: {e}")
                     pass
                 
-                # 완전 독립 실행 및 PyInstaller 환경 변수 상속(init.tcl 오류) 방지
-                # (os.startfile은 부모 프로세스의 환경변수를 상속하므로 subprocess.Popen 사용)
-                env = os.environ.copy()
-                for k in [k for k in env if k.upper() in ["TCL_LIBRARY", "TK_LIBRARY", "_MEIPASS2", "_MEIPASS"]]: 
-                    env.pop(k, None)
-                    
-                subprocess.Popen([current_exe, "--wait-update"], env=env, creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP)
+                # 배치 스크립트를 통해 완전히 독립된 환경에서 새 프로세스 실행
+                # cmd.exe /C 로 실행하면 부모 프로세스의 PyInstaller 환경변수가
+                # 자동으로 상속되지 않음 (배치 내에서 명시적으로 제거)
+                launcher_bat = os.path.join(application_path, "_update_launcher.bat")
+                with open(launcher_bat, 'w', encoding='ascii') as f:
+                    f.write('@echo off\n')
+                    f.write('set "TCL_LIBRARY="\n')
+                    f.write('set "TK_LIBRARY="\n')
+                    f.write('set "_MEIPASS="\n')
+                    f.write('set "_MEIPASS2="\n')
+                    f.write('timeout /t 3 /nobreak >nul\n')
+                    f.write(f'start "" "{current_exe}"\n')
+                    f.write(f'del "%~f0"\n')  # 배치 파일 자기 자신 삭제
+                
+                subprocess.Popen(
+                    ['cmd.exe', '/C', launcher_bat],
+                    creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
+                )
                 
                 self.quit_app()
         except Exception as e:
@@ -805,10 +822,6 @@ class AutoShutdownAppV2:
             time.sleep(1)
 
 if __name__ == "__main__":
-    import sys
-    import time
-    if "--wait-update" in sys.argv:
-        time.sleep(3)
 
     mutex_name = "Global\\AutoShutdownAppV2_Mutex"
     mutex = ctypes.windll.kernel32.CreateMutexW(None, False, mutex_name)
