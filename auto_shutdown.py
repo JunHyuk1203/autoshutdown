@@ -28,7 +28,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.9"
+CURRENT_VERSION = "1.1.10"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -198,15 +198,36 @@ class AutoShutdownAppV2:
         threading.Thread(target=self.monitor_time, daemon=True).start()
         threading.Thread(target=self.check_for_updates, daemon=True).start()
 
+    def _fetch_version_info(self):
+        """GitHub API를 사용하여 캐시 없이 최신 version.json을 가져옴"""
+        import base64
+        try:
+            # 1순위: GitHub API (캐시 없음, 항상 최신)
+            api_url = "https://api.github.com/repos/JunHyuk1203/autoshutdown/contents/version.json"
+            req = urllib.request.Request(api_url, headers={
+                'User-Agent': 'AutoShutdownApp',
+                'Accept': 'application/vnd.github.v3+json'
+            })
+            with urllib.request.urlopen(req, timeout=10) as response:
+                api_data = json.loads(response.read().decode('utf-8'))
+                content = base64.b64decode(api_data['content']).decode('utf-8')
+                return json.loads(content)
+        except Exception:
+            # 2순위: Raw URL (캐시될 수 있지만 백업)
+            url = f"https://raw.githubusercontent.com/JunHyuk1203/autoshutdown/main/version.json?t={int(time.time())}"
+            req = urllib.request.Request(url, headers={
+                'User-Agent': 'Mozilla/5.0',
+                'Cache-Control': 'no-cache, no-store',
+                'Pragma': 'no-cache'
+            })
+            with urllib.request.urlopen(req, timeout=10) as response:
+                return json.loads(response.read().decode('utf-8'))
+
     def check_for_updates(self):
         try:
-            # 캐시 방지를 위해 타임스탬프 추가
-            url = f"https://raw.githubusercontent.com/JunHyuk1203/autoshutdown/main/version.json?t={int(time.time())}"
-            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req, timeout=10) as response:
-                data = json.loads(response.read().decode('utf-8'))
-                remote_version = data.get("version", CURRENT_VERSION)
-                download_url = data.get("download_url")
+            data = self._fetch_version_info()
+            remote_version = data.get("version", CURRENT_VERSION)
+            download_url = data.get("download_url")
                 
             if self._is_newer_version(remote_version, CURRENT_VERSION) and download_url:
                 self.perform_auto_update(download_url)
@@ -449,13 +470,9 @@ del "%~f0"
 
     def manual_update_check(self):
         try:
-            # 캐시 방지를 위해 타임스탬프 추가
-            url = f"https://raw.githubusercontent.com/JunHyuk1203/autoshutdown/main/version.json?t={int(time.time())}"
-            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req, timeout=5) as response:
-                data = json.loads(response.read().decode('utf-8'))
-                remote_version = data.get("version", CURRENT_VERSION)
-                download_url = data.get("download_url")
+            data = self._fetch_version_info()
+            remote_version = data.get("version", CURRENT_VERSION)
+            download_url = data.get("download_url")
                 
             if self._is_newer_version(remote_version, CURRENT_VERSION) and download_url:
                 if messagebox.askyesno("업데이트 알림", f"새로운 버전(v{remote_version})이 발견되었습니다!\n지금 바로 업데이트하시겠습니까?", parent=getattr(self, 'settings_win', self.root)):
