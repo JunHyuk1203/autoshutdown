@@ -1,0 +1,13 @@
+# PyInstaller 빌드 임시 파일
+build/
+__pycache__/
+*.pyc
+
+# 업데이트 관련 임시 파일
+update_temp.exe
+_update_launcher.bat
+*.old
+test_update/
+
+# 기타
+*.log
