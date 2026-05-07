@@ -28,7 +28,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.0.27"
+CURRENT_VERSION = "1.0.28"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -256,30 +256,25 @@ class AutoShutdownAppV2:
                         try:
                             os.rename(old_exe_path, current_exe)
                         except: pass
-                    # 임시 파일 정리
                     if os.path.exists(update_exe_path):
                         try: os.remove(update_exe_path)
                         except: pass
                     return  # 교체 실패 시 여기서 중단 (프로그램 종료하지 않음)
                 
-                # 5. 파일 교체 성공 → VBScript로 새 프로세스 실행
-                # 배치/PowerShell은 DETACHED_PROCESS에서 exe 실행 불가
-                # VBScript(WScript.Shell.Run)만 안정적으로 동작 확인됨
-                launcher_vbs = os.path.join(application_path, "_update_launcher.vbs")
-                with open(launcher_vbs, 'w', encoding='ascii') as f:
-                    f.write('WScript.Sleep 5000\n')
-                    f.write('Set WshShell = CreateObject("WScript.Shell")\n')
-                    # 환경변수 오염 제거
-                    f.write('Set WshEnv = WshShell.Environment("PROCESS")\n')
-                    f.write('WshEnv.Remove "TCL_LIBRARY"\n')
-                    f.write('WshEnv.Remove "TK_LIBRARY"\n')
-                    f.write('WshEnv.Remove "_MEIPASS"\n')
-                    f.write('WshEnv.Remove "_MEIPASS2"\n')
-                    f.write(f'WshShell.Run Chr(34) & "{current_exe}" & Chr(34), 0\n')
-                    f.write('Set WshShell = Nothing\n')
+                # 5. 파일 교체 성공 → 새 프로세스 실행
+                # 매우 중요: PyInstaller 6+ 에서는 _PYI_APPLICATION_HOME_DIR 등 여러 환경변수를 사용합니다.
+                # 이 변수들이 새 프로세스로 넘어가면, 새 프로세스는 압축 풀기를 생략하고 
+                # 이전 프로세스(곧 종료되어 삭제될)의 _MEI 폴더를 참조하다가 DLL 로드 에러가 발생합니다.
+                # 따라서 현재 환경변수에서 PyInstaller 관련 변수를 모두 제거한 후 실행해야 합니다.
+                clean_env = os.environ.copy()
+                keys_to_remove = [k for k in clean_env if 'MEI' in k or 'PYI' in k or 'TCL' in k or 'TK' in k]
+                for k in keys_to_remove:
+                    clean_env.pop(k, None)
                 
+                # 완전히 독립된 새 프로세스로 실행 (창 없이, 새 그룹)
                 subprocess.Popen(
-                    ['wscript.exe', launcher_vbs],
+                    [current_exe],
+                    env=clean_env,
                     creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
                 )
                 
