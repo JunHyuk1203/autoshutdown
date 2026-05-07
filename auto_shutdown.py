@@ -28,7 +28,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.0.26"
+CURRENT_VERSION = "1.0.27"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -93,6 +93,9 @@ class AutoShutdownAppV2:
                 old_exe = current_exe + ".old"
                 if os.path.exists(old_exe):
                     os.remove(old_exe)
+                launcher_vbs = os.path.join(os.path.dirname(current_exe), "_update_launcher.vbs")
+                if os.path.exists(launcher_vbs):
+                    os.remove(launcher_vbs)
                 launcher_bat = os.path.join(os.path.dirname(current_exe), "_update_launcher.bat")
                 if os.path.exists(launcher_bat):
                     os.remove(launcher_bat)
@@ -259,26 +262,25 @@ class AutoShutdownAppV2:
                         except: pass
                     return  # 교체 실패 시 여기서 중단 (프로그램 종료하지 않음)
                 
-                # 5. 파일 교체 성공 → 배치 스크립트로 새 프로세스 실행
-                # 주의: DETACHED_PROCESS에서 파이프(|)가 동작하지 않으므로
-                # tasklist|find 대신 ping으로 단순 대기
-                launcher_bat = os.path.join(application_path, "_update_launcher.bat")
-                with open(launcher_bat, 'w', encoding='ascii') as f:
-                    f.write('@echo off\n')
+                # 5. 파일 교체 성공 → VBScript로 새 프로세스 실행
+                # 배치/PowerShell은 DETACHED_PROCESS에서 exe 실행 불가
+                # VBScript(WScript.Shell.Run)만 안정적으로 동작 확인됨
+                launcher_vbs = os.path.join(application_path, "_update_launcher.vbs")
+                with open(launcher_vbs, 'w', encoding='ascii') as f:
+                    f.write('WScript.Sleep 5000\n')
+                    f.write('Set WshShell = CreateObject("WScript.Shell")\n')
                     # 환경변수 오염 제거
-                    f.write('set "TCL_LIBRARY="\n')
-                    f.write('set "TK_LIBRARY="\n')
-                    f.write('set "_MEIPASS="\n')
-                    f.write('set "_MEIPASS2="\n')
-                    # 5초 대기 (이전 프로세스 종료 + OS 파일핸들 정리 시간)
-                    f.write('ping -n 6 127.0.0.1 >nul\n')
-                    # 새 프로세스 실행
-                    f.write(f'start "" "{current_exe}"\n')
-                    f.write('del "%~f0"\n')  # 배치 파일 자기 자신 삭제
+                    f.write('Set WshEnv = WshShell.Environment("PROCESS")\n')
+                    f.write('WshEnv.Remove "TCL_LIBRARY"\n')
+                    f.write('WshEnv.Remove "TK_LIBRARY"\n')
+                    f.write('WshEnv.Remove "_MEIPASS"\n')
+                    f.write('WshEnv.Remove "_MEIPASS2"\n')
+                    f.write(f'WshShell.Run Chr(34) & "{current_exe}" & Chr(34), 0\n')
+                    f.write('Set WshShell = Nothing\n')
                 
                 subprocess.Popen(
-                    ['cmd.exe', '/C', launcher_bat],
-                    creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
+                    ['wscript.exe', launcher_vbs],
+                    creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
                 )
                 
                 self.quit_app()
