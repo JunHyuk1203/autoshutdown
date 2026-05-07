@@ -28,7 +28,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.10"
+CURRENT_VERSION = "1.1.6"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -89,23 +89,27 @@ class AutoShutdownAppV2:
         self._just_updated = "--just-updated" in sys.argv
         
         # 이전 업데이트에서 남겨진 임시 파일들 삭제 시도
-        def _cleanup_update_files():
+        def _cleanup_old_files():
             try:
-                exe_dir = application_path
-                for fname in ["_updater.bat", "update_temp.exe", "_update_launcher.vbs", "_update_launcher.bat"]:
-                    fpath = os.path.join(exe_dir, fname)
-                    if os.path.exists(fpath):
-                        try: os.remove(fpath)
-                        except: pass
-                # .old 파일도 혹시 남아있으면 정리
-                if getattr(sys, 'frozen', False):
-                    old_exe = sys.executable + ".old"
+                current_exe = sys.executable if getattr(sys, 'frozen', False) else None
+                if current_exe:
+                    old_exe = current_exe + ".old"
                     if os.path.exists(old_exe):
-                        try: os.remove(old_exe)
-                        except: pass
+                        try:
+                            os.remove(old_exe)
+                        except PermissionError:
+                            # 프로세스가 아직 덜 닫혀 잠겨있을 수 있으므로 1초 뒤 재시도
+                            self.root.after(1000, _cleanup_old_files)
+                            return
+                    launcher_vbs = os.path.join(os.path.dirname(current_exe), "_update_launcher.vbs")
+                    if os.path.exists(launcher_vbs):
+                        os.remove(launcher_vbs)
+                    launcher_bat = os.path.join(os.path.dirname(current_exe), "_update_launcher.bat")
+                    if os.path.exists(launcher_bat):
+                        os.remove(launcher_bat)
             except: pass
             
-        _cleanup_update_files()
+        _cleanup_old_files()
         
         available_fonts = tkfont.families(root=self.root)
         self.font_family = "Malgun Gothic"
@@ -198,36 +202,15 @@ class AutoShutdownAppV2:
         threading.Thread(target=self.monitor_time, daemon=True).start()
         threading.Thread(target=self.check_for_updates, daemon=True).start()
 
-    def _fetch_version_info(self):
-        """GitHub API를 사용하여 캐시 없이 최신 version.json을 가져옴"""
-        import base64
-        try:
-            # 1순위: GitHub API (캐시 없음, 항상 최신)
-            api_url = "https://api.github.com/repos/JunHyuk1203/autoshutdown/contents/version.json"
-            req = urllib.request.Request(api_url, headers={
-                'User-Agent': 'AutoShutdownApp',
-                'Accept': 'application/vnd.github.v3+json'
-            })
-            with urllib.request.urlopen(req, timeout=10) as response:
-                api_data = json.loads(response.read().decode('utf-8'))
-                content = base64.b64decode(api_data['content']).decode('utf-8')
-                return json.loads(content)
-        except Exception:
-            # 2순위: Raw URL (캐시될 수 있지만 백업)
-            url = f"https://raw.githubusercontent.com/JunHyuk1203/autoshutdown/main/version.json?t={int(time.time())}"
-            req = urllib.request.Request(url, headers={
-                'User-Agent': 'Mozilla/5.0',
-                'Cache-Control': 'no-cache, no-store',
-                'Pragma': 'no-cache'
-            })
-            with urllib.request.urlopen(req, timeout=10) as response:
-                return json.loads(response.read().decode('utf-8'))
-
     def check_for_updates(self):
         try:
-            data = self._fetch_version_info()
-            remote_version = data.get("version", CURRENT_VERSION)
-            download_url = data.get("download_url")
+            # 캐시 방지를 위해 타임스탬프 추가
+            url = f"https://raw.githubusercontent.com/JunHyuk1203/autoshutdown/main/version.json?t={int(time.time())}"
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=10) as response:
+                data = json.loads(response.read().decode('utf-8'))
+                remote_version = data.get("version", CURRENT_VERSION)
+                download_url = data.get("download_url")
                 
             if self._is_newer_version(remote_version, CURRENT_VERSION) and download_url:
                 self.perform_auto_update(download_url)
@@ -270,37 +253,50 @@ class AutoShutdownAppV2:
             current_exe = sys.executable if getattr(sys, 'frozen', False) else None
             
             if current_exe and current_exe.endswith('.exe'):
-                # 배치 파일 업데이터 방식: 프로그램이 완전히 종료된 후 파일을 교체
-                bat_path = os.path.join(application_path, "_updater.bat")
-                just_updated_arg = " --just-updated" if is_manual else ""
+                old_exe_path = current_exe + ".old"
                 
-                bat_content = f'''@echo off
-chcp 65001 >nul 2>&1
-echo 업데이트 진행 중... 잠시 기다려주세요.
-timeout /t 3 /nobreak >nul
-:retry_delete
-del "{current_exe}" >nul 2>&1
-if exist "{current_exe}" (
-    echo 이전 프로그램 종료 대기 중...
-    timeout /t 2 /nobreak >nul
-    goto retry_delete
-)
-move /Y "{update_exe_path}" "{current_exe}" >nul 2>&1
-if errorlevel 1 (
-    echo 파일 교체 실패
-    timeout /t 5
-    exit /b 1
-)
-start "" "{current_exe}"{just_updated_arg}
-del "%~f0"
-'''
-                with open(bat_path, 'w', encoding='utf-8') as f:
-                    f.write(bat_content)
+                # 3. 이전 .old 파일 정리
+                if os.path.exists(old_exe_path):
+                    try: os.remove(old_exe_path)
+                    except: pass
                 
-                # 배치 파일을 숨겨진 창으로 실행
+                # 4. 원자적 파일 교체 (실패 시 롤백)
+                renamed_current = False
+                try:
+                    os.rename(current_exe, old_exe_path)
+                    renamed_current = True
+                    os.rename(update_exe_path, current_exe)
+                except Exception as e:
+                    # 롤백: 현재 exe가 이미 .old로 옮겨졌으면 원래대로 복구
+                    if renamed_current and not os.path.exists(current_exe):
+                        try:
+                            os.rename(old_exe_path, current_exe)
+                        except: pass
+                    if os.path.exists(update_exe_path):
+                        try: os.remove(update_exe_path)
+                        except: pass
+                    self._show_update_error(f"실행 파일 교체에 실패했습니다.\n프로그램이 다른 곳에서 사용 중일 수 있습니다.\n\n오류: {e}")
+                    return  # 교체 실패 시 여기서 중단 (프로그램 종료하지 않음)
+                
+                # 5. 파일 교체 성공 → 새 프로세스 실행
+                # 매우 중요: PyInstaller 6+ 에서는 _PYI_APPLICATION_HOME_DIR 등 여러 환경변수를 사용합니다.
+                # 이 변수들이 새 프로세스로 넘어가면, 새 프로세스는 압축 풀기를 생략하고 
+                # 이전 프로세스(곧 종료되어 삭제될)의 _MEI 폴더를 참조하다가 DLL 로드 에러가 발생합니다.
+                # 따라서 현재 환경변수에서 PyInstaller 관련 변수를 모두 제거한 후 실행해야 합니다.
+                clean_env = os.environ.copy()
+                keys_to_remove = [k for k in clean_env if 'MEI' in k or 'PYI' in k or 'TCL' in k or 'TK' in k]
+                for k in keys_to_remove:
+                    clean_env.pop(k, None)
+                
+                # 완전히 독립된 새 프로세스로 실행 (창 없이, 새 그룹)
+                args = [current_exe]
+                if is_manual:
+                    args.append("--just-updated")
+                
                 subprocess.Popen(
-                    ['cmd', '/c', bat_path],
-                    creationflags=subprocess.CREATE_NO_WINDOW
+                    args,
+                    env=clean_env,
+                    creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
                 )
                 
                 self.quit_app()
@@ -470,9 +466,13 @@ del "%~f0"
 
     def manual_update_check(self):
         try:
-            data = self._fetch_version_info()
-            remote_version = data.get("version", CURRENT_VERSION)
-            download_url = data.get("download_url")
+            # 캐시 방지를 위해 타임스탬프 추가
+            url = f"https://raw.githubusercontent.com/JunHyuk1203/autoshutdown/main/version.json?t={int(time.time())}"
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=5) as response:
+                data = json.loads(response.read().decode('utf-8'))
+                remote_version = data.get("version", CURRENT_VERSION)
+                download_url = data.get("download_url")
                 
             if self._is_newer_version(remote_version, CURRENT_VERSION) and download_url:
                 if messagebox.askyesno("업데이트 알림", f"새로운 버전(v{remote_version})이 발견되었습니다!\n지금 바로 업데이트하시겠습니까?", parent=getattr(self, 'settings_win', self.root)):
