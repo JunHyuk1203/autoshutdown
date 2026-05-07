@@ -6,6 +6,15 @@ import json
 import urllib.request
 import urllib.error
 from datetime import datetime, timedelta
+
+# PyInstaller 환경 변수 백슬래시 파싱(init.tcl) 오류 방지 및 강제 경로 지정 패치
+if getattr(sys, 'frozen', False):
+    for _k, _folder in [('TCL_LIBRARY', '_tcl_data'), ('TK_LIBRARY', '_tk_data')]:
+        if _k in os.environ:
+            os.environ[_k] = os.environ[_k].replace('\\', '/')
+        else:
+            os.environ[_k] = os.path.join(sys._MEIPASS, _folder).replace('\\', '/')
+
 import tkinter as tk
 from tkinter import messagebox
 import tkinter.font as tkfont
@@ -16,7 +25,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.0.17"
+CURRENT_VERSION = "1.0.19"
 
 try:
     from pycaw.pycaw import AudioUtilities
