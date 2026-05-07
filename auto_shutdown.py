@@ -28,7 +28,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.1"
+CURRENT_VERSION = "1.1.2"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -629,8 +629,22 @@ class AutoShutdownAppV2:
 
     def quit_app(self, icon=None, item=None):
         self.is_running = False
-        if self.icon: self.icon.stop()
-        self.root.after(0, self.root.destroy)
+        try:
+            if self.icon:
+                self.icon.stop()
+        except:
+            pass
+            
+        # 메인 스레드에서 안전하게 종료하기 위해 root.after 사용
+        def force_exit():
+            try:
+                self.root.destroy()
+            except:
+                pass
+            # 데몬 스레드들이 남아있을 수 있으므로 프로세스 강제 종료로 확실히 마무리
+            os._exit(0)
+            
+        self.root.after(100, force_exit)
 
     def create_image(self, width, height):
         # 완전히 투명한 이미지 반환
