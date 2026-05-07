@@ -28,7 +28,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.3"
+CURRENT_VERSION = "1.1.4"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -218,9 +218,12 @@ class AutoShutdownAppV2:
             print("업데이트 확인 실패:", e)
 
     def _is_newer_version(self, remote, current):
-        r_parts = [int(x) for x in remote.split('.')]
-        c_parts = [int(x) for x in current.split('.')]
-        return r_parts > c_parts
+        try:
+            r_parts = [int(x.strip()) for x in str(remote).split('.')]
+            c_parts = [int(x.strip()) for x in str(current).split('.')]
+            return r_parts > c_parts
+        except (ValueError, AttributeError):
+            return False
 
     def _show_update_error(self, msg):
         """업데이트 실패 알림 (메인 스레드에서 실행)"""
@@ -475,15 +478,15 @@ class AutoShutdownAppV2:
                 download_url = data.get("download_url")
                 
             if self._is_newer_version(remote_version, CURRENT_VERSION) and download_url:
-                if messagebox.askyesno("업데이트 알림", f"새로운 버전(v{remote_version})이 발견되었습니다!\n지금 바로 업데이트하시겠습니까?", parent=getattr(self, 'settings_win', self.root)):
+                if messagebox.askyesno("업데이트 알림", f"새로운 버전이 발견되었습니다!\n\n- 현재 버전: v{CURRENT_VERSION}\n- 최신 버전: v{remote_version}\n\n지금 바로 업데이트하시겠습니까?", parent=getattr(self, 'settings_win', self.root)):
                     self.perform_auto_update(download_url, is_manual=True)
             elif download_url:
-                if messagebox.askyesno("업데이트 확인", f"현재 최신 버전(v{CURRENT_VERSION})을 사용 중입니다.\n강제로 최신 버전을 다시 다운로드하여 재설치하시겠습니까?", parent=getattr(self, 'settings_win', self.root)):
+                if messagebox.askyesno("업데이트 확인", f"이미 최신 버전을 사용 중입니다.\n\n- 현재 버전: v{CURRENT_VERSION}\n- 서버 버전: v{remote_version}\n\n강제로 최신 버전을 다시 다운로드하여 재설치하시겠습니까?", parent=getattr(self, 'settings_win', self.root)):
                     self.perform_auto_update(download_url, is_manual=True)
             else:
                 messagebox.showinfo("업데이트 오류", "다운로드 링크를 찾을 수 없습니다.", parent=getattr(self, 'settings_win', self.root))
         except Exception as e:
-            messagebox.showerror("업데이트 오류", f"서버와 통신 중 오류가 발생했습니다.\n인터넷 연결 상태를 확인해 주세요.\n{e}", parent=getattr(self, 'settings_win', self.root))
+            messagebox.showerror("업데이트 오류", f"서버와 통신 중 오류가 발생했습니다.\n인터넷 연결 상태를 확인해 주세요.\n\n오류 내용: {e}", parent=getattr(self, 'settings_win', self.root))
 
     def cancel_shutdown(self, icon=None, item=None):
         self.pending_shutdown = False
