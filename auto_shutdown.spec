@@ -4,7 +4,11 @@
 a = Analysis(
     ['auto_shutdown.py'],
     pathex=[],
-    binaries=[],
+    binaries=[
+        (r'C:\Windows\System32\ucrtbase.dll', '.'),
+        (r'C:\Users\tntdr\AppData\Local\Programs\Python\Python313\vcruntime140.dll', '.'),
+        (r'C:\Users\tntdr\AppData\Local\Programs\Python\Python313\vcruntime140_1.dll', '.'),
+    ],
     datas=[
         (r'C:\Users\tntdr\AppData\Local\Programs\Python\Python313\tcl\tcl8.6', '_tcl_data'),
         (r'C:\Users\tntdr\AppData\Local\Programs\Python\Python313\tcl\tk8.6', '_tk_data'),
