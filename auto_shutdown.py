@@ -28,7 +28,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.0.21"
+CURRENT_VERSION = "1.0.22"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -260,16 +260,30 @@ class AutoShutdownAppV2:
                     return  # 교체 실패 시 여기서 중단 (프로그램 종료하지 않음)
                 
                 # 5. 파일 교체 성공 → 배치 스크립트로 새 프로세스 실행
-                # cmd.exe /C 로 실행하면 부모 프로세스의 PyInstaller 환경변수가
-                # 상속되지 않음 (배치 내에서 명시적으로 제거)
+                # 현재 프로세스의 PID를 전달하여 완전 종료를 확인 후 실행
+                current_pid = os.getpid()
                 launcher_bat = os.path.join(application_path, "_update_launcher.bat")
+                exe_name = os.path.basename(current_exe)
                 with open(launcher_bat, 'w', encoding='ascii') as f:
                     f.write('@echo off\n')
+                    # 환경변수 오염 제거
                     f.write('set "TCL_LIBRARY="\n')
                     f.write('set "TK_LIBRARY="\n')
                     f.write('set "_MEIPASS="\n')
                     f.write('set "_MEIPASS2="\n')
-                    f.write('timeout /t 3 /nobreak >nul\n')
+                    # 이전 프로세스가 완전히 죽을 때까지 대기 (최대 30초)
+                    f.write(f'set "OLD_PID={current_pid}"\n')
+                    f.write(':wait_loop\n')
+                    f.write('tasklist /FI "PID eq %OLD_PID%" 2>nul | find "%OLD_PID%" >nul\n')
+                    f.write('if not errorlevel 1 (\n')
+                    f.write('    timeout /t 1 /nobreak >nul\n')
+                    f.write('    goto wait_loop\n')
+                    f.write(')\n')
+                    # 추가 2초 대기 (OS가 파일 핸들/임시폴더를 정리할 시간)
+                    f.write('timeout /t 2 /nobreak >nul\n')
+                    # 이전 프로세스가 남긴 _MEI 임시 폴더 정리
+                    f.write('for /d %%D in ("%TEMP%\\_MEI*") do rmdir /s /q "%%D" 2>nul\n')
+                    # 새 프로세스 실행
                     f.write(f'start "" "{current_exe}"\n')
                     f.write(f'del "%~f0"\n')  # 배치 파일 자기 자신 삭제
                 
