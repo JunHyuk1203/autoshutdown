@@ -28,7 +28,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.0.28"
+CURRENT_VERSION = "1.1.0"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -86,20 +86,30 @@ class AutoShutdownAppV2:
     def __init__(self, root):
         self.root = root
         
+        self._just_updated = "--just-updated" in sys.argv
+        
         # 이전 업데이트에서 남겨진 임시 파일들 삭제 시도
-        try:
-            current_exe = sys.executable if getattr(sys, 'frozen', False) else None
-            if current_exe:
-                old_exe = current_exe + ".old"
-                if os.path.exists(old_exe):
-                    os.remove(old_exe)
-                launcher_vbs = os.path.join(os.path.dirname(current_exe), "_update_launcher.vbs")
-                if os.path.exists(launcher_vbs):
-                    os.remove(launcher_vbs)
-                launcher_bat = os.path.join(os.path.dirname(current_exe), "_update_launcher.bat")
-                if os.path.exists(launcher_bat):
-                    os.remove(launcher_bat)
-        except: pass
+        def _cleanup_old_files():
+            try:
+                current_exe = sys.executable if getattr(sys, 'frozen', False) else None
+                if current_exe:
+                    old_exe = current_exe + ".old"
+                    if os.path.exists(old_exe):
+                        try:
+                            os.remove(old_exe)
+                        except PermissionError:
+                            # 프로세스가 아직 덜 닫혀 잠겨있을 수 있으므로 1초 뒤 재시도
+                            self.root.after(1000, _cleanup_old_files)
+                            return
+                    launcher_vbs = os.path.join(os.path.dirname(current_exe), "_update_launcher.vbs")
+                    if os.path.exists(launcher_vbs):
+                        os.remove(launcher_vbs)
+                    launcher_bat = os.path.join(os.path.dirname(current_exe), "_update_launcher.bat")
+                    if os.path.exists(launcher_bat):
+                        os.remove(launcher_bat)
+            except: pass
+            
+        _cleanup_old_files()
         
         available_fonts = tkfont.families(root=self.root)
         self.font_family = "Malgun Gothic"
@@ -211,7 +221,13 @@ class AutoShutdownAppV2:
         c_parts = [int(x) for x in current.split('.')]
         return r_parts > c_parts
 
-    def perform_auto_update(self, download_url):
+    def _show_update_error(self, msg):
+        """업데이트 실패 알림 (메인 스레드에서 실행)"""
+        try:
+            self.root.after(0, lambda: messagebox.showerror("업데이트 실패", msg, parent=self.root))
+        except: pass
+
+    def perform_auto_update(self, download_url, is_manual=False):
         update_exe_path = os.path.join(application_path, "update_temp.exe")
         try:
             # 1. 새 버전 다운로드
@@ -221,7 +237,7 @@ class AutoShutdownAppV2:
             
             # 2. 다운로드 무결성 검증 (최소 크기 체크 — 정상 exe는 수 MB 이상)
             if len(data) < 1_000_000:
-                print(f"업데이트 파일이 너무 작음 ({len(data)} bytes), 다운로드 실패로 판단")
+                self._show_update_error(f"다운로드된 파일이 너무 작습니다 ({len(data)} bytes).\n네트워크 오류일 수 있습니다. 다시 시도해주세요.")
                 return
             
             with open(update_exe_path, 'wb') as out_file:
@@ -229,7 +245,7 @@ class AutoShutdownAppV2:
             
             # 디스크에 기록된 파일 크기 재확인
             if os.path.getsize(update_exe_path) != len(data):
-                print("디스크 기록 검증 실패")
+                self._show_update_error("다운로드 파일 저장 중 오류가 발생했습니다.\n디스크 공간을 확인해주세요.")
                 os.remove(update_exe_path)
                 return
                 
@@ -250,7 +266,6 @@ class AutoShutdownAppV2:
                     renamed_current = True
                     os.rename(update_exe_path, current_exe)
                 except Exception as e:
-                    print(f"실행 파일 교체 실패: {e}")
                     # 롤백: 현재 exe가 이미 .old로 옮겨졌으면 원래대로 복구
                     if renamed_current and not os.path.exists(current_exe):
                         try:
@@ -259,6 +274,7 @@ class AutoShutdownAppV2:
                     if os.path.exists(update_exe_path):
                         try: os.remove(update_exe_path)
                         except: pass
+                    self._show_update_error(f"실행 파일 교체에 실패했습니다.\n프로그램이 다른 곳에서 사용 중일 수 있습니다.\n\n오류: {e}")
                     return  # 교체 실패 시 여기서 중단 (프로그램 종료하지 않음)
                 
                 # 5. 파일 교체 성공 → 새 프로세스 실행
@@ -273,18 +289,18 @@ class AutoShutdownAppV2:
                 
                 # 완전히 독립된 새 프로세스로 실행 (창 없이, 새 그룹)
                 subprocess.Popen(
-                    [current_exe],
+                    [current_exe, "--just-updated"],
                     env=clean_env,
                     creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
                 )
                 
                 self.quit_app()
         except Exception as e:
-            print("업데이트 적용 실패:", e)
             # 실패 시 임시 파일 정리
             if os.path.exists(update_exe_path):
                 try: os.remove(update_exe_path)
                 except: pass
+            self._show_update_error(f"업데이트 중 오류가 발생했습니다.\n인터넷 연결을 확인해주세요.\n\n오류: {e}")
 
     def load_config(self):
         try:
@@ -332,11 +348,12 @@ class AutoShutdownAppV2:
         if enable:
             if getattr(sys, 'frozen', False):
                 exe_path = os.path.join(application_path, "auto_shutdown.exe")
-                script = f'Set WshShell = CreateObject("WScript.Shell")\nWshShell.Run chr(34) & "{exe_path}" & Chr(34), 0\nSet WshShell = Nothing'
+                # 부팅 시 Explorer 쉘이 준비될 시간을 주기 위해 5초 대기 후 실행
+                script = f'WScript.Sleep 5000\nSet WshShell = CreateObject("WScript.Shell")\nWshShell.Run chr(34) & "{exe_path}" & Chr(34), 0\nSet WshShell = Nothing'
             else:
                 bg_script = os.path.join(application_path, "auto_shutdown.py")
                 pythonw = sys.executable.replace("python.exe", "pythonw.exe")
-                script = f'Set WshShell = CreateObject("WScript.Shell")\nWshShell.Run chr(34) & "{pythonw}" & Chr(34) & " " & chr(34) & "{bg_script}" & chr(34), 0\nSet WshShell = Nothing'
+                script = f'WScript.Sleep 5000\nSet WshShell = CreateObject("WScript.Shell")\nWshShell.Run chr(34) & "{pythonw}" & Chr(34) & " " & chr(34) & "{bg_script}" & chr(34), 0\nSet WshShell = Nothing'
             with open(vbs_path, 'w', encoding='utf-8') as f:
                 f.write(script)
         else:
@@ -453,10 +470,10 @@ class AutoShutdownAppV2:
                 
             if self._is_newer_version(remote_version, CURRENT_VERSION) and download_url:
                 if messagebox.askyesno("업데이트 알림", f"새로운 버전(v{remote_version})이 발견되었습니다!\n지금 바로 업데이트하시겠습니까?", parent=getattr(self, 'settings_win', self.root)):
-                    self.perform_auto_update(download_url)
+                    self.perform_auto_update(download_url, is_manual=True)
             elif download_url:
                 if messagebox.askyesno("업데이트 확인", f"현재 최신 버전(v{CURRENT_VERSION})을 사용 중입니다.\n강제로 최신 버전을 다시 다운로드하여 재설치하시겠습니까?", parent=getattr(self, 'settings_win', self.root)):
-                    self.perform_auto_update(download_url)
+                    self.perform_auto_update(download_url, is_manual=True)
             else:
                 messagebox.showinfo("업데이트 오류", "다운로드 링크를 찾을 수 없습니다.", parent=getattr(self, 'settings_win', self.root))
         except Exception as e:
@@ -475,15 +492,66 @@ class AutoShutdownAppV2:
         menu_items.append(pystray.MenuItem('종료', self.quit_app))
         return tuple(menu_items)
 
+    def _show_update_success_popup(self):
+        popup = ctk.CTkToplevel(self.root)
+        popup.title("업데이트 성공")
+        popup.geometry("300x150")
+        popup.attributes('-topmost', True)
+        popup.resizable(False, False)
+        
+        # 화면 중앙에 배치
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        x = (screen_width - 300) // 2
+        y = (screen_height - 150) // 2
+        popup.geometry(f"+{x}+{y}")
+        
+        lbl = ctk.CTkLabel(popup, text="🎉 업데이트 완료!", font=ctk.CTkFont(family=self.font_family, size=16, weight="bold"), text_color="#2ECC71")
+        lbl.pack(pady=(20, 10))
+        
+        lbl2 = ctk.CTkLabel(popup, text=f"v{CURRENT_VERSION}으로 성공적으로 업데이트되었습니다.", font=ctk.CTkFont(family=self.font_family, size=12))
+        lbl2.pack(pady=(0, 20))
+        
+        btn = ctk.CTkButton(popup, text="확인", command=popup.destroy, width=100)
+        btn.pack()
+
+    def _is_shell_ready(self):
+        """Explorer 쉘(시스템 트레이)이 준비되었는지 확인"""
+        hwnd = ctypes.windll.user32.FindWindowW("Shell_TrayWnd", None)
+        return hwnd != 0
+
+    def _create_tray_icon_with_retry(self, attempt=0):
+        """트레이 아이콘 생성 — 쉘 미준비 시 재시도 (부팅 직후 대비)"""
+        MAX_RETRIES = 30  # 최대 30회, 약 60초
+
+        if not self._is_shell_ready():
+            if attempt < MAX_RETRIES:
+                self.root.after(2000, lambda: self._create_tray_icon_with_retry(attempt + 1))
+                return
+            # 최대 재시도 초과 — 그래도 한 번 시도
+
+        try:
+            image = self.create_image(64, 64)
+            menu = pystray.Menu(self.get_menu)
+            self.icon = pystray.Icon("autoshutdown_v2", image, "스마트 전원 관리자 동작중", menu)
+            self.icon.run_detached()
+            
+            # 업데이트 후 재시작이었다면 성공 팝업 띄우기
+            if getattr(self, '_just_updated', False):
+                self._just_updated = False
+                self.root.after(2000, self._show_update_success_popup)
+        except Exception as e:
+            print(f"트레이 아이콘 생성 실패 (시도 {attempt + 1}): {e}")
+            self.icon = None
+            if attempt < MAX_RETRIES:
+                self.root.after(3000, lambda: self._create_tray_icon_with_retry(attempt + 1))
+
     def hide_window(self):
         self.root.withdraw()
         if getattr(self, 'settings_win', None) and self.settings_win.winfo_exists():
             self.settings_win.destroy()
         if not self.icon:
-            image = self.create_image(64, 64)
-            menu = pystray.Menu(self.get_menu)
-            self.icon = pystray.Icon("autoshutdown_v2", image, "스마트 전원 관리자 동작중", menu)
-            self.icon.run_detached()
+            self._create_tray_icon_with_retry()
 
     def _prompt_password(self):
         if getattr(self, '_is_prompting', False): return
