@@ -35,7 +35,7 @@
             "action": "시스템 종료"
         },
         "방과후/기타 (16:30)": {
-            "enabled": true,
+            "enabled": false,
             "action": "시스템 종료"
         }
     },
@@ -69,7 +69,7 @@
             "action": "시스템 종료"
         },
         "방과후/기타 (16:30)": {
-            "enabled": true,
+            "enabled": false,
             "action": "시스템 종료"
         }
     },

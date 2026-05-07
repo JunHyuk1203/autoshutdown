@@ -28,7 +28,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.0"
+CURRENT_VERSION = "1.1.1"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -204,7 +204,8 @@ class AutoShutdownAppV2:
 
     def check_for_updates(self):
         try:
-            url = "https://raw.githubusercontent.com/JunHyuk1203/autoshutdown/main/version.json"
+            # 캐시 방지를 위해 타임스탬프 추가
+            url = f"https://raw.githubusercontent.com/JunHyuk1203/autoshutdown/main/version.json?t={int(time.time())}"
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
             with urllib.request.urlopen(req, timeout=10) as response:
                 data = json.loads(response.read().decode('utf-8'))
@@ -288,8 +289,12 @@ class AutoShutdownAppV2:
                     clean_env.pop(k, None)
                 
                 # 완전히 독립된 새 프로세스로 실행 (창 없이, 새 그룹)
+                args = [current_exe]
+                if is_manual:
+                    args.append("--just-updated")
+                
                 subprocess.Popen(
-                    [current_exe, "--just-updated"],
+                    args,
                     env=clean_env,
                     creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
                 )
@@ -461,7 +466,8 @@ class AutoShutdownAppV2:
 
     def manual_update_check(self):
         try:
-            url = "https://raw.githubusercontent.com/JunHyuk1203/autoshutdown/main/version.json"
+            # 캐시 방지를 위해 타임스탬프 추가
+            url = f"https://raw.githubusercontent.com/JunHyuk1203/autoshutdown/main/version.json?t={int(time.time())}"
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
             with urllib.request.urlopen(req, timeout=5) as response:
                 data = json.loads(response.read().decode('utf-8'))
@@ -627,11 +633,8 @@ class AutoShutdownAppV2:
         self.root.after(0, self.root.destroy)
 
     def create_image(self, width, height):
-        image = Image.new('RGB', (width, height), color=(255, 255, 255))
-        draw = ImageDraw.Draw(image)
-        draw.ellipse((8, 8, width-8, height-8), fill=(52, 152, 219))
-        draw.rectangle((width//2 - 4, 15, width//2 + 4, height//2), fill=(255, 255, 255))
-        return image
+        # 완전히 투명한 이미지 반환
+        return Image.new('RGBA', (width, height), (0, 0, 0, 0))
 
     def get_next_event(self):
         if self.skip_today_var.get(): return "skip", None

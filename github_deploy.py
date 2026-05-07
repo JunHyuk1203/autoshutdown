@@ -81,5 +81,4 @@ try:
 except Exception as e:
     print(f"\n[Error] Git 실행 중 알 수 없는 오류 발생: {e}")
 
-print("\n창을 닫으려면 아무 키나 누르세요...")
-os.system("pause > nul")
+print("\n배포 프로세스가 완료되었습니다.")
