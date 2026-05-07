@@ -28,7 +28,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.0.20"
+CURRENT_VERSION = "1.0.21"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -209,30 +209,59 @@ class AutoShutdownAppV2:
         return r_parts > c_parts
 
     def perform_auto_update(self, download_url):
+        update_exe_path = os.path.join(application_path, "update_temp.exe")
         try:
-            update_exe_path = os.path.join(application_path, "update_temp.exe")
+            # 1. 새 버전 다운로드
             req = urllib.request.Request(download_url, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req, timeout=60) as response, open(update_exe_path, 'wb') as out_file:
-                out_file.write(response.read())
+            with urllib.request.urlopen(req, timeout=120) as response:
+                data = response.read()
+            
+            # 2. 다운로드 무결성 검증 (최소 크기 체크 — 정상 exe는 수 MB 이상)
+            if len(data) < 1_000_000:
+                print(f"업데이트 파일이 너무 작음 ({len(data)} bytes), 다운로드 실패로 판단")
+                return
+            
+            with open(update_exe_path, 'wb') as out_file:
+                out_file.write(data)
+            
+            # 디스크에 기록된 파일 크기 재확인
+            if os.path.getsize(update_exe_path) != len(data):
+                print("디스크 기록 검증 실패")
+                os.remove(update_exe_path)
+                return
                 
             current_exe = sys.executable if getattr(sys, 'frozen', False) else None
             
             if current_exe and current_exe.endswith('.exe'):
                 old_exe_path = current_exe + ".old"
+                
+                # 3. 이전 .old 파일 정리
                 if os.path.exists(old_exe_path):
                     try: os.remove(old_exe_path)
                     except: pass
                 
+                # 4. 원자적 파일 교체 (실패 시 롤백)
+                renamed_current = False
                 try:
                     os.rename(current_exe, old_exe_path)
+                    renamed_current = True
                     os.rename(update_exe_path, current_exe)
                 except Exception as e:
                     print(f"실행 파일 교체 실패: {e}")
-                    pass
+                    # 롤백: 현재 exe가 이미 .old로 옮겨졌으면 원래대로 복구
+                    if renamed_current and not os.path.exists(current_exe):
+                        try:
+                            os.rename(old_exe_path, current_exe)
+                        except: pass
+                    # 임시 파일 정리
+                    if os.path.exists(update_exe_path):
+                        try: os.remove(update_exe_path)
+                        except: pass
+                    return  # 교체 실패 시 여기서 중단 (프로그램 종료하지 않음)
                 
-                # 배치 스크립트를 통해 완전히 독립된 환경에서 새 프로세스 실행
+                # 5. 파일 교체 성공 → 배치 스크립트로 새 프로세스 실행
                 # cmd.exe /C 로 실행하면 부모 프로세스의 PyInstaller 환경변수가
-                # 자동으로 상속되지 않음 (배치 내에서 명시적으로 제거)
+                # 상속되지 않음 (배치 내에서 명시적으로 제거)
                 launcher_bat = os.path.join(application_path, "_update_launcher.bat")
                 with open(launcher_bat, 'w', encoding='ascii') as f:
                     f.write('@echo off\n')
@@ -252,6 +281,10 @@ class AutoShutdownAppV2:
                 self.quit_app()
         except Exception as e:
             print("업데이트 적용 실패:", e)
+            # 실패 시 임시 파일 정리
+            if os.path.exists(update_exe_path):
+                try: os.remove(update_exe_path)
+                except: pass
 
     def load_config(self):
         try:
