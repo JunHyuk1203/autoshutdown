@@ -29,7 +29,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.13"
+CURRENT_VERSION = "1.1.14"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -228,31 +228,46 @@ class AutoShutdownAppV2:
         endpoint = self.get_timetable_endpoint(school_kind)
         today = datetime.today()
         monday = today - timedelta(days=today.weekday())
-        friday = monday + timedelta(days=4)
         
-        start_date = monday.strftime("%Y%m%d")
-        end_date = friday.strftime("%Y%m%d")
+        api_key = self.school_info.get("api_key", "").strip()
+        cache = {}
         
-        url = f"https://open.neis.go.kr/hub/{endpoint}?Type=json&pSize=100&ATPT_OFCDC_SC_CODE={office_code}&SD_SCHUL_CODE={school_code}&GRADE={grade}&CLASS_NM={class_nm}&TI_FROM_YMD={start_date}&TI_TO_YMD={end_date}"
-        
-        try:
-            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req, timeout=5) as res:
-                data = json.loads(res.read().decode('utf-8'))
-                
-            cache = {}
-            if endpoint in data:
-                rows = data[endpoint][1]["row"]
-                for row in rows:
-                    ymd = row["ALL_TI_YMD"]
-                    perio = row["PERIO"]
-                    subject = row["ITRT_CNTNT"]
-                    if ymd not in cache: cache[ymd] = {}
-                    cache[ymd][perio] = subject
-            return cache
-        except Exception as e:
-            print("시간표 불러오기 실패:", e)
-            return None
+        if api_key:
+            start_date = monday.strftime("%Y%m%d")
+            end_date = (monday + timedelta(days=4)).strftime("%Y%m%d")
+            url = f"https://open.neis.go.kr/hub/{endpoint}?KEY={api_key}&Type=json&pSize=100&ATPT_OFCDC_SC_CODE={office_code}&SD_SCHUL_CODE={school_code}&GRADE={grade}&CLASS_NM={class_nm}&TI_FROM_YMD={start_date}&TI_TO_YMD={end_date}"
+            try:
+                req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                with urllib.request.urlopen(req, timeout=5) as res:
+                    data = json.loads(res.read().decode('utf-8'))
+                if endpoint in data:
+                    for row in data[endpoint][1]["row"]:
+                        ymd = row["ALL_TI_YMD"]
+                        perio = row["PERIO"]
+                        subj = row["ITRT_CNTNT"]
+                        if ymd not in cache: cache[ymd] = {}
+                        cache[ymd][perio] = subj
+            except Exception as e:
+                print("시간표(KEY) 불러오기 실패:", e)
+        else:
+            for i in range(5):
+                date_str = (monday + timedelta(days=i)).strftime("%Y%m%d")
+                url = f"https://open.neis.go.kr/hub/{endpoint}?Type=json&pSize=5&ATPT_OFCDC_SC_CODE={office_code}&SD_SCHUL_CODE={school_code}&GRADE={grade}&CLASS_NM={class_nm}&TI_FROM_YMD={date_str}&TI_TO_YMD={date_str}"
+                try:
+                    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                    with urllib.request.urlopen(req, timeout=3) as res:
+                        data = json.loads(res.read().decode('utf-8'))
+                    if endpoint in data:
+                        for row in data[endpoint][1]["row"]:
+                            ymd = row["ALL_TI_YMD"]
+                            perio = row["PERIO"]
+                            subj = row["ITRT_CNTNT"]
+                            if ymd not in cache: cache[ymd] = {}
+                            cache[ymd][perio] = subj
+                except Exception as e:
+                    print(f"시간표({date_str}) 불러오기 실패:", e)
+
+        return cache if cache else None
 
     def update_timetable_background(self):
         cache = self.fetch_this_week_timetable(
@@ -535,6 +550,25 @@ class AutoShutdownAppV2:
         
         btn_search_school = ctk.CTkButton(neis_info_frame, text="학교 검색", command=self.open_school_search, width=70, height=24, font=ctk.CTkFont(family=self.font_family, size=11))
         btn_search_school.pack(side="right", padx=5)
+        
+        api_key_frame = ctk.CTkFrame(neis_card, fg_color="transparent")
+        api_key_frame.pack(fill="x", padx=10, pady=(0, 5))
+        
+        ctk.CTkLabel(api_key_frame, text="API KEY:", font=ctk.CTkFont(family=self.font_family, size=11)).pack(side="left", padx=5)
+        self.api_key_entry = ctk.CTkEntry(api_key_frame, placeholder_text="선택사항 (6~7교시 조회용)", font=ctk.CTkFont(family=self.font_family, size=10), height=24)
+        self.api_key_entry.pack(side="left", fill="x", expand=True, padx=5)
+        self.api_key_entry.insert(0, self.school_info.get("api_key", ""))
+        
+        def save_api_key():
+            self.school_info["api_key"] = self.api_key_entry.get().strip()
+            self.save_config()
+            self.timetable_cache = {}
+            if hasattr(self, 'timetable_label'):
+                self.timetable_label.configure(text="시간표 다시 불러오는 중...")
+            threading.Thread(target=self.update_timetable_background, daemon=True).start()
+            messagebox.showinfo("저장", "API 키가 저장되고 시간표를 다시 불러옵니다.", parent=self.settings_win)
+            
+        ctk.CTkButton(api_key_frame, text="키 적용", command=save_api_key, width=50, height=24, font=ctk.CTkFont(family=self.font_family, size=11)).pack(side="right", padx=5)
         
         lunch_card = ctk.CTkFrame(scroll, fg_color=("#E3F2FD", "#102A43"), corner_radius=15, border_width=1, border_color="#3498DB")
         lunch_card.pack(fill="x", pady=5, ipady=5)

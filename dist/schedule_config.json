@@ -5,6 +5,23 @@
     "global_lunch_action": "절전 모드",
     "show_popup_alert": false,
     "skip_date": "",
+    "school_info": {
+        "name": "마산중앙고등학교",
+        "office_code": "S10",
+        "school_code": "9010094",
+        "school_kind": "고등학교",
+        "grade": "1",
+        "class_nm": "1"
+    },
+    "timetable_cache": {
+        "20260504": {
+            "1": "재량휴업일",
+            "2": "재량휴업일",
+            "3": "재량휴업일",
+            "4": "재량휴업일",
+            "5": "재량휴업일"
+        }
+    },
     "월": {
         "1교시 (08:40)": {
             "enabled": false,
