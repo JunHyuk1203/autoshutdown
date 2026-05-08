@@ -28,7 +28,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.9"
+CURRENT_VERSION = "1.1.10"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -232,7 +232,13 @@ class AutoShutdownAppV2:
         update_exe_path = os.path.join(application_path, "update_temp.exe")
         try:
             # 1. 새 버전 다운로드
-            req = urllib.request.Request(download_url, headers={'User-Agent': 'Mozilla/5.0'})
+            # 캐시 방지를 위해 다운로드 URL에도 타임스탬프 추가
+            if "?" in download_url:
+                no_cache_url = f"{download_url}&t={int(time.time())}"
+            else:
+                no_cache_url = f"{download_url}?t={int(time.time())}"
+                
+            req = urllib.request.Request(no_cache_url, headers={'User-Agent': 'Mozilla/5.0'})
             with urllib.request.urlopen(req, timeout=120) as response:
                 data = response.read()
             
