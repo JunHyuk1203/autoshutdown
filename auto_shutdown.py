@@ -6,6 +6,7 @@ import json
 import urllib.request
 import urllib.error
 import urllib.parse
+import re
 from datetime import datetime, timedelta
 
 # PyInstaller 환경 변수 오염(init.tcl) 방지 패치
@@ -29,7 +30,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.14"
+CURRENT_VERSION = "1.1.15"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -120,7 +121,7 @@ class AutoShutdownAppV2:
                 break
                 
         self.root.title(f"스마트 전원 관리자 (v{CURRENT_VERSION})")
-        self.root.geometry("340x360")
+        self.root.geometry("340x410")
         self.root.resizable(False, False)
         self.root.protocol('WM_DELETE_WINDOW', self.hide_window)
         
@@ -131,6 +132,7 @@ class AutoShutdownAppV2:
         
         self.school_info = self.config.get("school_info", {})
         self.timetable_cache = self.config.get("timetable_cache", {})
+        self.meal_cache = self.config.get("meal_cache", {})
         
         self.global_lunch_enabled = ctk.BooleanVar(value=self.config.get("global_lunch_enabled", True))
         self.global_lunch_action = ctk.StringVar(value=self.config.get("global_lunch_action", "절전 모드"))
@@ -180,6 +182,9 @@ class AutoShutdownAppV2:
         
         self.timetable_label = ctk.CTkLabel(status_card, text="", font=ctk.CTkFont(family=self.font_family, size=10), text_color="#27AE60", wraplength=280)
         self.timetable_label.pack(pady=(5, 0))
+        
+        self.meal_label = ctk.CTkLabel(status_card, text="", font=ctk.CTkFont(family=self.font_family, size=10), text_color="#E67E22", wraplength=300, justify="left")
+        self.meal_label.pack(pady=(2, 5))
         
         action_frame = ctk.CTkFrame(self.dash_frame, fg_color="transparent")
         action_frame.pack(fill="x", pady=15)
@@ -269,6 +274,55 @@ class AutoShutdownAppV2:
 
         return cache if cache else None
 
+    def clean_meal_text(self, text):
+        text = text.replace("<br/>", ", ").replace("<br>", ", ")
+        text = re.sub(r'\([^)]*\)', '', text)
+        text = re.sub(r',\s*,', ',', text)
+        text = re.sub(r'\s+', ' ', text).strip()
+        return text.strip(", ")
+
+    def fetch_this_week_meals(self, office_code, school_code):
+        today = datetime.today()
+        monday = today - timedelta(days=today.weekday())
+        api_key = self.school_info.get("api_key", "").strip()
+        cache = {}
+        
+        if api_key:
+            start_date = monday.strftime("%Y%m%d")
+            end_date = (monday + timedelta(days=4)).strftime("%Y%m%d")
+            url = f"https://open.neis.go.kr/hub/mealServiceDietInfo?KEY={api_key}&Type=json&pSize=100&ATPT_OFCDC_SC_CODE={office_code}&SD_SCHUL_CODE={school_code}&MLSV_FROM_YMD={start_date}&MLSV_TO_YMD={end_date}"
+            try:
+                req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                with urllib.request.urlopen(req, timeout=5) as res:
+                    data = json.loads(res.read().decode('utf-8'))
+                if "mealServiceDietInfo" in data:
+                    for row in data["mealServiceDietInfo"][1]["row"]:
+                        ymd = row["MLSV_YMD"]
+                        mmeal_nm = row["MMEAL_SC_NM"]
+                        dish = self.clean_meal_text(row["DDISH_NM"])
+                        if ymd not in cache: cache[ymd] = {}
+                        cache[ymd][mmeal_nm] = dish
+            except Exception as e:
+                print("급식(KEY) 불러오기 실패:", e)
+        else:
+            for i in range(5):
+                date_str = (monday + timedelta(days=i)).strftime("%Y%m%d")
+                url = f"https://open.neis.go.kr/hub/mealServiceDietInfo?Type=json&pSize=5&ATPT_OFCDC_SC_CODE={office_code}&SD_SCHUL_CODE={school_code}&MLSV_FROM_YMD={date_str}&MLSV_TO_YMD={date_str}"
+                try:
+                    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                    with urllib.request.urlopen(req, timeout=3) as res:
+                        data = json.loads(res.read().decode('utf-8'))
+                    if "mealServiceDietInfo" in data:
+                        for row in data["mealServiceDietInfo"][1]["row"]:
+                            ymd = row["MLSV_YMD"]
+                            mmeal_nm = row["MMEAL_SC_NM"]
+                            dish = self.clean_meal_text(row["DDISH_NM"])
+                            if ymd not in cache: cache[ymd] = {}
+                            cache[ymd][mmeal_nm] = dish
+                except Exception as e:
+                    print(f"급식({date_str}) 불러오기 실패:", e)
+        return cache if cache else None
+
     def update_timetable_background(self):
         cache = self.fetch_this_week_timetable(
             self.school_info.get("office_code"),
@@ -277,8 +331,16 @@ class AutoShutdownAppV2:
             self.school_info.get("grade"),
             self.school_info.get("class_nm")
         )
+        meal_cache = self.fetch_this_week_meals(
+            self.school_info.get("office_code"),
+            self.school_info.get("school_code")
+        )
         if cache:
             self.timetable_cache = cache
+        if meal_cache:
+            self.meal_cache = meal_cache
+            
+        if cache or meal_cache:
             self.save_config()
             self.root.after(0, self.update_timetable_ui)
 
@@ -294,6 +356,24 @@ class AutoShutdownAppV2:
         else:
             if hasattr(self, 'timetable_label'):
                 self.timetable_label.configure(text="오늘의 시간표 정보가 없습니다.")
+                
+        if today_str in getattr(self, 'meal_cache', {}):
+            meals = self.meal_cache[today_str]
+            meal_texts = []
+            if "조식" in meals: meal_texts.append(f"[조식] {meals['조식']}")
+            if "중식" in meals: meal_texts.append(f"[중식] {meals['중식']}")
+            if "석식" in meals: meal_texts.append(f"[석식] {meals['석식']}")
+            
+            if meal_texts:
+                text = "\n".join(meal_texts)
+            else:
+                text = "오늘의 급식 정보가 없습니다."
+                
+            if hasattr(self, 'meal_label'):
+                self.meal_label.configure(text=text)
+        else:
+            if hasattr(self, 'meal_label'):
+                self.meal_label.configure(text="오늘의 급식 정보가 없습니다.")
                 
         if hasattr(self, 'subject_labels'):
             today = datetime.today()
@@ -452,7 +532,8 @@ class AutoShutdownAppV2:
                 "show_popup_alert": self.show_popup_var.get(),
                 "skip_date": datetime.now().strftime("%Y-%m-%d") if self.skip_today_var.get() else "",
                 "school_info": getattr(self, 'school_info', {}),
-                "timetable_cache": getattr(self, 'timetable_cache', {})
+                "timetable_cache": getattr(self, 'timetable_cache', {}),
+                "meal_cache": getattr(self, 'meal_cache', {})
             }
                 
             for day in DAYS:
