@@ -30,7 +30,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.16"
+CURRENT_VERSION = "1.1.17"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -252,9 +252,18 @@ class AutoShutdownAppV2:
                         subj = row["ITRT_CNTNT"]
                         if ymd not in cache: cache[ymd] = {}
                         cache[ymd][perio] = subj
+                elif "RESULT" in data and "CODE" in data["RESULT"]:
+                    code = data["RESULT"]["CODE"]
+                    msg = data["RESULT"]["MESSAGE"]
+                    if getattr(self, 'api_key_error_shown', False) is False:
+                        self.root.after(0, lambda: messagebox.showwarning("API 키 오류", f"나이스 API 키에 문제가 있습니다.\n(오류코드: {code})\n\n{msg}\n\n※ 인증키를 방금 발급받았다면 1~2시간 뒤에 활성화될 수 있습니다.\n임시로 5교시까지만 불러옵니다.", parent=self.root))
+                        self.api_key_error_shown = True
+                    api_key = "" # Fallback to no-key logic
             except Exception as e:
                 print("시간표(KEY) 불러오기 실패:", e)
-        else:
+                api_key = "" # Fallback
+                
+        if not api_key:
             for i in range(5):
                 date_str = (monday + timedelta(days=i)).strftime("%Y%m%d")
                 url = f"https://open.neis.go.kr/hub/{endpoint}?Type=json&pSize=5&ATPT_OFCDC_SC_CODE={office_code}&SD_SCHUL_CODE={school_code}&GRADE={grade}&CLASS_NM={class_nm}&TI_FROM_YMD={date_str}&TI_TO_YMD={date_str}"
@@ -302,9 +311,13 @@ class AutoShutdownAppV2:
                         dish = self.clean_meal_text(row["DDISH_NM"])
                         if ymd not in cache: cache[ymd] = {}
                         cache[ymd][mmeal_nm] = dish
+                elif "RESULT" in data and "CODE" in data["RESULT"]:
+                    api_key = "" # Fallback
             except Exception as e:
                 print("급식(KEY) 불러오기 실패:", e)
-        else:
+                api_key = "" # Fallback
+                
+        if not api_key:
             for i in range(5):
                 date_str = (monday + timedelta(days=i)).strftime("%Y%m%d")
                 url = f"https://open.neis.go.kr/hub/mealServiceDietInfo?Type=json&pSize=5&ATPT_OFCDC_SC_CODE={office_code}&SD_SCHUL_CODE={school_code}&MLSV_FROM_YMD={date_str}&MLSV_TO_YMD={date_str}"
@@ -642,12 +655,13 @@ class AutoShutdownAppV2:
         
         def save_api_key():
             self.school_info["api_key"] = self.api_key_entry.get().strip()
+            self.api_key_error_shown = False
             self.save_config()
             self.timetable_cache = {}
             if hasattr(self, 'timetable_label'):
                 self.timetable_label.configure(text="시간표 다시 불러오는 중...")
             threading.Thread(target=self.update_timetable_background, daemon=True).start()
-            messagebox.showinfo("저장", "API 키가 저장되고 시간표를 다시 불러옵니다.", parent=self.settings_win)
+            messagebox.showinfo("저장", "API 키가 저장되고 데이터를 다시 불러옵니다.\n※ 인증키를 방금 발급받았다면 1~2시간 뒤에 활성화될 수 있습니다.", parent=self.settings_win)
             
         ctk.CTkButton(api_key_frame, text="키 적용", command=save_api_key, width=50, height=24, font=ctk.CTkFont(family=self.font_family, size=11)).pack(side="right", padx=5)
         
