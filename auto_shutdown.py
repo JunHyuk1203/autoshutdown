@@ -5,6 +5,7 @@ import time
 import json
 import urllib.request
 import urllib.error
+import urllib.parse
 from datetime import datetime, timedelta
 
 # PyInstaller 환경 변수 오염(init.tcl) 방지 패치
@@ -28,7 +29,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.12"
+CURRENT_VERSION = "1.1.13"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -126,6 +127,10 @@ class AutoShutdownAppV2:
         self.skipped_events = set()
         self.config = self.load_config()
         self.vars = {day: {} for day in DAYS}
+        self.subject_labels = {day: {} for day in DAYS}
+        
+        self.school_info = self.config.get("school_info", {})
+        self.timetable_cache = self.config.get("timetable_cache", {})
         
         self.global_lunch_enabled = ctk.BooleanVar(value=self.config.get("global_lunch_enabled", True))
         self.global_lunch_action = ctk.StringVar(value=self.config.get("global_lunch_action", "절전 모드"))
@@ -173,6 +178,9 @@ class AutoShutdownAppV2:
         self.status_detail_var = ctk.StringVar(value="대기 중...")
         ctk.CTkLabel(status_card, textvariable=self.status_detail_var, font=ctk.CTkFont(family=self.font_family, size=11), text_color="gray").pack()
         
+        self.timetable_label = ctk.CTkLabel(status_card, text="", font=ctk.CTkFont(family=self.font_family, size=10), text_color="#27AE60", wraplength=280)
+        self.timetable_label.pack(pady=(5, 0))
+        
         action_frame = ctk.CTkFrame(self.dash_frame, fg_color="transparent")
         action_frame.pack(fill="x", pady=15)
         
@@ -201,6 +209,98 @@ class AutoShutdownAppV2:
         
         threading.Thread(target=self.monitor_time, daemon=True).start()
         threading.Thread(target=self.check_for_updates, daemon=True).start()
+        
+        today = datetime.today()
+        monday_str = (today - timedelta(days=today.weekday())).strftime("%Y%m%d")
+        if self.school_info and monday_str not in self.timetable_cache:
+            threading.Thread(target=self.update_timetable_background, daemon=True).start()
+        else:
+            self.update_timetable_ui()
+
+    def get_timetable_endpoint(self, school_kind):
+        if "초등" in school_kind: return "elsTimetable"
+        if "중학" in school_kind: return "misTimetable"
+        if "고등" in school_kind: return "hisTimetable"
+        if "특수" in school_kind: return "spsTimetable"
+        return "hisTimetable"
+
+    def fetch_this_week_timetable(self, office_code, school_code, school_kind, grade, class_nm):
+        endpoint = self.get_timetable_endpoint(school_kind)
+        today = datetime.today()
+        monday = today - timedelta(days=today.weekday())
+        friday = monday + timedelta(days=4)
+        
+        start_date = monday.strftime("%Y%m%d")
+        end_date = friday.strftime("%Y%m%d")
+        
+        url = f"https://open.neis.go.kr/hub/{endpoint}?Type=json&pSize=100&ATPT_OFCDC_SC_CODE={office_code}&SD_SCHUL_CODE={school_code}&GRADE={grade}&CLASS_NM={class_nm}&TI_FROM_YMD={start_date}&TI_TO_YMD={end_date}"
+        
+        try:
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=5) as res:
+                data = json.loads(res.read().decode('utf-8'))
+                
+            cache = {}
+            if endpoint in data:
+                rows = data[endpoint][1]["row"]
+                for row in rows:
+                    ymd = row["ALL_TI_YMD"]
+                    perio = row["PERIO"]
+                    subject = row["ITRT_CNTNT"]
+                    if ymd not in cache: cache[ymd] = {}
+                    cache[ymd][perio] = subject
+            return cache
+        except Exception as e:
+            print("시간표 불러오기 실패:", e)
+            return None
+
+    def update_timetable_background(self):
+        cache = self.fetch_this_week_timetable(
+            self.school_info.get("office_code"),
+            self.school_info.get("school_code"),
+            self.school_info.get("school_kind"),
+            self.school_info.get("grade"),
+            self.school_info.get("class_nm")
+        )
+        if cache:
+            self.timetable_cache = cache
+            self.save_config()
+            self.root.after(0, self.update_timetable_ui)
+
+    def update_timetable_ui(self):
+        today_str = datetime.today().strftime("%Y%m%d")
+        if today_str in self.timetable_cache:
+            subjects = []
+            for p in sorted(self.timetable_cache[today_str].keys(), key=int):
+                subjects.append(f"{p}교시:{self.timetable_cache[today_str][p]}")
+            text = "오늘 시간표: " + ", ".join(subjects)
+            if hasattr(self, 'timetable_label'):
+                self.timetable_label.configure(text=text)
+        else:
+            if hasattr(self, 'timetable_label'):
+                self.timetable_label.configure(text="오늘의 시간표 정보가 없습니다.")
+                
+        if hasattr(self, 'subject_labels'):
+            today = datetime.today()
+            monday = today - timedelta(days=today.weekday())
+            for i, day in enumerate(DAYS[:5]):
+                ymd = (monday + timedelta(days=i)).strftime("%Y%m%d")
+                for class_name, _ in TIMETABLE.items():
+                    subj = ""
+                    if ymd in self.timetable_cache:
+                        if "1교시" in class_name: subj = self.timetable_cache[ymd].get("1", "")
+                        elif "2교시" in class_name: subj = self.timetable_cache[ymd].get("2", "")
+                        elif "3교시" in class_name: subj = self.timetable_cache[ymd].get("3", "")
+                        elif "4교시" in class_name: subj = self.timetable_cache[ymd].get("4", "")
+                        elif "5교시" in class_name: subj = self.timetable_cache[ymd].get("5", "")
+                        elif "6교시" in class_name: subj = self.timetable_cache[ymd].get("6", "")
+                        elif "7교시" in class_name: subj = self.timetable_cache[ymd].get("7", "")
+                        elif "8교시" in class_name: subj = self.timetable_cache[ymd].get("8", "")
+                    
+                    if day in self.subject_labels and class_name in self.subject_labels[day]:
+                        lbl = self.subject_labels[day][class_name]
+                        if lbl.winfo_exists():
+                            lbl.configure(text=f"({subj})" if subj else "")
 
     def check_for_updates(self):
         try:
@@ -335,7 +435,9 @@ class AutoShutdownAppV2:
                 "global_lunch_enabled": self.global_lunch_enabled.get(),
                 "global_lunch_action": self.global_lunch_action.get(),
                 "show_popup_alert": self.show_popup_var.get(),
-                "skip_date": datetime.now().strftime("%Y-%m-%d") if self.skip_today_var.get() else ""
+                "skip_date": datetime.now().strftime("%Y-%m-%d") if self.skip_today_var.get() else "",
+                "school_info": getattr(self, 'school_info', {}),
+                "timetable_cache": getattr(self, 'timetable_cache', {})
             }
                 
             for day in DAYS:
@@ -417,6 +519,23 @@ class AutoShutdownAppV2:
         popup_chk.pack(pady=5)
         ctk.CTkLabel(popup_card, text="※ 끄더라도 스케줄은 1분, 점심시간은 15초의 유예시간이\n백그라운드에서 동일하게 작동합니다.", font=ctk.CTkFont(family=self.font_family, size=10), text_color="gray").pack(pady=(0, 5))
         
+        neis_card = ctk.CTkFrame(scroll, fg_color=("#E8F5E9", "#1E3A2F"), corner_radius=15, border_width=1, border_color="#2ECC71")
+        neis_card.pack(fill="x", pady=5, ipady=5)
+        ctk.CTkLabel(neis_card, text="🏫 나이스(NEIS) 학교 및 시간표 연동", font=ctk.CTkFont(family=self.font_family, size=12, weight="bold")).pack(pady=(8, 2))
+        
+        neis_info_frame = ctk.CTkFrame(neis_card, fg_color="transparent")
+        neis_info_frame.pack(fill="x", padx=10, pady=5)
+        
+        school_name = self.school_info.get("name", "학교 미설정")
+        grade = self.school_info.get("grade", "")
+        class_nm = self.school_info.get("class_nm", "")
+        
+        self.lbl_school = ctk.CTkLabel(neis_info_frame, text=f"{school_name} {grade}학년 {class_nm}반" if grade else school_name, font=ctk.CTkFont(family=self.font_family, size=11))
+        self.lbl_school.pack(side="left", padx=5)
+        
+        btn_search_school = ctk.CTkButton(neis_info_frame, text="학교 검색", command=self.open_school_search, width=70, height=24, font=ctk.CTkFont(family=self.font_family, size=11))
+        btn_search_school.pack(side="right", padx=5)
+        
         lunch_card = ctk.CTkFrame(scroll, fg_color=("#E3F2FD", "#102A43"), corner_radius=15, border_width=1, border_color="#3498DB")
         lunch_card.pack(fill="x", pady=5, ipady=5)
         ctk.CTkLabel(lunch_card, text="🍽️ 점심시간 스마트 감지 (12:30 ~ 13:10)", font=ctk.CTkFont(family=self.font_family, size=12, weight="bold")).pack(pady=(8, 2))
@@ -458,9 +577,16 @@ class AutoShutdownAppV2:
                 var_act = self.vars[day][class_name]["action"]
                 chk = ctk.CTkSwitch(row_frame, text=class_name, variable=var_en, font=ctk.CTkFont(family=self.font_family, size=11), switch_width=32, switch_height=16)
                 chk.pack(side="left")
+                
+                subj_lbl = ctk.CTkLabel(row_frame, text="", font=ctk.CTkFont(family=self.font_family, size=10), text_color="#3498DB")
+                subj_lbl.pack(side="left", padx=5)
+                self.subject_labels[day][class_name] = subj_lbl
+                
                 cb = ctk.CTkOptionMenu(row_frame, variable=var_act, values=["시스템 종료", "절전 모드"], width=70, height=24, font=ctk.CTkFont(family=self.font_family, size=11))
                 cb.pack(side="right")
                 
+        self.update_timetable_ui()
+        
         auto_chk = ctk.CTkSwitch(scroll, text="윈도우 시작 시 백그라운드로 자동 실행", variable=self.autostart_var, font=ctk.CTkFont(family=self.font_family, size=11), switch_width=32, switch_height=16)
         auto_chk.pack(pady=(10, 5))
 
@@ -469,6 +595,98 @@ class AutoShutdownAppV2:
         ctk.CTkLabel(update_card, text=f"ℹ️ 현재 버전: v{CURRENT_VERSION}", font=ctk.CTkFont(family=self.font_family, size=12, weight="bold")).pack(pady=(8, 2))
         update_btn = ctk.CTkButton(update_card, text="🔄 수동 업데이트 확인", command=self.manual_update_check, width=150, height=28, font=ctk.CTkFont(family=self.font_family, size=11))
         update_btn.pack(pady=(5, 8))
+
+    def open_school_search(self):
+        search_win = ctk.CTkToplevel(self.settings_win)
+        search_win.title("학교 검색")
+        search_win.geometry("300x350")
+        search_win.attributes('-topmost', True)
+        search_win.grab_set()
+        
+        entry = ctk.CTkEntry(search_win, placeholder_text="학교명 입력 (예: 서울과학고)")
+        entry.pack(pady=10, padx=10, fill="x")
+        
+        result_frame = ctk.CTkScrollableFrame(search_win)
+        result_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        def select_school(row):
+            search_win.destroy()
+            self.ask_grade_class(row)
+            
+        def do_search():
+            q = entry.get().strip()
+            if not q: return
+            url = f"https://open.neis.go.kr/hub/schoolInfo?Type=json&pIndex=1&pSize=20&SCHUL_NM={urllib.parse.quote(q)}"
+            try:
+                req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                with urllib.request.urlopen(req, timeout=5) as res:
+                    data = json.loads(res.read().decode('utf-8'))
+                
+                for widget in result_frame.winfo_children():
+                    widget.destroy()
+                    
+                if "schoolInfo" in data:
+                    rows = data["schoolInfo"][1]["row"]
+                    for r in rows:
+                        name = r["SCHUL_NM"]
+                        addr = r["ORG_RDNMA"]
+                        btn = ctk.CTkButton(result_frame, text=f"{name}\n({addr})", anchor="w", command=lambda row=r: select_school(row))
+                        btn.pack(fill="x", pady=2)
+                else:
+                    ctk.CTkLabel(result_frame, text="검색 결과가 없습니다.").pack()
+            except Exception as e:
+                print(e)
+                
+        btn_search = ctk.CTkButton(search_win, text="검색", command=do_search)
+        btn_search.pack(pady=5)
+
+    def ask_grade_class(self, row):
+        gc_win = ctk.CTkToplevel(self.settings_win)
+        gc_win.title("학년/반 입력")
+        gc_win.geometry("250x200")
+        gc_win.attributes('-topmost', True)
+        gc_win.grab_set()
+        
+        ctk.CTkLabel(gc_win, text=row["SCHUL_NM"], font=ctk.CTkFont(family=self.font_family, weight="bold")).pack(pady=10)
+        
+        frame = ctk.CTkFrame(gc_win, fg_color="transparent")
+        frame.pack(pady=10)
+        
+        ctk.CTkLabel(frame, text="학년:").grid(row=0, column=0, padx=5, pady=5)
+        grade_entry = ctk.CTkEntry(frame, width=50)
+        grade_entry.grid(row=0, column=1, padx=5, pady=5)
+        
+        ctk.CTkLabel(frame, text="반:").grid(row=1, column=0, padx=5, pady=5)
+        class_entry = ctk.CTkEntry(frame, width=50)
+        class_entry.grid(row=1, column=1, padx=5, pady=5)
+        
+        def save_and_fetch():
+            g = grade_entry.get().strip()
+            c = class_entry.get().strip()
+            if not g or not c:
+                messagebox.showerror("오류", "학년과 반을 모두 입력해주세요.", parent=gc_win)
+                return
+            
+            self.school_info = {
+                "name": row["SCHUL_NM"],
+                "office_code": row["ATPT_OFCDC_SC_CODE"],
+                "school_code": row["SD_SCHUL_CODE"],
+                "school_kind": row["SCHUL_KND_SC_NM"],
+                "grade": g,
+                "class_nm": c
+            }
+            self.save_config()
+            if hasattr(self, 'lbl_school'):
+                self.lbl_school.configure(text=f"{row['SCHUL_NM']} {g}학년 {c}반")
+            gc_win.destroy()
+            
+            self.timetable_cache = {}
+            if hasattr(self, 'timetable_label'):
+                self.timetable_label.configure(text="시간표 정보를 불러오는 중...")
+            threading.Thread(target=self.update_timetable_background, daemon=True).start()
+            
+        btn = ctk.CTkButton(gc_win, text="저장 및 연동", command=save_and_fetch)
+        btn.pack(pady=10)
 
     def manual_update_check(self):
         try:
