@@ -30,7 +30,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.17"
+CURRENT_VERSION = "1.1.18"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -51,6 +51,7 @@ TIMETABLE = {
     "2교시 (09:40)": "09:40",
     "3교시 (10:40)": "10:40",
     "4교시 (11:40)": "11:40",
+    "점심시간 (12:40)": "12:40",
     "5교시 (13:30)": "13:30",
     "6교시 (14:30)": "14:30",
     "7교시 (15:30)": "15:30",
@@ -134,8 +135,6 @@ class AutoShutdownAppV2:
         self.timetable_cache = self.config.get("timetable_cache", {})
         self.meal_cache = self.config.get("meal_cache", {})
         
-        self.global_lunch_enabled = ctk.BooleanVar(value=self.config.get("global_lunch_enabled", True))
-        self.global_lunch_action = ctk.StringVar(value=self.config.get("global_lunch_action", "절전 모드"))
         self.show_popup_var = ctk.BooleanVar(value=self.config.get("show_popup_alert", True))
         self.autostart_var = ctk.BooleanVar(value=self.config.get("autostart", False))
         self.minutes_var = ctk.StringVar(value=str(self.config.get("minutes_before", 2)))
@@ -158,8 +157,6 @@ class AutoShutdownAppV2:
                 self.vars[day][class_name]["enabled"].trace_add('write', self.save_config_callback)
                 self.vars[day][class_name]["action"].trace_add('write', self.save_config_callback)
                 
-        self.global_lunch_enabled.trace_add('write', self.save_config_callback)
-        self.global_lunch_action.trace_add('write', self.save_config_callback)
         self.show_popup_var.trace_add('write', self.save_config_callback)
         self.autostart_var.trace_add('write', self.save_config_callback)
         self.minutes_var.trace_add('write', self.save_config_callback)
@@ -540,8 +537,6 @@ class AutoShutdownAppV2:
             new_config = {
                 "minutes_before": mins,
                 "autostart": self.autostart_var.get(),
-                "global_lunch_enabled": self.global_lunch_enabled.get(),
-                "global_lunch_action": self.global_lunch_action.get(),
                 "show_popup_alert": self.show_popup_var.get(),
                 "skip_date": datetime.now().strftime("%Y-%m-%d") if self.skip_today_var.get() else "",
                 "school_info": getattr(self, 'school_info', {}),
@@ -594,12 +589,8 @@ class AutoShutdownAppV2:
     def skip_next_schedule(self):
         next_time, next_action = self.get_next_event()
         if next_time and next_time != "skip":
-            if "점심" in next_action:
-                self.skipped_events.add(datetime.now().strftime("%Y-%m-%d") + "_lunch")
-                msg = "오늘 점심 감지를"
-            else:
-                self.skipped_events.add(next_time.strftime("%Y-%m-%d %H:%M"))
-                msg = f"예정된 {next_time.strftime('%H:%M')} 일정을"
+            self.skipped_events.add(next_time.strftime("%Y-%m-%d %H:%M"))
+            msg = f"예정된 {next_time.strftime('%H:%M')} 일정을"
                 
             self.update_status_info()
             if self.icon: self.icon.notify(f"{msg} 건너뛰었습니다.", "알림")
@@ -626,7 +617,7 @@ class AutoShutdownAppV2:
         
         popup_chk = ctk.CTkSwitch(popup_card, text="화면 중앙 팝업 알림 표시", variable=self.show_popup_var, font=ctk.CTkFont(family=self.font_family, size=11), switch_width=32, switch_height=16)
         popup_chk.pack(pady=5)
-        ctk.CTkLabel(popup_card, text="※ 끄더라도 스케줄은 1분, 점심시간은 15초의 유예시간이\n백그라운드에서 동일하게 작동합니다.", font=ctk.CTkFont(family=self.font_family, size=10), text_color="gray").pack(pady=(0, 5))
+        ctk.CTkLabel(popup_card, text="※ 끄더라도 스케줄은 1분의 유예시간이\n백그라운드에서 동일하게 작동합니다.", font=ctk.CTkFont(family=self.font_family, size=10), text_color="gray").pack(pady=(0, 5))
         
         neis_card = ctk.CTkFrame(scroll, fg_color=("#E8F5E9", "#1E3A2F"), corner_radius=15, border_width=1, border_color="#2ECC71")
         neis_card.pack(fill="x", pady=5, ipady=5)
@@ -665,16 +656,7 @@ class AutoShutdownAppV2:
             
         ctk.CTkButton(api_key_frame, text="키 적용", command=save_api_key, width=50, height=24, font=ctk.CTkFont(family=self.font_family, size=11)).pack(side="right", padx=5)
         
-        lunch_card = ctk.CTkFrame(scroll, fg_color=("#E3F2FD", "#102A43"), corner_radius=15, border_width=1, border_color="#3498DB")
-        lunch_card.pack(fill="x", pady=5, ipady=5)
-        ctk.CTkLabel(lunch_card, text="🍽️ 점심시간 스마트 감지 (12:30 ~ 13:10)", font=ctk.CTkFont(family=self.font_family, size=12, weight="bold")).pack(pady=(8, 2))
-        
-        lunch_ctrl_frame = ctk.CTkFrame(lunch_card, fg_color="transparent")
-        lunch_ctrl_frame.pack(fill="x", padx=20, pady=5)
-        lunch_chk = ctk.CTkSwitch(lunch_ctrl_frame, text="스마트 감지 켜기", variable=self.global_lunch_enabled, font=ctk.CTkFont(family=self.font_family, size=11, weight="bold"), switch_width=32, switch_height=16)
-        lunch_chk.pack(side="left")
-        lunch_cb = ctk.CTkOptionMenu(lunch_ctrl_frame, variable=self.global_lunch_action, values=["시스템 종료", "절전 모드"], width=80, height=24, font=ctk.CTkFont(family=self.font_family, size=11))
-        lunch_cb.pack(side="right")
+
         
         schedule_card = ctk.CTkFrame(scroll, fg_color=("gray95", "gray15"), corner_radius=15)
         schedule_card.pack(fill="x", pady=5, ipady=5)
@@ -847,7 +829,7 @@ class AutoShutdownAppV2:
             pystray.MenuItem('오늘 하루 끄지 않기', self.toggle_skip_state, checked=self.get_skip_state),
             pystray.MenuItem('열기 (대시보드)', self.show_window)
         ]
-        menu_items.append(pystray.MenuItem('❌ 대기열에 있는 제어 강제 취소', self.cancel_shutdown, visible=lambda item: getattr(self, 'pending_shutdown', False) or getattr(self, 'lunch_pending', False)))
+        menu_items.append(pystray.MenuItem('❌ 대기열에 있는 제어 강제 취소', self.cancel_shutdown, visible=lambda item: getattr(self, 'pending_shutdown', False)))
         menu_items.append(pystray.MenuItem('종료', self.quit_app))
         return tuple(menu_items)
 
@@ -1030,18 +1012,7 @@ class AutoShutdownAppV2:
                             next_time = target_datetime
                             next_action = self.vars[day_str][class_name]["action"].get()
                             
-            if self.global_lunch_enabled.get():
-                if f"{check_date.strftime('%Y-%m-%d')}_lunch" not in self.skipped_events:
-                    lunch_dt = datetime(check_date.year, check_date.month, check_date.day, 12, 30)
-                    lunch_end_dt = datetime(check_date.year, check_date.month, check_date.day, 13, 10)
-                    if now < lunch_end_dt:
-                        target_dt_for_tooltip = lunch_dt if now < lunch_dt else now
-                        if next_time is None or target_dt_for_tooltip < next_time:
-                            next_time = target_dt_for_tooltip
-                            lunch_act = self.global_lunch_action.get()
-                            if now >= lunch_dt: next_action = f"점심 감지 작동중({lunch_act})"
-                            else: next_action = f"점심 감지 대기({lunch_act})"
-                            
+
         return next_time, next_action
 
     def update_status_info(self):
@@ -1056,10 +1027,7 @@ class AutoShutdownAppV2:
             status_text = f"곧 {getattr(self, 'pending_action', '시스템 종료')}됩니다! ({secs}초 남음)"
             tooltip_text = f"스마트 예약 작동중\n{status_text}"
             detail_text = "예약된 제어가 곧 실행됩니다."
-        elif getattr(self, 'lunch_pending', False):
-            status_text = f"미조작 감지됨! 15초 후 작동합니다."
-            tooltip_text = f"스마트 점심시간 감지 작동중\n{status_text}"
-            detail_text = "점심시간 미조작이 감지되어 처리 중입니다."
+
         elif next_time == "skip":
             status_text = "오늘 하루 알림 끄기 켜짐"
             tooltip_text = "스마트 전원 관리자\n(오늘 하루 끄기 활성화됨)"
@@ -1074,15 +1042,11 @@ class AutoShutdownAppV2:
             if days > 0: time_left_str = f"{days}일 {hours:02d}:{minutes:02d}:{seconds:02d} 남음"
             else: time_left_str = f"{hours:02d}:{minutes:02d}:{seconds:02d} 남음"
                 
-            if "점심" in next_action:
-                status_text = f"현재 상태: {next_action}"
-                detail_text = "해당 시간에 조작이 없으면 우아하게 제어됩니다."
-                tooltip_text = f"스마트 전원 관리자\n{next_action}"
-            else:
-                status_text = f"다음: {next_time.strftime('%H:%M')} [{next_action}]"
-                detail_text = time_left_str
-                if days == 0: tooltip_text = f"스마트 전원 관리자\n다음: 오늘 {next_time.strftime('%H:%M')} [{next_action}]\n{time_left_str}"
-                else: tooltip_text = f"스마트 전원 관리자\n다음: {DAYS[next_time.weekday()]}요일 {next_time.strftime('%H:%M')} [{next_action}]\n{time_left_str}"
+
+            status_text = f"다음: {next_time.strftime('%H:%M')} [{next_action}]"
+            detail_text = time_left_str
+            if days == 0: tooltip_text = f"스마트 전원 관리자\n다음: 오늘 {next_time.strftime('%H:%M')} [{next_action}]\n{time_left_str}"
+            else: tooltip_text = f"스마트 전원 관리자\n다음: {DAYS[next_time.weekday()]}요일 {next_time.strftime('%H:%M')} [{next_action}]\n{time_left_str}"
         else:
             status_text = "예약된 일정이 없습니다."
             detail_text = "설정창에서 스케줄을 추가해주세요."
@@ -1096,28 +1060,7 @@ class AutoShutdownAppV2:
             
         if self.icon: self.icon.title = tooltip_text
 
-    def start_silent_lunch_grace(self, action):
-        self.lunch_pending = True
-        self.lunch_silent_time_left = 15
-        
-        def check_silent():
-            if not getattr(self, 'lunch_pending', False): return
-            if get_idle_time() < 1.0:
-                self.lunch_pending = False
-                if self.icon: self.icon.notify("마우스 움직임이 감지되어 점심시간 자동 제어가 취소되었습니다.", "우아한 취소")
-                return
-            
-            self.lunch_silent_time_left -= 1
-            if self.lunch_silent_time_left <= 0:
-                self.lunch_pending = False
-                if action == "시스템 종료": os.system('shutdown /s /t 0')
-                elif action == "절전 모드": os.system('rundll32.exe powrprof.dll,SetSuspendState 0,1,0')
-            else:
-                self.root.after(1000, check_silent)
-                
-        self.root.after(1000, check_silent)
-
-    def show_toast_popup(self, title, message, duration, action, is_lunch=False):
+    def show_toast_popup(self, title, message, duration, action):
         if hasattr(self, 'toast') and self.toast and self.toast.winfo_exists(): return
             
         self.toast = ctk.CTkToplevel(self.root)
@@ -1151,8 +1094,7 @@ class AutoShutdownAppV2:
         btn_frame.pack(pady=15)
         
         def on_cancel():
-            if not is_lunch: self.pending_shutdown = False
-            else: self.lunch_pending = False
+            self.pending_shutdown = False
             if self.toast and self.toast.winfo_exists(): self.toast.destroy()
             if self.icon: self.icon.notify("사용자의 요청으로 제어가 취소되었습니다.", "취소 완료")
                 
@@ -1166,39 +1108,19 @@ class AutoShutdownAppV2:
         cancel_btn = ctk.CTkButton(btn_frame, text="종료 취소", fg_color="#E74C3C", hover_color="#C0392B", command=on_cancel, width=120, height=35, font=ctk.CTkFont(family=self.font_family, size=14, weight="bold"))
         cancel_btn.pack(side="left", padx=10)
         
-        if not is_lunch:
-            snooze_btn = ctk.CTkButton(btn_frame, text="10분 연기 (Snooze)", command=on_snooze, width=150, height=35, font=ctk.CTkFont(family=self.font_family, size=14, weight="bold"))
-            snooze_btn.pack(side="left", padx=10)
-            
-        if is_lunch: self.lunch_pending = True
+        snooze_btn = ctk.CTkButton(btn_frame, text="10분 연기 (Snooze)", command=on_snooze, width=150, height=35, font=ctk.CTkFont(family=self.font_family, size=14, weight="bold"))
+        snooze_btn.pack(side="left", padx=10)
             
         def update_timer():
             if not self.toast or not self.toast.winfo_exists(): return
                 
-            if is_lunch:
-                if not getattr(self, 'lunch_pending', False): return
-                if get_idle_time() < 1.0:
-                    lbl_msg.configure(text="마우스 조작이 감지되었습니다! 작업을 계속하세요.\n(자동 제어가 취소되었습니다)", text_color="#2ECC71")
-                    lbl_time.configure(text="우아한 실패(취소) 작동됨", text_color="#2ECC71")
-                    cancel_btn.configure(state="disabled")
-                    self.lunch_pending = False
-                    self.toast.after(3000, self.toast.destroy)
-                    return
-            else:
-                if not getattr(self, 'pending_shutdown', False):
-                    self.toast.destroy()
-                    return
+            if not getattr(self, 'pending_shutdown', False):
+                self.toast.destroy()
+                return
                     
             self.toast_time_left -= 1
             if self.toast_time_left <= 0:
-                if is_lunch and getattr(self, 'lunch_pending', False):
-                    self.lunch_pending = False
-                    lbl_time.configure(text="제어 실행 중...")
-                    self.toast.update()
-                    time.sleep(1)
-                    self.toast.destroy()
-                    if action == "시스템 종료": os.system('shutdown /s /t 0')
-                    elif action == "절전 모드": os.system('rundll32.exe powrprof.dll,SetSuspendState 0,1,0')
+                pass
             else:
                 lbl_time.configure(text=f"{self.toast_time_left}초 후 {action} 실행")
                 self.toast.after(1000, update_timer)
@@ -1238,7 +1160,7 @@ class AutoShutdownAppV2:
                 self.pending_shutdown_target = now + timedelta(minutes=1)
                 self.pending_action = action
                 if self.show_popup_var.get():
-                    self.root.after(0, lambda a=action: self.show_toast_popup("연기된 스마트 알림", "연기했던 일정에 따라 잠시 후 제어가 시작됩니다.", 60, a, is_lunch=False))
+                    self.root.after(0, lambda a=action: self.show_toast_popup("연기된 스마트 알림", "연기했던 일정에 따라 잠시 후 제어가 시작됩니다.", 60, a))
             
             if self.skip_today_var.get():
                 time.sleep(5)
@@ -1247,25 +1169,7 @@ class AutoShutdownAppV2:
             day_index = now.weekday()
             current_day_str = DAYS[day_index]
             
-            if self.global_lunch_enabled.get() and not getattr(self, 'lunch_pending', False):
-                if f"{current_date}_lunch" not in self.skipped_events:
-                    current_t = now.time()
-                    time_start = datetime.strptime("12:30", "%H:%M").time()
-                    time_end = datetime.strptime("13:10", "%H:%M").time()
-                    
-                    if time_start <= current_t < time_end:
-                        if is_media_playing(): self.last_media_time = time.time()
-                        is_media_recently_played = getattr(self, 'last_media_time', 0) > time.time() - 3
-                        
-                        if get_idle_time() >= 90.0 and not is_media_recently_played:
-                            if getattr(self, 'last_lunch_trigger_time', None) != current_hm:
-                                self.last_lunch_trigger_time = current_hm
-                                action = self.global_lunch_action.get()
-                                if self.show_popup_var.get():
-                                    self.root.after(0, lambda a=action: self.show_toast_popup("스마트 점심시간 감지", "1분 30초간 PC 미사용이 감지되었습니다.\n계속 사용중이시라면 마우스를 흔들어주세요.", 15, a, is_lunch=True))
-                                else:
-                                    self.start_silent_lunch_grace(action)
-            
+
             try: minutes_off = int(self.minutes_var.get())
             except ValueError: minutes_off = 0
                 
@@ -1287,7 +1191,7 @@ class AutoShutdownAppV2:
                             self.pending_action = action
                             
                             if self.show_popup_var.get():
-                                self.root.after(0, lambda a=action: self.show_toast_popup("스마트 스케줄 알림", "예약된 스마트 일정에 따라 잠시 후 제어가 시작됩니다.", 60, a, is_lunch=False))
+                                self.root.after(0, lambda a=action: self.show_toast_popup("스마트 스케줄 알림", "예약된 스마트 일정에 따라 잠시 후 제어가 시작됩니다.", 60, a))
                             
                             break
             time.sleep(1)
