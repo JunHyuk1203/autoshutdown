@@ -30,7 +30,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.18"
+CURRENT_VERSION = "1.1.19"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -122,7 +122,7 @@ class AutoShutdownAppV2:
                 break
                 
         self.root.title(f"스마트 전원 관리자 (v{CURRENT_VERSION})")
-        self.root.geometry("340x410")
+        self.root.geometry("340x460")
         self.root.resizable(False, False)
         self.root.protocol('WM_DELETE_WINDOW', self.hide_window)
         
