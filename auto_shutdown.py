@@ -35,7 +35,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.24"
+CURRENT_VERSION = "1.1.25"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -99,6 +99,7 @@ data_lock = threading.Lock()
 SERVER_PORT = 5000
 BROADCAST_PORT = 5555
 OFFLINE_THRESHOLD = 8
+app_instance = None  # AutoShutdownAppV2 인스턴스 참조
 
 def get_local_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -157,6 +158,67 @@ def clear_offline():
         for k in to_remove:
             del connected_pcs[k]
     return jsonify({'ok': True})
+
+@app.route('/api/config')
+def get_config():
+    try:
+        if os.path.exists(CONFIG_FILE):
+            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                return jsonify(json.load(f))
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    return jsonify({})
+
+@app.route('/api/config', methods=['POST'])
+def update_config():
+    global app_instance
+    data = request.get_json(force=True)
+    try:
+        current = {}
+        if os.path.exists(CONFIG_FILE):
+            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                current = json.load(f)
+        current.update(data)
+        with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+            json.dump(current, f, ensure_ascii=False, indent=4)
+        if app_instance:
+            app_instance.root.after(0, lambda d=data: app_instance.reload_config_from_web(d))
+        return jsonify({'ok': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/pc_config/<pc_id>')
+def get_pc_config(pc_id):
+    with data_lock:
+        pc = connected_pcs.get(pc_id)
+    if not pc:
+        return jsonify({'error': 'PC not found'}), 404
+    ip = pc.get('ip', '')
+    try:
+        url = f'http://{ip}:{SERVER_PORT}/api/config'
+        req = urllib.request.Request(url, headers={'User-Agent': 'SmartPower/1.0'})
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            return jsonify(json.loads(resp.read().decode()))
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/pc_config/<pc_id>', methods=['POST'])
+def set_pc_config(pc_id):
+    with data_lock:
+        pc = connected_pcs.get(pc_id)
+    if not pc:
+        return jsonify({'error': 'PC not found'}), 404
+    ip = pc.get('ip', '')
+    data = request.get_json(force=True)
+    try:
+        url = f'http://{ip}:{SERVER_PORT}/api/config'
+        payload = json.dumps(data).encode()
+        req = urllib.request.Request(url, data=payload, method='POST',
+                                     headers={'Content-Type': 'application/json', 'User-Agent': 'SmartPower/1.0'})
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            return jsonify(json.loads(resp.read().decode()))
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 DASHBOARD_HTML = r"""<!DOCTYPE html>
 <html lang="ko">
@@ -219,6 +281,43 @@ body{font-family:'Inter','Malgun Gothic',sans-serif;background:#0a0a1a;color:#e0
 .modal .btn-row{display:flex;gap:8px;justify-content:flex-end;}
 .modal input[type=text]{width:100%;padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);color:#eee;font-size:13px;margin-bottom:12px;outline:none;}
 .modal input[type=text]:focus{border-color:#3b82f6;}
+/* PC 별 설정 모달 */
+.pc-modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(6px);z-index:200;align-items:center;justify-content:center;}
+.pc-modal-overlay.show{display:flex;}
+.pc-modal{background:#16162a;border:1px solid rgba(255,255,255,.12);border-radius:18px;padding:24px;width:min(700px,95vw);max-height:90vh;overflow-y:auto;}
+.pc-modal h2{font-size:16px;font-weight:800;margin-bottom:16px;background:linear-gradient(90deg,#60a5fa,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+.pc-section{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:12px;padding:14px;margin-bottom:12px;}
+.pc-section h4{font-size:12px;font-weight:700;color:#a78bfa;margin-bottom:10px;}
+.pc-row{display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap;}
+.pc-row label{font-size:11px;color:#aaa;min-width:110px;}
+.pc-row input[type=text],.pc-row input[type=number],.pc-row select{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#eee;padding:5px 9px;font-size:12px;outline:none;}
+.pc-row input[type=text]{flex:1;min-width:140px;}
+.pc-sched{width:100%;border-collapse:collapse;font-size:10px;}
+.pc-sched th{background:rgba(255,255,255,.05);padding:4px;text-align:center;color:#888;}
+.pc-sched td{padding:3px;text-align:center;border-bottom:1px solid rgba(255,255,255,.03);}
+.pc-sched select{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:4px;color:#ccc;padding:1px;font-size:9px;}
+.pc-gear-btn{position:absolute;top:8px;right:8px;background:rgba(255,255,255,.08);border:none;border-radius:6px;color:#aaa;padding:3px 7px;cursor:pointer;font-size:13px;z-index:2;}
+.pc-gear-btn:hover{background:rgba(167,139,250,.25);color:#a78bfa;}
+/* 설정 패널 */
+.settings-panel{display:none;padding:20px 28px;border-top:1px solid rgba(255,255,255,.06);}
+.settings-panel.open{display:block;}
+.settings-section{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:12px;padding:16px;margin-bottom:14px;}
+.settings-section h3{font-size:13px;font-weight:700;margin-bottom:12px;color:#a78bfa;}
+.settings-row{display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap;}
+.settings-row label{font-size:12px;color:#aaa;min-width:120px;}
+.settings-row input[type=number],.settings-row select{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#eee;padding:5px 10px;font-size:12px;}
+.toggle-sw{position:relative;width:36px;height:20px;flex-shrink:0;}
+.toggle-sw input{opacity:0;width:0;height:0;}
+.toggle-slider{position:absolute;inset:0;background:#444;border-radius:20px;cursor:pointer;transition:.2s;}
+.toggle-slider:before{content:'';position:absolute;width:14px;height:14px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s;}
+.toggle-sw input:checked+.toggle-slider{background:#3b82f6;}
+.toggle-sw input:checked+.toggle-slider:before{transform:translateX(16px);}
+.schedule-table{width:100%;border-collapse:collapse;font-size:11px;}
+.schedule-table th{background:rgba(255,255,255,.05);padding:5px 4px;text-align:center;font-weight:600;color:#888;}
+.schedule-table td{padding:3px 4px;text-align:center;border-bottom:1px solid rgba(255,255,255,.04);}
+.schedule-table select{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:4px;color:#ccc;padding:2px;font-size:10px;}
+.btn-success{background:linear-gradient(135deg,#10b981,#059669);}
+.save-toast{position:fixed;bottom:24px;right:24px;background:#10b981;color:#fff;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:700;display:none;z-index:200;}
 </style>
 </head>
 <body>
@@ -244,10 +343,45 @@ body{font-family:'Inter','Malgun Gothic',sans-serif;background:#0a0a1a;color:#e0
   <button class="btn btn-info" onclick="sendSelected('restart')">🔄 선택 재부팅</button>
   <div class="sep"></div>
   <button class="btn btn-secondary" onclick="clearOffline()">🗑 오프라인 정리</button>
+  <div class="sep"></div>
+  <button class="btn btn-secondary" id="settings-toggle-btn" onclick="toggleSettings()">⚙️ 설정</button>
   <span class="selected-info" id="selected-info"></span>
 </div>
 
 <div class="pc-grid" id="pc-grid"></div>
+
+<!-- 설정 패널 -->
+<div class="settings-panel" id="settings-panel">
+  <div class="settings-section">
+    <h3>🔔 일반 설정</h3>
+    <div class="settings-row">
+      <label>오늘 하루 작동 끄기</label>
+      <label class="toggle-sw"><input type="checkbox" id="cfg-skip-today"><span class="toggle-slider"></span></label>
+    </div>
+    <div class="settings-row">
+      <label>화면 팝업 알림 표시</label>
+      <label class="toggle-sw"><input type="checkbox" id="cfg-popup"><span class="toggle-slider"></span></label>
+    </div>
+    <div class="settings-row">
+      <label>시작프로그램 등록</label>
+      <label class="toggle-sw"><input type="checkbox" id="cfg-autostart"><span class="toggle-slider"></span></label>
+    </div>
+    <div class="settings-row">
+      <label>실행 N분 전</label>
+      <input type="number" id="cfg-minutes" min="0" max="120" style="width:70px">
+      <span style="font-size:12px;color:#888">분</span>
+    </div>
+  </div>
+  <div class="settings-section">
+    <h3>📅 주간 스케줄</h3>
+    <div style="overflow-x:auto">
+    <table class="schedule-table">
+      <thead><tr><th>시간</th><th>월</th><th>화</th><th>수</th><th>목</th><th>금</th><th>토</th><th>일</th></tr></thead>
+      <tbody id="schedule-tbody"></tbody>
+    </table>
+    </div>
+  </div>
+</div>
 
 <div class="modal-overlay" id="confirm-modal">
   <div class="modal">
@@ -256,6 +390,38 @@ body{font-family:'Inter','Malgun Gothic',sans-serif;background:#0a0a1a;color:#e0
     <div class="btn-row">
       <button class="btn btn-secondary" onclick="closeModal()">취소</button>
       <button class="btn btn-danger" id="modal-ok" onclick="modalConfirm()">실행</button>
+    </div>
+  </div>
+</div>
+
+<!-- PC 별 설정 모달 -->
+<div class="pc-modal-overlay" id="pc-settings-overlay">
+  <div class="pc-modal">
+    <h2 id="pc-modal-title">⚙️ PC 설정</h2>
+    <div class="pc-section">
+      <h4>📚 학교 / NEIS 설정</h4>
+      <div class="pc-row"><label>NEIS API 키</label><input type="text" id="pm-api-key" placeholder="인증키 입력"></div>
+      <div class="pc-row"><label>학교명</label><input type="text" id="pm-school-name" placeholder="예: 서울초등학교" readonly style="background:rgba(255,255,255,.03)"></div>
+      <div class="pc-row"><label>학교 코드</label><input type="text" id="pm-school-code" placeholder="NEIS 학교 코드"></div>
+      <div class="pc-row"><label>주소 코드</label><input type="text" id="pm-office-code" placeholder="예: B10"></div>
+      <div class="pc-row"><label>학교 종류</label><input type="text" id="pm-school-kind" placeholder="예: 초등학교"></div>
+      <div class="pc-row"><label>학년</label><input type="number" id="pm-grade" min="1" max="6" style="width:60px"></div>
+      <div class="pc-row"><label>반</label><input type="number" id="pm-class" min="1" max="20" style="width:60px"></div>
+    </div>
+    <div class="pc-section">
+      <h4>🔔 일반 설정</h4>
+      <div class="pc-row"><label>오늘 하루 기</label><label class="toggle-sw"><input type="checkbox" id="pm-skip"><span class="toggle-slider"></span></label></div>
+      <div class="pc-row"><label>팝업 알림</label><label class="toggle-sw"><input type="checkbox" id="pm-popup"><span class="toggle-slider"></span></label></div>
+      <div class="pc-row"><label>시작프로그램</label><label class="toggle-sw"><input type="checkbox" id="pm-autostart"><span class="toggle-slider"></span></label></div>
+      <div class="pc-row"><label>N분 전 실행</label><input type="number" id="pm-minutes" min="0" max="120" style="width:60px"> <span style="font-size:11px;color:#888">분</span></div>
+    </div>
+    <div class="pc-section">
+      <h4>📅 주간 스케줄</h4>
+      <div style="overflow-x:auto"><table class="pc-sched"><thead><tr><th>시간</th><th>월</th><th>화</th><th>수</th><th>목</th><th>금</th><th>토</th><th>일</th></tr></thead><tbody id="pm-sched-tbody"></tbody></table></div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+      <button class="btn btn-secondary" onclick="closePcSettings()">&#x2715; 닫기</button>
+      <button class="btn btn-success" onclick="savePcSettings()">💾 저장</button>
     </div>
   </div>
 </div>
@@ -284,7 +450,8 @@ function renderPCs() {
     for (const pc of pcs) {
         const isOnline = pc.status === 'online';
         const isSelected = selectedPcs.has(pc.pc_id);
-        html += `<div class="pc-card ${isOnline?'online':'offline'} ${isSelected?'selected':''}" onclick="toggleSelect('${pc.pc_id}')">
+        html += `<div class="pc-card ${isOnline?'online':'offline'} ${isSelected?'selected':''}" onclick="toggleSelect('${pc.pc_id}')" style="position:relative">
+            <button class="pc-gear-btn" onclick="openPcSettings('${pc.pc_id}','${pc.hostname||pc.pc_id}');event.stopPropagation()">⚙️</button>
             <div class="pc-check">${isSelected?'✓':''}</div>
             <div class="status-row">
                 <span class="dot ${isOnline?'online':'offline'}"></span>
@@ -357,7 +524,94 @@ function modalConfirm() { if(pendingAction) pendingAction(); }
 
 setInterval(fetchPCs, 2000);
 fetchPCs();
+
+// 설정 패널
+const DAYS=['\uc6d4','\ud654','\uc218','\ubaa9','\uae08','\ud1a0','\uc77c'];
+const SLOTS=['1\uad50\uc2dc (08:40)','2\uad50\uc2dc (09:40)','3\uad50\uc2dc (10:40)','4\uad50\uc2dc (11:40)','\uc810\uc2ec\uc2dc\uac04 (12:40)','5\uad50\uc2dc (13:30)','6\uad50\uc2dc (14:30)','7\uad50\uc2dc (15:30)','\ubc29\uacfc\ud6c4/\uae30\ud0c0 (16:30)'];
+let cfgData = {};
+
+function toggleSettings(){
+    const p=document.getElementById('settings-panel');
+    const btn=document.getElementById('settings-toggle-btn');
+    p.classList.toggle('open');
+    if(p.classList.contains('open')){
+        btn.style.background='rgba(167,139,250,.3)';
+        loadSettings();
+    } else {
+        btn.style.background='';
+    }
+}
+
+async function loadSettings(){
+    try{
+        const res=await fetch('/api/config');
+        cfgData=await res.json();
+        const today=new Date().toISOString().slice(0,10);
+        document.getElementById('cfg-skip-today').checked=(cfgData.skip_date===today);
+        document.getElementById('cfg-popup').checked=cfgData.show_popup_alert!==false;
+        document.getElementById('cfg-autostart').checked=!!cfgData.autostart;
+        document.getElementById('cfg-minutes').value=cfgData.minutes_before||2;
+        // 개별 즉시 저장 핸들러
+        document.getElementById('cfg-skip-today').onchange=function(){savePartial({skip_date:this.checked?new Date().toISOString().slice(0,10):''});}
+        document.getElementById('cfg-popup').onchange=function(){savePartial({show_popup_alert:this.checked});}
+        document.getElementById('cfg-autostart').onchange=function(){savePartial({autostart:this.checked});}
+        document.getElementById('cfg-minutes').onchange=function(){savePartial({minutes_before:parseInt(this.value)||2});}
+        buildScheduleTable();
+    }catch(e){}
+}
+
+function buildScheduleTable(){
+    const tbody=document.getElementById('schedule-tbody');
+    let html='';
+    for(const slot of SLOTS){
+        html+=`<tr><td style="font-size:10px;color:#aaa;white-space:nowrap;padding-right:8px">${slot.replace(/ \(.+\)/,'')}</td>`;
+        for(const day of DAYS){
+            const val=cfgData[day]?cfgData[day][slot]:null;
+            const en=val?val.enabled:false;
+            const ac=val?val.action:'\uc2dc\uc2a4\ud15c \uc885\ub8cc';
+            const shut=ac==='\uc2dc\uc2a4\ud15c \uc885\ub8cc'?'selected':'';
+            const slp=ac==='\uc808\uc804 \ubaa8\ub4dc'?'selected':'';
+            html+=`<td><input type="checkbox" data-day="${day}" data-slot="${slot}" class="sch-chk" ${en?'checked':''}><br><select data-day="${day}" data-slot="${slot}" class="sch-act" style="display:${en?'':'none'}"><option ${shut}>\uc885\ub8cc</option><option value="\uc808\uc804 \ubaa8\ub4dc" ${slp}>\uc808\uc804</option></select></td>`;
+        }
+        html+='</tr>';
+    }
+    tbody.innerHTML=html;
+    // 체크박스: 즈시 저장
+    document.querySelectorAll('.sch-chk').forEach(chk=>{
+        chk.addEventListener('change',function(){
+            const day=this.dataset.day, slot=this.dataset.slot;
+            const sel=tbody.querySelector(`select[data-day="${day}"][data-slot="${slot}"]`);
+            if(sel) sel.style.display=this.checked?'':'none';
+            const action=sel&&this.checked?(sel.value||'\uc2dc\uc2a4\ud15c \uc885\ub8cc'):'\uc2dc\uc2a4\ud15c \uc885\ub8cc';
+            const patch={}; patch[day]={}; patch[day][slot]={enabled:this.checked,action};
+            savePartial(patch);
+        });
+    });
+    // 드롭다운: 즈시 저장
+    document.querySelectorAll('.sch-act').forEach(sel=>{
+        sel.addEventListener('change',function(){
+            const day=this.dataset.day, slot=this.dataset.slot;
+            const patch={}; patch[day]={}; patch[day][slot]={enabled:true,action:this.value||'\uc2dc\uc2a4\ud15c \uc885\ub8cc'};
+            savePartial(patch);
+        });
+    });
+}
+
+async function savePartial(patch){
+    try{
+        await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(patch)});
+        showToast();
+    }catch(e){}
+}
+
+function showToast(){
+    const t=document.querySelector('.save-toast');
+    t.style.display='block';
+    clearTimeout(t._tid);
+    t._tid=setTimeout(()=>t.style.display='none',1500);
+}
 </script>
+<div class="save-toast">✅ 설정이 저장되었습니다</div>
 </body>
 </html>"""
 
@@ -516,6 +770,9 @@ class AutoShutdownAppV2:
         self.pending_action = "시스템 종료"
         self.last_media_time = 0
         
+        global app_instance
+        app_instance = self
+        
         threading.Thread(target=self.monitor_time, daemon=True).start()
         threading.Thread(target=self.check_for_updates, daemon=True).start()
         threading.Thread(target=self.p2p_listener_thread, daemon=True).start()
@@ -528,6 +785,29 @@ class AutoShutdownAppV2:
             threading.Thread(target=self.update_timetable_background, daemon=True).start()
         else:
             self.update_timetable_ui()
+
+    def reload_config_from_web(self, data):
+        """Flask API에서 설정 변경 시 tkinter 변수 업데이트"""
+        try:
+            if 'minutes_before' in data:
+                self.minutes_var.set(str(data['minutes_before']))
+            if 'show_popup_alert' in data:
+                self.show_popup_var.set(bool(data['show_popup_alert']))
+            if 'autostart' in data:
+                self.autostart_var.set(bool(data['autostart']))
+            if 'skip_date' in data:
+                today = datetime.now().strftime("%Y-%m-%d")
+                self.skip_today_var.set(data['skip_date'] == today)
+            for day in DAYS:
+                if day in data:
+                    for class_name, val in data[day].items():
+                        if day in self.vars and class_name in self.vars[day]:
+                            if isinstance(val, dict):
+                                self.vars[day][class_name]["enabled"].set(val.get("enabled", False))
+                                self.vars[day][class_name]["action"].set(val.get("action", "시스템 종료"))
+            self.update_status_info()
+        except Exception as e:
+            print(f"웹 설정 업데이트 오류: {e}")
 
     # ── P2P 네트워크 (분산 서버 & 클라이언트) ──────────────────────────
     def flask_server_thread(self):
@@ -1045,18 +1325,56 @@ class AutoShutdownAppV2:
             
         ctk.CTkButton(api_key_frame, text="키 적용", command=save_api_key, width=50, height=24, font=ctk.CTkFont(family=self.font_family, size=11)).pack(side="right", padx=5)
         
-        def setup_firewall_silently():
+        # 방화벽 설정 카드
+        firewall_card = ctk.CTkFrame(scroll, fg_color=("gray95", "gray15"), corner_radius=15)
+        firewall_card.pack(fill="x", pady=5, ipady=5)
+        ctk.CTkLabel(firewall_card, text="🛡️ 원격 제어 방화벽 설정", font=ctk.CTkFont(family=self.font_family, size=12, weight="bold")).pack(pady=(8, 2))
+        
+        status_lbl = ctk.CTkLabel(firewall_card, text="상태 확인 중...", font=ctk.CTkFont(family=self.font_family, size=11))
+        status_lbl.pack(pady=2)
+
+        def check_firewall_status():
+            try:
+                result = subprocess.run(
+                    ['netsh', 'advfirewall', 'firewall', 'show', 'rule', 'name=SmartPowerControl_TCP'],
+                    capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW
+                )
+                # returncode 0 = 규칙 존재(허용), 1 = 규칙 없음(차단)
+                if result.returncode == 0:
+                    status_lbl.configure(text="현재 상태: ✅ 허용됨 (스마트폰 등 접속 가능)", text_color="#2ECC71")
+                else:
+                    status_lbl.configure(text="현재 상태: ❌ 차단됨 (접속 불가 - 허용 필요)", text_color="#E74C3C")
+            except Exception as e:
+                status_lbl.configure(text=f"상태 확인 실패: {e}", text_color="gray")
+
+        def check_loop(count=0):
+            check_firewall_status()
+            if count < 5:
+                # 1초마다 다시 확인 (관리자 권한 승인하는 시간 고려)
+                if getattr(self, 'settings_win', None) and self.settings_win.winfo_exists():
+                    self.settings_win.after(1000, lambda: check_loop(count + 1))
+
+        def setup_firewall_and_test():
             try:
                 commands = (
                     "netsh advfirewall firewall add rule name=\"SmartPowerControl_TCP\" dir=in action=allow protocol=TCP localport=5000 & "
                     "netsh advfirewall firewall add rule name=\"SmartPowerControl_UDP\" dir=in action=allow protocol=UDP localport=5555"
                 )
                 ctypes.windll.shell32.ShellExecuteW(None, "runas", "cmd.exe", f"/c {commands}", None, 0)
+                # 실행 후 상태 확인 루프 시작
+                if getattr(self, 'settings_win', None) and self.settings_win.winfo_exists():
+                    self.settings_win.after(1000, lambda: check_loop(0))
             except Exception:
                 pass
-                
-        firewall_btn = ctk.CTkButton(scroll, text="🛡️ 원격 제어용 방화벽 허용 (스마트폰 접속용)", command=setup_firewall_silently, font=ctk.CTkFont(family=self.font_family, size=12, weight="bold"), fg_color="#34495E", hover_color="#2C3E50", height=32)
-        firewall_btn.pack(fill="x", pady=(5, 5))
+
+        btn_frame = ctk.CTkFrame(firewall_card, fg_color="transparent")
+        btn_frame.pack(pady=5)
+        
+        ctk.CTkButton(btn_frame, text="방화벽 허용 (관리자 권한)", command=setup_firewall_and_test, font=ctk.CTkFont(family=self.font_family, size=11, weight="bold"), fg_color="#34495E", hover_color="#2C3E50", height=28).pack(side="left", padx=5)
+        ctk.CTkButton(btn_frame, text="상태 새로고침", command=check_firewall_status, font=ctk.CTkFont(family=self.font_family, size=11), fg_color="gray", hover_color="#555", height=28).pack(side="left", padx=5)
+
+        # UI 렌더링 후 초기 상태 확인
+        self.settings_win.after(100, check_firewall_status)
         
         schedule_card = ctk.CTkFrame(scroll, fg_color=("gray95", "gray15"), corner_radius=15)
         schedule_card.pack(fill="x", pady=5, ipady=5)

@@ -1,8 +1,6 @@
 {
     "minutes_before": 5,
     "autostart": true,
-    "global_lunch_enabled": true,
-    "global_lunch_action": "절전 모드",
     "show_popup_alert": false,
     "skip_date": "",
     "school_info": {
@@ -95,6 +93,10 @@
             "enabled": false,
             "action": "시스템 종료"
         },
+        "점심시간 (12:40)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
         "5교시 (13:30)": {
             "enabled": false,
             "action": "시스템 종료"
@@ -126,6 +128,10 @@
             "action": "시스템 종료"
         },
         "4교시 (11:40)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "점심시간 (12:40)": {
             "enabled": false,
             "action": "시스템 종료"
         },
@@ -163,6 +169,10 @@
             "enabled": false,
             "action": "시스템 종료"
         },
+        "점심시간 (12:40)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
         "5교시 (13:30)": {
             "enabled": false,
             "action": "시스템 종료"
@@ -194,6 +204,10 @@
             "action": "시스템 종료"
         },
         "4교시 (11:40)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "점심시간 (12:40)": {
             "enabled": false,
             "action": "시스템 종료"
         },
@@ -231,6 +245,10 @@
             "enabled": false,
             "action": "시스템 종료"
         },
+        "점심시간 (12:40)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
         "5교시 (13:30)": {
             "enabled": false,
             "action": "시스템 종료"
@@ -265,6 +283,10 @@
             "enabled": false,
             "action": "시스템 종료"
         },
+        "점심시간 (12:40)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
         "5교시 (13:30)": {
             "enabled": false,
             "action": "시스템 종료"
@@ -296,6 +318,10 @@
             "action": "시스템 종료"
         },
         "4교시 (11:40)": {
+            "enabled": false,
+            "action": "시스템 종료"
+        },
+        "점심시간 (12:40)": {
             "enabled": false,
             "action": "시스템 종료"
         },
