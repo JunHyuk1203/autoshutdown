@@ -35,7 +35,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.25"
+CURRENT_VERSION = "1.1.26"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -133,6 +133,7 @@ def get_pcs():
                 'last_seen': info.get('last_seen', ''),
                 'status': info.get('status', 'offline'),
                 'user': info.get('user', ''),
+                'next_event': info.get('next_event', '-'),
             })
     return jsonify(pcs)
 
@@ -220,6 +221,17 @@ def set_pc_config(pc_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/search_school', methods=['GET'])
+def search_school_api():
+    q = request.args.get('q', '')
+    url = f"https://open.neis.go.kr/hub/schoolInfo?Type=json&pIndex=1&pSize=20&SCHUL_NM={urllib.parse.quote(q)}"
+    try:
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=5) as res:
+            return jsonify(json.loads(res.read().decode('utf-8')))
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 DASHBOARD_HTML = r"""<!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -267,7 +279,8 @@ body{font-family:'Inter','Malgun Gothic',sans-serif;background:#0a0a1a;color:#e0
 .pc-time{font-size:10px;color:#444;margin-top:3px;}
 .pc-status-text{font-size:10px;font-weight:600;margin-top:4px;}
 .pc-status-text.on{color:#34d399;} .pc-status-text.off{color:#ef4444;}
-.pc-check{position:absolute;top:8px;right:10px;width:18px;height:18px;border-radius:4px;border:2px solid rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:11px;transition:all .15s;}
+.pc-next{font-size:11px;color:#a78bfa;margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,.04);font-weight:600;}
+.pc-check{position:absolute;top:8px;left:10px;width:18px;height:18px;border-radius:4px;border:2px solid rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:11px;transition:all .15s;}
 .pc-card.selected .pc-check{background:#3b82f6;border-color:#3b82f6;color:#fff;}
 .empty{text-align:center;padding:80px 20px;color:#555;}
 .empty .icon{font-size:48px;margin-bottom:16px;}
@@ -401,10 +414,10 @@ body{font-family:'Inter','Malgun Gothic',sans-serif;background:#0a0a1a;color:#e0
     <div class="pc-section">
       <h4>📚 학교 / NEIS 설정</h4>
       <div class="pc-row"><label>NEIS API 키</label><input type="text" id="pm-api-key" placeholder="인증키 입력"></div>
-      <div class="pc-row"><label>학교명</label><input type="text" id="pm-school-name" placeholder="예: 서울초등학교" readonly style="background:rgba(255,255,255,.03)"></div>
-      <div class="pc-row"><label>학교 코드</label><input type="text" id="pm-school-code" placeholder="NEIS 학교 코드"></div>
-      <div class="pc-row"><label>주소 코드</label><input type="text" id="pm-office-code" placeholder="예: B10"></div>
-      <div class="pc-row"><label>학교 종류</label><input type="text" id="pm-school-kind" placeholder="예: 초등학교"></div>
+      <div class="pc-row"><label>학교명</label><input type="text" id="pm-school-name" placeholder="예: 서울초등학교" readonly style="background:rgba(255,255,255,.03);flex:1;"><button class="btn btn-secondary" onclick="openSchoolSearch()" style="padding:4px 8px;font-size:11px;margin-left:4px;">검색</button></div>
+      <input type="hidden" id="pm-school-code">
+      <input type="hidden" id="pm-office-code">
+      <input type="hidden" id="pm-school-kind">
       <div class="pc-row"><label>학년</label><input type="number" id="pm-grade" min="1" max="6" style="width:60px"></div>
       <div class="pc-row"><label>반</label><input type="number" id="pm-class" min="1" max="20" style="width:60px"></div>
     </div>
@@ -422,6 +435,21 @@ body{font-family:'Inter','Malgun Gothic',sans-serif;background:#0a0a1a;color:#e0
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
       <button class="btn btn-secondary" onclick="closePcSettings()">&#x2715; 닫기</button>
       <button class="btn btn-success" onclick="savePcSettings()">💾 저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- 학교 검색 모달 -->
+<div class="pc-modal-overlay" id="school-search-overlay" style="z-index: 300;">
+  <div class="pc-modal" style="width: 400px; max-width: 90vw;">
+    <h2 style="font-size:15px; margin-bottom:12px;">🔍 학교 검색</h2>
+    <div style="display:flex; gap:8px; margin-bottom:12px;">
+      <input type="text" id="school-search-input" placeholder="학교명 입력 (예: 서울과학고)" style="flex:1; padding:8px; border-radius:6px; border:1px solid rgba(255,255,255,.1); background:rgba(255,255,255,.05); color:#fff; font-size:12px;" onkeypress="if(event.key==='Enter') doSchoolSearch()">
+      <button class="btn btn-info" onclick="doSchoolSearch()" style="padding:8px 14px;">검색</button>
+    </div>
+    <div id="school-search-results" style="max-height: 250px; overflow-y: auto; margin-bottom:12px; font-size:12px;"></div>
+    <div style="text-align:right;">
+      <button class="btn btn-secondary" onclick="closeSchoolSearch()">닫기</button>
     </div>
   </div>
 </div>
@@ -461,6 +489,7 @@ function renderPCs() {
             <div class="pc-user">${pc.user ? '👤 '+pc.user : ''}</div>
             <div class="pc-time">마지막 응답: ${pc.last_seen || '-'}</div>
             <div class="pc-status-text ${isOnline?'on':'off'}">${isOnline?'● 켜짐':'● 꺼짐'}</div>
+            <div class="pc-next">${isOnline ? '⏰ 다음: ' + (pc.next_event || '-') : '오프라인'}</div>
         </div>`;
     }
     grid.innerHTML = html;
@@ -609,6 +638,168 @@ function showToast(){
     t.style.display='block';
     clearTimeout(t._tid);
     t._tid=setTimeout(()=>t.style.display='none',1500);
+}
+
+let currentPcId = null;
+let currentPcCfg = {};
+
+async function openPcSettings(pcId, hostname) {
+    currentPcId = pcId;
+    document.getElementById('pc-modal-title').textContent = `⚙️ ${hostname} 설정`;
+    document.getElementById('pc-settings-overlay').classList.add('show');
+    
+    // 자동 저장 바인딩
+    const inputs = ['pm-api-key', 'pm-school-code', 'pm-office-code', 'pm-school-kind', 'pm-grade', 'pm-class', 'pm-minutes'];
+    inputs.forEach(id => { document.getElementById(id).onchange = () => savePcSettings(); });
+    ['pm-popup', 'pm-autostart', 'pm-skip'].forEach(id => { document.getElementById(id).onchange = () => savePcSettings(); });
+
+    try {
+        const res = await fetch(`/api/pc_config/${pcId}`);
+        const data = await res.json();
+        currentPcCfg = data;
+        
+        const info = data.school_info || {};
+        document.getElementById('pm-api-key').value = info.api_key || '';
+        document.getElementById('pm-school-name').value = info.name || info.school_name || '';
+        document.getElementById('pm-school-code').value = info.school_code || '';
+        document.getElementById('pm-office-code').value = info.office_code || '';
+        document.getElementById('pm-school-kind').value = info.school_kind || '';
+        document.getElementById('pm-grade').value = info.grade || '';
+        document.getElementById('pm-class').value = info.class_nm || '';
+        
+        document.getElementById('pm-popup').checked = data.show_popup_alert !== false;
+        document.getElementById('pm-autostart').checked = !!data.autostart;
+        document.getElementById('pm-minutes').value = data.minutes_before || 2;
+        const today = new Date().toISOString().slice(0,10);
+        document.getElementById('pm-skip').checked = (data.skip_date === today);
+        
+        buildPcScheduleTable();
+    } catch(e) {
+        alert('설정을 불러오는데 실패했습니다: ' + e);
+        closePcSettings();
+    }
+}
+
+function closePcSettings() {
+    document.getElementById('pc-settings-overlay').classList.remove('show');
+    currentPcId = null;
+}
+
+function buildPcScheduleTable() {
+    const tbody = document.getElementById('pm-sched-tbody');
+    let html = '';
+    for(const slot of SLOTS) {
+        html += `<tr><td style="white-space:nowrap">${slot.replace(/ \(.+\)/,'')}</td>`;
+        for(const day of DAYS) {
+            const val = currentPcCfg[day] ? currentPcCfg[day][slot] : null;
+            const en = val ? val.enabled : false;
+            const ac = val ? val.action : '시스템 종료';
+            const shut = ac === '시스템 종료' ? 'selected' : '';
+            const slp = ac === '절전 모드' ? 'selected' : '';
+            html += `<td><input type="checkbox" data-day="${day}" data-slot="${slot}" class="pm-chk" ${en?'checked':''}><br><select data-day="${day}" data-slot="${slot}" class="pm-act" style="display:${en?'':'none'}"><option ${shut}>종료</option><option value="절전 모드" ${slp}>절전</option></select></td>`;
+        }
+        html += '</tr>';
+    }
+    tbody.innerHTML = html;
+    tbody.querySelectorAll('.pm-chk, .pm-act').forEach(el => {
+        el.onchange = function() {
+            if(this.classList.contains('pm-chk')) {
+                const sel = tbody.querySelector(`select[data-day="${this.dataset.day}"][data-slot="${this.dataset.slot}"]`);
+                if(sel) sel.style.display = this.checked ? '' : 'none';
+            }
+            savePcSettings();
+        };
+    });
+}
+
+async function savePcSettings() {
+    if(!currentPcId) return;
+    const today = new Date().toISOString().slice(0,10);
+    const payload = {
+        school_info: {
+            api_key: document.getElementById('pm-api-key').value,
+            name: document.getElementById('pm-school-name').value,
+            school_code: document.getElementById('pm-school-code').value,
+            office_code: document.getElementById('pm-office-code').value,
+            school_kind: document.getElementById('pm-school-kind').value,
+            grade: document.getElementById('pm-grade').value,
+            class_nm: document.getElementById('pm-class').value
+        },
+        show_popup_alert: document.getElementById('pm-popup').checked,
+        autostart: document.getElementById('pm-autostart').checked,
+        minutes_before: parseInt(document.getElementById('pm-minutes').value) || 2,
+        skip_date: document.getElementById('pm-skip').checked ? today : ''
+    };
+    
+    for(const day of DAYS) { payload[day] = {}; }
+    document.querySelectorAll('.pm-chk').forEach(chk => {
+        const day = chk.dataset.day, slot = chk.dataset.slot;
+        const sel = document.querySelector(`.pm-act[data-day="${day}"][data-slot="${slot}"]`);
+        const action = sel ? sel.value || '시스템 종료' : '시스템 종료';
+        payload[day][slot] = { enabled: chk.checked, action: chk.checked ? action : '시스템 종료' };
+    });
+    
+    try {
+        const res = await fetch(`/api/pc_config/${currentPcId}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        const result = await res.json();
+        if(result.error) throw new Error(result.error);
+        showToast();
+        setTimeout(fetchPCs, 500);
+    } catch(e) {
+        console.error('저장 실패:', e);
+    }
+}
+
+function openSchoolSearch() {
+    document.getElementById('school-search-input').value = '';
+    document.getElementById('school-search-results').innerHTML = '';
+    document.getElementById('school-search-overlay').classList.add('show');
+    document.getElementById('school-search-input').focus();
+}
+
+function closeSchoolSearch() {
+    document.getElementById('school-search-overlay').classList.remove('show');
+}
+
+async function doSchoolSearch() {
+    const q = document.getElementById('school-search-input').value.trim();
+    if(!q) return;
+    const resDiv = document.getElementById('school-search-results');
+    resDiv.innerHTML = '<div style="text-align:center;color:#888;padding:10px;">검색 중...</div>';
+    try {
+        const res = await fetch(`/api/search_school?q=${encodeURIComponent(q)}`);
+        const data = await res.json();
+        resDiv.innerHTML = '';
+        if(data.schoolInfo) {
+            const rows = data.schoolInfo[1].row;
+            rows.forEach(r => {
+                const div = document.createElement('div');
+                div.style.padding = '10px';
+                div.style.borderBottom = '1px solid rgba(255,255,255,.05)';
+                div.style.cursor = 'pointer';
+                div.innerHTML = `<strong style="color:#a78bfa;">${r.SCHUL_NM}</strong><br><span style="font-size:10px;color:#aaa;">${r.ORG_RDNMA}</span>`;
+                div.onclick = () => {
+                    document.getElementById('pm-school-name').value = r.SCHUL_NM;
+                    document.getElementById('pm-school-code').value = r.SD_SCHUL_CODE;
+                    document.getElementById('pm-office-code').value = r.ATPT_OFCDC_SC_CODE;
+                    document.getElementById('pm-school-kind').value = r.SCHUL_KND_SC_NM;
+                    closeSchoolSearch();
+                    savePcSettings();
+                };
+                div.onmouseover = () => div.style.background = 'rgba(255,255,255,.05)';
+                div.onmouseout = () => div.style.background = 'transparent';
+                resDiv.appendChild(div);
+            });
+        } else {
+            resDiv.innerHTML = '<div style="text-align:center;color:#888;padding:10px;">검색 결과가 없습니다.</div>';
+        }
+    } catch(e) {
+        resDiv.innerHTML = `<div style="text-align:center;color:#ef4444;padding:10px;">오류 발생: ${e}</div>`;
+    }
 }
 </script>
 <div class="save-toast">✅ 설정이 저장되었습니다</div>
@@ -789,6 +980,30 @@ class AutoShutdownAppV2:
     def reload_config_from_web(self, data):
         """Flask API에서 설정 변경 시 tkinter 변수 업데이트"""
         try:
+            self._is_reloading = True
+            if 'school_info' in data:
+                old_info = getattr(self, 'school_info', {})
+                self.school_info = data['school_info']
+                # 핵심 정보(학교코드, 학년, 반, API키)가 변경된 경우 시간표 재동기화
+                if (old_info.get('school_code') != self.school_info.get('school_code') or
+                    old_info.get('grade') != self.school_info.get('grade') or
+                    old_info.get('class_nm') != self.school_info.get('class_nm') or
+                    old_info.get('api_key') != self.school_info.get('api_key')):
+                    
+                    self.timetable_cache = {}
+                    self.meal_cache = {}
+                    if hasattr(self, 'timetable_label') and self.timetable_label.winfo_exists():
+                        self.timetable_label.configure(text="시간표 정보를 불러오는 중...")
+                    if hasattr(self, 'meal_label') and self.meal_label.winfo_exists():
+                        self.meal_label.configure(text="급식 정보를 불러오는 중...")
+                    if hasattr(self, 'lbl_school') and self.lbl_school.winfo_exists():
+                        school_name = self.school_info.get("name", "학교 미설정")
+                        grade = self.school_info.get("grade", "")
+                        class_nm = self.school_info.get("class_nm", "")
+                        self.lbl_school.configure(text=f"{school_name} {grade}학년 {class_nm}반" if grade else school_name)
+                        
+                    threading.Thread(target=self.update_timetable_background, daemon=True).start()
+
             if 'minutes_before' in data:
                 self.minutes_var.set(str(data['minutes_before']))
             if 'show_popup_alert' in data:
@@ -805,8 +1020,12 @@ class AutoShutdownAppV2:
                             if isinstance(val, dict):
                                 self.vars[day][class_name]["enabled"].set(val.get("enabled", False))
                                 self.vars[day][class_name]["action"].set(val.get("action", "시스템 종료"))
+            self._is_reloading = False
+            self.save_config()
             self.update_status_info()
+            self.send_heartbeat_now()
         except Exception as e:
+            self._is_reloading = False
             print(f"웹 설정 업데이트 오류: {e}")
 
     # ── P2P 네트워크 (분산 서버 & 클라이언트) ──────────────────────────
@@ -843,6 +1062,7 @@ class AutoShutdownAppV2:
                                 'hostname': payload.get('hostname', pc_id),
                                 'user': payload.get('user', ''),
                                 'status': payload.get('status', 'online'),
+                                'next_event': payload.get('next_event', '-'),
                                 'last_seen': datetime.now().strftime('%H:%M:%S'),
                                 'last_seen_ts': time.time()
                             }
@@ -865,9 +1085,25 @@ class AutoShutdownAppV2:
             except Exception:
                 time.sleep(1)
 
-    def p2p_broadcaster_thread(self):
+    def send_heartbeat_now(self):
         pc_id = socket.gethostname()
         user = os.getlogin()
+        ip = get_local_ip()
+        next_time, next_action = self.get_next_event()
+        next_str = next_time.strftime('%H:%M') if next_time and next_time != "skip" else ("오늘 안 함" if next_time == "skip" else "없음")
+        
+        payload = json.dumps({
+            'type': 'HEARTBEAT',
+            'pc_id': pc_id,
+            'ip': ip,
+            'hostname': pc_id,
+            'user': user,
+            'status': 'online',
+            'next_event': f"{next_str} [{next_action}]" if next_time and next_time != "skip" else next_str
+        })
+        send_udp_broadcast(payload)
+
+    def p2p_broadcaster_thread(self):
         while self.is_running:
             # 오래된 PC 상태 업데이트 (오프라인 처리)
             now_ts = time.time()
@@ -876,16 +1112,7 @@ class AutoShutdownAppV2:
                     if now_ts - info.get('last_seen_ts', 0) > OFFLINE_THRESHOLD:
                         info['status'] = 'offline'
 
-            ip = get_local_ip()
-            payload = json.dumps({
-                'type': 'HEARTBEAT',
-                'pc_id': pc_id,
-                'ip': ip,
-                'hostname': pc_id,
-                'user': user,
-                'status': 'online'
-            })
-            send_udp_broadcast(payload)
+            self.send_heartbeat_now()
             time.sleep(2)
 
     def get_timetable_endpoint(self, school_kind):
@@ -921,9 +1148,10 @@ class AutoShutdownAppV2:
                 elif "RESULT" in data and "CODE" in data["RESULT"]:
                     code = data["RESULT"]["CODE"]
                     msg = data["RESULT"]["MESSAGE"]
-                    if getattr(self, 'api_key_error_shown', False) is False:
-                        self.root.after(0, lambda: messagebox.showwarning("API 키 오류", f"나이스 API 키에 문제가 있습니다.\n(오류코드: {code})\n\n{msg}\n\n※ 인증키를 방금 발급받았다면 1~2시간 뒤에 활성화될 수 있습니다.\n임시로 5교시까지만 불러옵니다.", parent=self.root))
-                        self.api_key_error_shown = True
+                    if code == "ERROR-290":
+                        if getattr(self, 'api_key_error_shown', False) is False:
+                            self.root.after(0, lambda: messagebox.showwarning("API 키 오류", f"나이스 API 키에 문제가 있습니다.\n(오류코드: {code})\n\n{msg}\n\n※ 인증키를 방금 발급받았다면 1~2시간 뒤에 활성화될 수 있습니다.\n임시로 5교시까지만 불러옵니다.", parent=self.root))
+                            self.api_key_error_shown = True
                     api_key = "" # Fallback to no-key logic
             except Exception as e:
                 print("시간표(KEY) 불러오기 실패:", e)
@@ -1003,12 +1231,21 @@ class AutoShutdownAppV2:
         return cache if cache else None
 
     def update_timetable_background(self):
+        office_code = self.school_info.get("office_code")
+        school_code = self.school_info.get("school_code")
+        grade = self.school_info.get("grade")
+        class_nm = self.school_info.get("class_nm")
+        
+        if not office_code or not school_code or not grade or not class_nm:
+            self.root.after(0, self.update_timetable_ui)
+            return
+
         cache = self.fetch_this_week_timetable(
-            self.school_info.get("office_code"),
-            self.school_info.get("school_code"),
+            office_code,
+            school_code,
             self.school_info.get("school_kind"),
-            self.school_info.get("grade"),
-            self.school_info.get("class_nm")
+            grade,
+            class_nm
         )
         meal_cache = self.fetch_this_week_meals(
             self.school_info.get("office_code"),
@@ -1196,6 +1433,7 @@ class AutoShutdownAppV2:
         return {}
 
     def save_config_callback(self, *args):
+        if getattr(self, '_is_reloading', False): return
         self.save_config()
 
     def save_config(self):
