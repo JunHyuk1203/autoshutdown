@@ -3,11 +3,16 @@ import sys
 import threading
 import time
 import json
+import socket
 import urllib.request
 import urllib.error
 import urllib.parse
 import re
 from datetime import datetime, timedelta
+
+# Flask & P2P 
+from flask import Flask, request, jsonify, render_template_string
+import logging
 
 # PyInstaller 환경 변수 오염(init.tcl) 방지 패치
 # 업데이트 후 부모 프로세스의 환경변수가 상속되면 삭제된 임시 폴더를 참조하므로
@@ -30,7 +35,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.20"
+CURRENT_VERSION = "1.1.21"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -72,6 +77,297 @@ def get_idle_time():
         millis = (tick - lii.dwTime) & 0xFFFFFFFF
         return millis / 1000.0
     return 0.0
+
+def is_media_playing():
+    if not HAS_PYCAW: return False
+    try:
+        sessions = AudioUtilities.GetAllSessions()
+        for session in sessions:
+            if session.State == 1: return True
+    except Exception: pass
+    return False
+
+# ──────────────────────────────────────────────
+# P2P Server Setup (Flask & UDP)
+# ──────────────────────────────────────────────
+app = Flask(__name__)
+log = logging.getLogger('werkzeug')
+log.setLevel(logging.ERROR)
+
+connected_pcs = {}
+data_lock = threading.Lock()
+SERVER_PORT = 5000
+BROADCAST_PORT = 5555
+OFFLINE_THRESHOLD = 15
+
+def get_local_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(('8.8.8.8', 80))
+        ip = s.getsockname()[0]
+    except Exception:
+        ip = '127.0.0.1'
+    finally:
+        s.close()
+    return ip
+
+def send_udp_broadcast(msg_str):
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        sock.sendto(msg_str.encode('utf-8'), ('<broadcast>', BROADCAST_PORT))
+        sock.close()
+    except Exception:
+        pass
+
+@app.route('/api/pcs')
+def get_pcs():
+    with data_lock:
+        pcs = []
+        for pc_id, info in sorted(connected_pcs.items()):
+            pcs.append({
+                'pc_id': pc_id,
+                'ip': info.get('ip', ''),
+                'hostname': info.get('hostname', ''),
+                'last_seen': info.get('last_seen', ''),
+                'status': info.get('status', 'offline'),
+                'user': info.get('user', ''),
+            })
+    return jsonify(pcs)
+
+@app.route('/api/send_command', methods=['POST'])
+def send_command():
+    data = request.get_json(force=True)
+    target = data.get('target', '__ALL__')
+    action = data.get('action', '')
+    message = data.get('message', '')
+    payload = json.dumps({
+        'type': 'COMMAND',
+        'target': target,
+        'action': action,
+        'message': message
+    })
+    send_udp_broadcast(payload)
+    return jsonify({'ok': True})
+
+@app.route('/api/clear_offline', methods=['POST'])
+def clear_offline():
+    with data_lock:
+        to_remove = [k for k, v in connected_pcs.items() if v.get('status') == 'offline']
+        for k in to_remove:
+            del connected_pcs[k]
+    return jsonify({'ok': True})
+
+DASHBOARD_HTML = r"""<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>전원 중앙 제어 시스템</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Inter','Malgun Gothic',sans-serif;background:#0a0a1a;color:#e0e0e0;min-height:100vh;}
+.header{background:linear-gradient(135deg,#0f1128,#1a1145);padding:18px 28px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.06);}
+.header-left h1{font-size:20px;font-weight:800;background:linear-gradient(90deg,#60a5fa,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+.header-left .server-ip{font-size:12px;color:#666;margin-top:2px;}
+.stats{display:flex;gap:14px;}
+.stat{text-align:center;padding:8px 16px;background:rgba(255,255,255,.04);border-radius:10px;min-width:70px;}
+.stat .num{font-size:22px;font-weight:800;}
+.stat .lbl{font-size:10px;color:#777;margin-top:1px;letter-spacing:.5px;}
+.stat.online .num{color:#34d399;} .stat.offline .num{color:#f87171;}
+.controls{padding:14px 28px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;border-bottom:1px solid rgba(255,255,255,.04);}
+.btn{padding:9px 18px;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;transition:all .15s;color:#fff;letter-spacing:.3px;}
+.btn:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(0,0,0,.4);}
+.btn:active{transform:translateY(0);}
+.btn-danger{background:linear-gradient(135deg,#ef4444,#b91c1c);}
+.btn-warning{background:linear-gradient(135deg,#f59e0b,#b45309);}
+.btn-info{background:linear-gradient(135deg,#3b82f6,#1d4ed8);}
+.btn-secondary{background:rgba(255,255,255,.08);color:#aaa;} .btn-secondary:hover{background:rgba(255,255,255,.12);}
+.controls .sep{width:1px;height:28px;background:rgba(255,255,255,.08);margin:0 4px;}
+.selected-info{font-size:12px;color:#888;margin-left:auto;}
+.pc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:12px;padding:20px 28px;}
+.pc-card{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:12px;padding:14px 16px;transition:all .2s;cursor:pointer;position:relative;user-select:none;}
+.pc-card:hover{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.12);transform:translateY(-2px);box-shadow:0 8px 25px rgba(0,0,0,.3);}
+.pc-card.selected{border-color:#3b82f6;background:rgba(59,130,246,.08);box-shadow:0 0 0 1px #3b82f6;}
+.pc-card.online{border-left:3px solid #34d399;}
+.pc-card.offline{border-left:3px solid #ef4444;opacity:.5;}
+.pc-card.offline:hover{opacity:.8;}
+.status-row{display:flex;align-items:center;margin-bottom:6px;}
+.dot{width:9px;height:9px;border-radius:50%;margin-right:7px;flex-shrink:0;}
+.dot.online{background:#34d399;box-shadow:0 0 8px #34d39980;animation:pulse 2s infinite;}
+.dot.offline{background:#ef4444;box-shadow:0 0 6px #ef444460;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.4;}}
+.pc-name{font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.pc-ip{font-size:11px;color:#666;margin-top:2px;}
+.pc-user{font-size:10px;color:#555;margin-top:1px;}
+.pc-time{font-size:10px;color:#444;margin-top:3px;}
+.pc-status-text{font-size:10px;font-weight:600;margin-top:4px;}
+.pc-status-text.on{color:#34d399;} .pc-status-text.off{color:#ef4444;}
+.pc-check{position:absolute;top:8px;right:10px;width:18px;height:18px;border-radius:4px;border:2px solid rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:11px;transition:all .15s;}
+.pc-card.selected .pc-check{background:#3b82f6;border-color:#3b82f6;color:#fff;}
+.empty{text-align:center;padding:80px 20px;color:#555;}
+.empty .icon{font-size:48px;margin-bottom:16px;}
+.empty .msg{font-size:15px;font-weight:600;}
+.empty .sub{font-size:12px;color:#444;margin-top:6px;}
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);z-index:100;align-items:center;justify-content:center;}
+.modal-overlay.show{display:flex;}
+.modal{background:#16162a;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:24px;min-width:320px;max-width:400px;}
+.modal h3{font-size:16px;margin-bottom:14px;font-weight:700;}
+.modal p{font-size:13px;color:#999;margin-bottom:18px;line-height:1.5;}
+.modal .btn-row{display:flex;gap:8px;justify-content:flex-end;}
+.modal input[type=text]{width:100%;padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);color:#eee;font-size:13px;margin-bottom:12px;outline:none;}
+.modal input[type=text]:focus{border-color:#3b82f6;}
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="header-left">
+    <h1>🖥️ 전원 중앙 제어 시스템 (P2P)</h1>
+    <div class="server-ip">내부 접속: {{ server_ip }}:{{ server_port }}</div>
+  </div>
+  <div class="stats">
+    <div class="stat"><div class="num" id="stat-total">0</div><div class="lbl">전체</div></div>
+    <div class="stat online"><div class="num" id="stat-online">0</div><div class="lbl">켜짐</div></div>
+    <div class="stat offline"><div class="num" id="stat-offline">0</div><div class="lbl">꺼짐</div></div>
+  </div>
+</div>
+
+<div class="controls">
+  <button class="btn btn-danger" onclick="sendAll('shutdown')">⏻ 전체 종료</button>
+  <button class="btn btn-warning" onclick="sendAll('sleep')">💤 전체 절전</button>
+  <button class="btn btn-info" onclick="sendAll('restart')">🔄 전체 재부팅</button>
+  <div class="sep"></div>
+  <button class="btn btn-danger" onclick="sendSelected('shutdown')">⏻ 선택 종료</button>
+  <button class="btn btn-warning" onclick="sendSelected('sleep')">💤 선택 절전</button>
+  <button class="btn btn-info" onclick="sendSelected('restart')">🔄 선택 재부팅</button>
+  <div class="sep"></div>
+  <button class="btn btn-secondary" onclick="clearOffline()">🗑 오프라인 정리</button>
+  <span class="selected-info" id="selected-info"></span>
+</div>
+
+<div class="pc-grid" id="pc-grid"></div>
+
+<div class="modal-overlay" id="confirm-modal">
+  <div class="modal">
+    <h3 id="modal-title">확인</h3>
+    <p id="modal-msg">정말 실행하시겠습니까?</p>
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="closeModal()">취소</button>
+      <button class="btn btn-danger" id="modal-ok" onclick="modalConfirm()">실행</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let pcs = [];
+let selectedPcs = new Set();
+let pendingAction = null;
+
+async function fetchPCs() {
+    try {
+        const res = await fetch('/api/pcs');
+        pcs = await res.json();
+        renderPCs();
+        updateStats();
+    } catch(e) {}
+}
+
+function renderPCs() {
+    const grid = document.getElementById('pc-grid');
+    if (pcs.length === 0) {
+        grid.innerHTML = '<div class="empty"><div class="icon">📡</div><div class="msg">연결된 PC가 없습니다</div><div class="sub">학생 PC에서 스마트 전원 관리자가 실행되면 자동으로 표시됩니다</div></div>';
+        return;
+    }
+    let html = '';
+    for (const pc of pcs) {
+        const isOnline = pc.status === 'online';
+        const isSelected = selectedPcs.has(pc.pc_id);
+        html += `<div class="pc-card ${isOnline?'online':'offline'} ${isSelected?'selected':''}" onclick="toggleSelect('${pc.pc_id}')">
+            <div class="pc-check">${isSelected?'✓':''}</div>
+            <div class="status-row">
+                <span class="dot ${isOnline?'online':'offline'}"></span>
+                <span class="pc-name">${pc.hostname || pc.pc_id}</span>
+            </div>
+            <div class="pc-ip">${pc.ip}</div>
+            <div class="pc-user">${pc.user ? '👤 '+pc.user : ''}</div>
+            <div class="pc-time">마지막 응답: ${pc.last_seen || '-'}</div>
+            <div class="pc-status-text ${isOnline?'on':'off'}">${isOnline?'● 켜짐':'● 꺼짐'}</div>
+        </div>`;
+    }
+    grid.innerHTML = html;
+    document.getElementById('selected-info').textContent =
+        selectedPcs.size > 0 ? `${selectedPcs.size}대 선택됨` : '';
+}
+
+function updateStats() {
+    const total = pcs.length;
+    const online = pcs.filter(p => p.status === 'online').length;
+    document.getElementById('stat-total').textContent = total;
+    document.getElementById('stat-online').textContent = online;
+    document.getElementById('stat-offline').textContent = total - online;
+}
+
+function toggleSelect(pcId) {
+    if (selectedPcs.has(pcId)) selectedPcs.delete(pcId);
+    else selectedPcs.add(pcId);
+    renderPCs();
+}
+
+function sendAll(action) {
+    const labels = {shutdown:'전체 종료',sleep:'전체 절전',restart:'전체 재부팅'};
+    showModal(`${labels[action]} 확인`, `정말 모든 PC를 ${labels[action]}하시겠습니까?`, () => {
+        fetch('/api/send_command', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({target:'__ALL__', action})
+        }).then(()=>{ closeModal(); });
+    });
+}
+
+function sendSelected(action) {
+    if (selectedPcs.size === 0) { alert('PC를 먼저 선택해주세요.'); return; }
+    const labels = {shutdown:'종료',sleep:'절전',restart:'재부팅'};
+    showModal(`선택 ${labels[action]} 확인`, `선택된 ${selectedPcs.size}대의 PC를 ${labels[action]}하시겠습니까?`, () => {
+        for (const pcId of selectedPcs) {
+            fetch('/api/send_command', {
+                method:'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({target:pcId, action})
+            });
+        }
+        selectedPcs.clear();
+        closeModal();
+        renderPCs();
+    });
+}
+
+async function clearOffline() {
+    await fetch('/api/clear_offline', {method:'POST'});
+    fetchPCs();
+}
+
+function showModal(title, msg, onOk) {
+    document.getElementById('modal-title').textContent = title;
+    document.getElementById('modal-msg').textContent = msg;
+    pendingAction = onOk;
+    document.getElementById('confirm-modal').classList.add('show');
+}
+function closeModal() { document.getElementById('confirm-modal').classList.remove('show'); pendingAction=null; }
+function modalConfirm() { if(pendingAction) pendingAction(); }
+
+setInterval(fetchPCs, 2000);
+fetchPCs();
+</script>
+</body>
+</html>"""
+
+@app.route('/')
+def dashboard():
+    return render_template_string(
+        DASHBOARD_HTML,
+        server_ip=get_local_ip(),
+        server_port=SERVER_PORT
+    )
 
 def is_media_playing():
     if not HAS_PYCAW: return False
@@ -165,7 +461,18 @@ class AutoShutdownAppV2:
         self.dash_frame.pack(fill="both", expand=True, padx=15, pady=15)
         
         title_lbl = ctk.CTkLabel(self.dash_frame, text=f"스마트 전원 관리자 (v{CURRENT_VERSION})", font=ctk.CTkFont(family=self.font_family, size=16, weight="bold"))
-        title_lbl.pack(pady=(0, 10))
+        title_lbl.pack(pady=(0, 5))
+        
+        local_ip = get_local_ip()
+        remote_url = f"http://{local_ip}:{SERVER_PORT}"
+        
+        def open_url(e):
+            import webbrowser
+            webbrowser.open(remote_url)
+            
+        url_lbl = ctk.CTkLabel(self.dash_frame, text=f"🌐 원격 제어: {remote_url}", font=ctk.CTkFont(family=self.font_family, size=11, weight="bold"), text_color="#3498DB", cursor="hand2")
+        url_lbl.pack(pady=(0, 10))
+        url_lbl.bind("<Button-1>", open_url)
         
         status_card = ctk.CTkFrame(self.dash_frame, fg_color=("gray95", "gray15"), corner_radius=15)
         status_card.pack(fill="x", pady=5, ipady=15)
@@ -211,6 +518,9 @@ class AutoShutdownAppV2:
         
         threading.Thread(target=self.monitor_time, daemon=True).start()
         threading.Thread(target=self.check_for_updates, daemon=True).start()
+        threading.Thread(target=self.p2p_listener_thread, daemon=True).start()
+        threading.Thread(target=self.p2p_broadcaster_thread, daemon=True).start()
+        threading.Thread(target=self.flask_server_thread, daemon=True).start()
         
         today = datetime.today()
         monday_str = (today - timedelta(days=today.weekday())).strftime("%Y%m%d")
@@ -218,6 +528,85 @@ class AutoShutdownAppV2:
             threading.Thread(target=self.update_timetable_background, daemon=True).start()
         else:
             self.update_timetable_ui()
+
+    # ── P2P 네트워크 (분산 서버 & 클라이언트) ──────────────────────────
+    def flask_server_thread(self):
+        try:
+            app.run(host='0.0.0.0', port=SERVER_PORT, debug=False, use_reloader=False)
+        except Exception as e:
+            print(f"Flask 서버 실행 실패: {e}")
+
+    def p2p_listener_thread(self):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.bind(('', BROADCAST_PORT))
+        except Exception:
+            return
+        sock.settimeout(2)
+        my_pc_id = socket.gethostname()
+        while self.is_running:
+            try:
+                data, addr = sock.recvfrom(4096)
+                try:
+                    payload = json.loads(data.decode('utf-8'))
+                except Exception:
+                    continue
+                
+                msg_type = payload.get('type')
+                if msg_type == 'HEARTBEAT':
+                    pc_id = payload.get('pc_id')
+                    if pc_id:
+                        with data_lock:
+                            connected_pcs[pc_id] = {
+                                'ip': payload.get('ip', addr[0]),
+                                'hostname': payload.get('hostname', pc_id),
+                                'user': payload.get('user', ''),
+                                'status': payload.get('status', 'online'),
+                                'last_seen': datetime.now().strftime('%H:%M:%S'),
+                                'last_seen_ts': time.time()
+                            }
+                elif msg_type == 'COMMAND':
+                    target = payload.get('target')
+                    action = payload.get('action')
+                    message = payload.get('message', '')
+                    
+                    if target == '__ALL__' or target == my_pc_id:
+                        if action == 'shutdown':
+                            os.system('shutdown /s /t 0')
+                        elif action == 'sleep':
+                            os.system('rundll32.exe powrprof.dll,SetSuspendState 0,1,0')
+                        elif action == 'restart':
+                            os.system('shutdown /r /t 0')
+                        elif action == 'message' and message:
+                            self.root.after(0, lambda m=message: messagebox.showinfo("관리자 메시지", m, parent=self.root))
+            except socket.timeout:
+                pass
+            except Exception:
+                time.sleep(1)
+
+    def p2p_broadcaster_thread(self):
+        pc_id = socket.gethostname()
+        user = os.getlogin()
+        while self.is_running:
+            # 오래된 PC 상태 업데이트 (오프라인 처리)
+            now_ts = time.time()
+            with data_lock:
+                for p_id, info in connected_pcs.items():
+                    if now_ts - info.get('last_seen_ts', 0) > OFFLINE_THRESHOLD:
+                        info['status'] = 'offline'
+
+            ip = get_local_ip()
+            payload = json.dumps({
+                'type': 'HEARTBEAT',
+                'pc_id': pc_id,
+                'ip': ip,
+                'hostname': pc_id,
+                'user': user,
+                'status': 'online'
+            })
+            send_udp_broadcast(payload)
+            time.sleep(3)
 
     def get_timetable_endpoint(self, school_kind):
         if "초등" in school_kind: return "elsTimetable"
@@ -825,7 +1214,15 @@ class AutoShutdownAppV2:
         if self.icon: self.icon.notify("예약된 시스템 종료/절전이 취소되었습니다.", "종료 취소")
 
     def get_menu(self):
+        local_ip = get_local_ip()
+        remote_url = f"http://{local_ip}:{SERVER_PORT}"
+        
+        def open_remote():
+            import webbrowser
+            webbrowser.open(remote_url)
+            
         menu_items = [
+            pystray.MenuItem(f'🌐 원격 제어: {remote_url}', open_remote),
             pystray.MenuItem('오늘 하루 끄지 않기', self.toggle_skip_state, checked=self.get_skip_state),
             pystray.MenuItem('열기 (대시보드)', self.show_window)
         ]
