@@ -35,7 +35,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.23"
+CURRENT_VERSION = "1.1.24"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -1045,7 +1045,18 @@ class AutoShutdownAppV2:
             
         ctk.CTkButton(api_key_frame, text="키 적용", command=save_api_key, width=50, height=24, font=ctk.CTkFont(family=self.font_family, size=11)).pack(side="right", padx=5)
         
-
+        def setup_firewall_silently():
+            try:
+                commands = (
+                    "netsh advfirewall firewall add rule name=\"SmartPowerControl_TCP\" dir=in action=allow protocol=TCP localport=5000 & "
+                    "netsh advfirewall firewall add rule name=\"SmartPowerControl_UDP\" dir=in action=allow protocol=UDP localport=5555"
+                )
+                ctypes.windll.shell32.ShellExecuteW(None, "runas", "cmd.exe", f"/c {commands}", None, 0)
+            except Exception:
+                pass
+                
+        firewall_btn = ctk.CTkButton(scroll, text="🛡️ 원격 제어용 방화벽 허용 (스마트폰 접속용)", command=setup_firewall_silently, font=ctk.CTkFont(family=self.font_family, size=12, weight="bold"), fg_color="#34495E", hover_color="#2C3E50", height=32)
+        firewall_btn.pack(fill="x", pady=(5, 5))
         
         schedule_card = ctk.CTkFrame(scroll, fg_color=("gray95", "gray15"), corner_radius=15)
         schedule_card.pack(fill="x", pady=5, ipady=5)
