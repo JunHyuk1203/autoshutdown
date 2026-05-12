@@ -35,7 +35,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.21"
+CURRENT_VERSION = "1.1.22"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -98,7 +98,7 @@ connected_pcs = {}
 data_lock = threading.Lock()
 SERVER_PORT = 5000
 BROADCAST_PORT = 5555
-OFFLINE_THRESHOLD = 15
+OFFLINE_THRESHOLD = 8
 
 def get_local_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -267,7 +267,7 @@ let pendingAction = null;
 
 async function fetchPCs() {
     try {
-        const res = await fetch('/api/pcs');
+        const res = await fetch('/api/pcs?t=' + new Date().getTime());
         pcs = await res.json();
         renderPCs();
         updateStats();
@@ -606,7 +606,7 @@ class AutoShutdownAppV2:
                 'status': 'online'
             })
             send_udp_broadcast(payload)
-            time.sleep(3)
+            time.sleep(2)
 
     def get_timetable_endpoint(self, school_kind):
         if "초등" in school_kind: return "elsTimetable"
