@@ -3,6 +3,9 @@
     "autostart": true,
     "show_popup_alert": false,
     "skip_date": "",
+    "central_server_url": "https://crudely-feast-colt.ngrok-free.dev",
+    "ngrok_token": "3DZmg3sqJ6RKsm06VYzURXc3TVG_3PRerzUhuj9BiVuEohBit",
+    "ngrok_domain": "crudely-feast-colt.ngrok-free.dev",
     "school_info": {
         "api_key": "4f7314e020ab4adcad7f6aaf048f5944",
         "name": "마산중앙고등학교",

@@ -13,7 +13,7 @@ a = Analysis(
         (r'C:\Users\tntdr\AppData\Local\Programs\Python\Python313\tcl\tcl8.6', '_tcl_data'),
         (r'C:\Users\tntdr\AppData\Local\Programs\Python\Python313\tcl\tk8.6', '_tk_data'),
     ],
-    hiddenimports=['pycaw', 'customtkinter', 'flask'],
+    hiddenimports=['pycaw', 'customtkinter', 'flask', 'pyngrok'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

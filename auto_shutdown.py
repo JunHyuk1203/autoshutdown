@@ -35,7 +35,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.27"
+CURRENT_VERSION = "1.1.28"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -95,6 +95,7 @@ log = logging.getLogger('werkzeug')
 log.setLevel(logging.ERROR)
 
 connected_pcs = {}
+pending_commands = {}
 data_lock = threading.Lock()
 SERVER_PORT = 5000
 BROADCAST_PORT = 5555
@@ -139,10 +140,13 @@ def get_pcs():
 
 @app.route('/api/send_command', methods=['POST'])
 def send_command():
+    global app_instance
     data = request.get_json(force=True)
     target = data.get('target', '__ALL__')
     action = data.get('action', '')
     message = data.get('message', '')
+    
+    # 1. P2P (UDP)
     payload = json.dumps({
         'type': 'COMMAND',
         'target': target,
@@ -150,6 +154,30 @@ def send_command():
         'message': message
     })
     send_udp_broadcast(payload)
+    
+    # 2. Local Central Server (Ngrok) - 큐에 명령 저장
+    with data_lock:
+        if target == '__ALL__':
+            for pc in connected_pcs.keys():
+                pending_commands[pc] = {'action': action, 'message': message}
+        else:
+            pending_commands[target] = {'action': action, 'message': message}
+            
+    # 3. Cloud P2P Forwarding - 내가 중앙 서버가 아닌 경우 중앙 서버로 전달
+    if not data.get('forwarded'):
+        url = app_instance.central_url_var.get().strip() if app_instance else ""
+        if url:
+            if not url.startswith("http"): url = "http://" + url
+            def forward():
+                try:
+                    fdata = data.copy()
+                    fdata['forwarded'] = True
+                    req = urllib.request.Request(f"{url.rstrip('/')}/api/send_command", data=json.dumps(fdata).encode('utf-8'), method='POST', headers={'Content-Type': 'application/json'})
+                    urllib.request.urlopen(req, timeout=3)
+                except Exception:
+                    pass
+            threading.Thread(target=forward, daemon=True).start()
+            
     return jsonify({'ok': True})
 
 @app.route('/api/clear_offline', methods=['POST'])
@@ -159,6 +187,25 @@ def clear_offline():
         for k in to_remove:
             del connected_pcs[k]
     return jsonify({'ok': True})
+
+@app.route('/api/heartbeat', methods=['POST'])
+def api_heartbeat():
+    data = request.get_json(force=True)
+    pc_id = data.get('pc_id')
+    if not pc_id: return jsonify({'error': 'no pc_id'})
+    with data_lock:
+        connected_pcs[pc_id] = {
+            'ip': data.get('ip', request.remote_addr),
+            'hostname': data.get('hostname', pc_id),
+            'user': data.get('user', ''),
+            'status': data.get('status', 'online'),
+            'next_event': data.get('next_event', '-'),
+            'last_seen': datetime.now().strftime('%H:%M:%S'),
+            'last_seen_ts': time.time()
+        }
+        cmd = pending_commands.pop(pc_id, None)
+        pcs_copy = connected_pcs.copy()
+    return jsonify({"status": "ok", "command": cmd, "pcs": pcs_copy})
 
 @app.route('/api/config')
 def get_config():
@@ -880,6 +927,18 @@ class AutoShutdownAppV2:
         self.autostart_var = ctk.BooleanVar(value=self.config.get("autostart", False))
         self.minutes_var = ctk.StringVar(value=str(self.config.get("minutes_before", 2)))
         self.skip_today_var = ctk.BooleanVar(value=(self.config.get("skip_date") == datetime.now().strftime("%Y-%m-%d")))
+        url_val = self.config.get("central_server_url", "")
+        if not url_val: url_val = "https://crudely-feast-colt.ngrok-free.dev"
+        self.central_url_var = ctk.StringVar(value=url_val)
+        
+        token_val = self.config.get("ngrok_token", "")
+        if not token_val: token_val = "3DZmg3sqJ6RKsm06VYzURXc3TVG_3PRerzUhuj9BiVuEohBit"
+        self.ngrok_token_var = ctk.StringVar(value=token_val)
+        
+        domain_val = self.config.get("ngrok_domain", "")
+        if not domain_val: domain_val = "crudely-feast-colt.ngrok-free.dev"
+        self.ngrok_domain_var = ctk.StringVar(value=domain_val)
+        self.ngrok_url_var = ctk.StringVar()
         
         for day in DAYS:
             for class_name in TIMETABLE.keys():
@@ -969,6 +1028,41 @@ class AutoShutdownAppV2:
         threading.Thread(target=self.p2p_listener_thread, daemon=True).start()
         threading.Thread(target=self.p2p_broadcaster_thread, daemon=True).start()
         threading.Thread(target=self.flask_server_thread, daemon=True).start()
+        threading.Thread(target=self.http_poller_thread, daemon=True).start()
+        threading.Thread(target=self.start_ngrok_background, daemon=True).start()
+        
+    def start_ngrok_background(self):
+        try:
+            import subprocess
+            original_popen = subprocess.Popen
+            
+            def patched_popen(*args, **kwargs):
+                if 'startupinfo' not in kwargs:
+                    startupinfo = subprocess.STARTUPINFO()
+                    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                    startupinfo.wShowWindow = subprocess.SW_HIDE
+                    kwargs['startupinfo'] = startupinfo
+                kwargs['creationflags'] = kwargs.get('creationflags', 0) | subprocess.CREATE_NO_WINDOW
+                return original_popen(*args, **kwargs)
+                
+            subprocess.Popen = patched_popen
+            
+            from pyngrok import ngrok, conf
+            token = self.ngrok_token_var.get().strip()
+            domain = self.ngrok_domain_var.get().strip()
+            if token:
+                conf.get_default().auth_token = token
+            kwargs = {}
+            if domain:
+                kwargs["domain"] = domain
+            url = ngrok.connect(SERVER_PORT, **kwargs).public_url
+            self.ngrok_url_var.set(url)
+            
+            subprocess.Popen = original_popen
+        except Exception as e:
+            try: subprocess.Popen = original_popen
+            except: pass
+            self.root.after(1000, lambda: messagebox.showerror("Ngrok 실행 실패", f"Ngrok 중앙 서버를 여는 데 실패했습니다.\n\n{e}\n\n상세 설정에서 Auth Token을 올바르게 입력했는지 확인하세요.", parent=self.root))
         
         today = datetime.today()
         monday_str = (today - timedelta(days=today.weekday())).strftime("%Y%m%d")
@@ -1114,6 +1208,51 @@ class AutoShutdownAppV2:
 
             self.send_heartbeat_now()
             time.sleep(2)
+
+    def http_poller_thread(self):
+        while self.is_running:
+            central_url = self.central_url_var.get().strip()
+            if central_url:
+                try:
+                    if not central_url.startswith("http"): central_url = "http://" + central_url
+                    pc_id = socket.gethostname()
+                    next_time, next_action = self.get_next_event()
+                    next_str = next_time.strftime('%H:%M') if next_time and next_time != "skip" else ("오늘 안 함" if next_time == "skip" else "없음")
+                    
+                    payload = json.dumps({
+                        'pc_id': pc_id,
+                        'hostname': pc_id,
+                        'user': os.getlogin(),
+                        'status': 'online',
+                        'next_event': f"{next_str} [{next_action}]" if next_time and next_time != "skip" else next_str
+                    }).encode('utf-8')
+                    
+                    url = f"{central_url.rstrip('/')}/api/heartbeat"
+                    req = urllib.request.Request(url, data=payload, method='POST', headers={'Content-Type': 'application/json'})
+                    with urllib.request.urlopen(req, timeout=2) as res:
+                        resp_data = json.loads(res.read().decode('utf-8'))
+                        
+                        remote_pcs = resp_data.get("pcs", {})
+                        if remote_pcs:
+                            now_ts = time.time()
+                            with data_lock:
+                                for pid, pinfo in remote_pcs.items():
+                                    if pid != pc_id:
+                                        pinfo['last_seen_ts'] = now_ts
+                                        connected_pcs[pid] = pinfo
+                                        
+                        cmd = resp_data.get("command")
+                        if cmd:
+                            action = cmd.get("action")
+                            message = cmd.get("message", "")
+                            if action == 'shutdown': os.system('shutdown /s /t 0')
+                            elif action == 'sleep': os.system('rundll32.exe powrprof.dll,SetSuspendState 0,1,0')
+                            elif action == 'restart': os.system('shutdown /r /t 0')
+                            elif action == 'message' and message:
+                                self.root.after(0, lambda m=message: messagebox.showinfo("관리자 메시지", m, parent=self.root))
+                except Exception:
+                    pass
+            time.sleep(3)
 
     def get_timetable_endpoint(self, school_kind):
         if "초등" in school_kind: return "elsTimetable"
@@ -1446,6 +1585,9 @@ class AutoShutdownAppV2:
                 "autostart": self.autostart_var.get(),
                 "show_popup_alert": self.show_popup_var.get(),
                 "skip_date": datetime.now().strftime("%Y-%m-%d") if self.skip_today_var.get() else "",
+                "central_server_url": self.central_url_var.get().strip(),
+                "ngrok_token": self.ngrok_token_var.get().strip(),
+                "ngrok_domain": self.ngrok_domain_var.get().strip(),
                 "school_info": getattr(self, 'school_info', {}),
                 "timetable_cache": getattr(self, 'timetable_cache', {}),
                 "meal_cache": getattr(self, 'meal_cache', {})
@@ -1613,6 +1755,42 @@ class AutoShutdownAppV2:
 
         # UI 렌더링 후 초기 상태 확인
         self.settings_win.after(100, check_firewall_status)
+        
+        # Ngrok 및 HTTP 서버 카드
+        ngrok_card = ctk.CTkFrame(scroll, fg_color=("gray95", "gray15"), corner_radius=15)
+        ngrok_card.pack(fill="x", pady=5, ipady=5)
+        ctk.CTkLabel(ngrok_card, text="🌐 원격 중앙 제어 (방화벽 무시)", font=ctk.CTkFont(family=self.font_family, size=12, weight="bold")).pack(pady=(8, 2))
+        
+        ngrok_desc = "백그라운드에서 Ngrok 중앙 서버가 자동으로 실행 중입니다.\n스마트폰 등 외부 기기에서 브라우저에 아래 주소를 입력하세요."
+        ctk.CTkLabel(ngrok_card, text=ngrok_desc, font=ctk.CTkFont(family=self.font_family, size=10), text_color="gray").pack(pady=2)
+
+        ngrok_btn_frame = ctk.CTkFrame(ngrok_card, fg_color="transparent")
+        ngrok_btn_frame.pack(pady=5)
+        
+        ctk.CTkLabel(ngrok_btn_frame, text="현재 Ngrok 주소:", font=ctk.CTkFont(family=self.font_family, size=11, weight="bold")).pack(side="left", padx=5)
+        
+        url_lbl = ctk.CTkEntry(ngrok_btn_frame, textvariable=self.ngrok_url_var, state="readonly", width=180, font=ctk.CTkFont(family=self.font_family, size=11))
+        url_lbl.pack(side="left", padx=5)
+        
+        token_frame = ctk.CTkFrame(ngrok_card, fg_color="transparent")
+        token_frame.pack(fill="x", padx=10, pady=(5, 0))
+        ctk.CTkLabel(token_frame, text="Auth Token:", font=ctk.CTkFont(family=self.font_family, size=11)).pack(side="left", padx=5)
+        ctk.CTkEntry(token_frame, textvariable=self.ngrok_token_var, placeholder_text="(선택) Ngrok 홈페이지 발급 토큰", font=ctk.CTkFont(family=self.font_family, size=11)).pack(side="left", fill="x", expand=True, padx=5)
+        
+        domain_frame = ctk.CTkFrame(ngrok_card, fg_color="transparent")
+        domain_frame.pack(fill="x", padx=10, pady=(5, 5))
+        ctk.CTkLabel(domain_frame, text="고정 도메인:", font=ctk.CTkFont(family=self.font_family, size=11)).pack(side="left", padx=5)
+        ctk.CTkEntry(domain_frame, textvariable=self.ngrok_domain_var, placeholder_text="(선택) 예: lobster.ngrok-free.app", font=ctk.CTkFont(family=self.font_family, size=11)).pack(side="left", fill="x", expand=True, padx=5)
+        
+        self.ngrok_token_var.trace_add('write', self.save_config_callback)
+        self.ngrok_domain_var.trace_add('write', self.save_config_callback)
+
+        client_frame = ctk.CTkFrame(ngrok_card, fg_color="transparent")
+        client_frame.pack(fill="x", padx=10, pady=(5, 5))
+        ctk.CTkLabel(client_frame, text="중앙 서버 주소:", font=ctk.CTkFont(family=self.font_family, size=11)).pack(side="left", padx=5)
+        central_url_entry = ctk.CTkEntry(client_frame, textvariable=self.central_url_var, placeholder_text="예: https://xxx.ngrok.app", font=ctk.CTkFont(family=self.font_family, size=11))
+        central_url_entry.pack(side="left", fill="x", expand=True, padx=5)
+        self.central_url_var.trace_add('write', self.save_config_callback)
         
         schedule_card = ctk.CTkFrame(scroll, fg_color=("gray95", "gray15"), corner_radius=15)
         schedule_card.pack(fill="x", pady=5, ipady=5)
