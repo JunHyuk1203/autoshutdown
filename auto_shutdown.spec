@@ -8,6 +8,7 @@ a = Analysis(
         (r'C:\Windows\System32\ucrtbase.dll', '.'),
         (r'C:\Users\tntdr\AppData\Local\Programs\Python\Python313\vcruntime140.dll', '.'),
         (r'C:\Users\tntdr\AppData\Local\Programs\Python\Python313\vcruntime140_1.dll', '.'),
+        (r'C:\Users\tntdr\AppData\Local\Programs\Python\Python313\Scripts\ngrok.exe', '.'),
     ],
     datas=[
         (r'C:\Users\tntdr\AppData\Local\Programs\Python\Python313\tcl\tcl8.6', '_tcl_data'),

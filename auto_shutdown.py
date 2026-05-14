@@ -35,7 +35,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.29"
+CURRENT_VERSION = "1.1.30"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -172,10 +172,10 @@ def send_command():
                 try:
                     fdata = data.copy()
                     fdata['forwarded'] = True
-                    req = urllib.request.Request(f"{url.rstrip('/')}/api/send_command", data=json.dumps(fdata).encode('utf-8'), method='POST', headers={'Content-Type': 'application/json'})
+                    req = urllib.request.Request(f"{url.rstrip('/')}/api/send_command", data=json.dumps(fdata).encode('utf-8'), method='POST', headers={'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true'})
                     urllib.request.urlopen(req, timeout=3)
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"Forwarding to central server failed: {e}")
             threading.Thread(target=forward, daemon=True).start()
             
     return jsonify({'ok': True})
@@ -1074,6 +1074,12 @@ class AutoShutdownAppV2:
             subprocess.Popen = patched_popen
             
             from pyngrok import ngrok, conf
+            if getattr(sys, 'frozen', False):
+                # PyInstaller 환경일 경우 내장된 ngrok.exe 사용
+                bundled_ngrok = os.path.join(sys._MEIPASS, "ngrok.exe")
+                if os.path.exists(bundled_ngrok):
+                    conf.get_default().ngrok_path = bundled_ngrok
+
             token = self.ngrok_token_var.get().strip()
             domain = self.ngrok_domain_var.get().strip()
             if token:
@@ -1262,7 +1268,7 @@ class AutoShutdownAppV2:
                     }).encode('utf-8')
                     
                     url = f"{central_url.rstrip('/')}/api/heartbeat"
-                    req = urllib.request.Request(url, data=payload, method='POST', headers={'Content-Type': 'application/json'})
+                    req = urllib.request.Request(url, data=payload, method='POST', headers={'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true'})
                     with urllib.request.urlopen(req, timeout=2) as res:
                         resp_data = json.loads(res.read().decode('utf-8'))
                         
