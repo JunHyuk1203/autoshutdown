@@ -35,7 +35,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.33"
+CURRENT_VERSION = "1.1.34"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -2084,6 +2084,12 @@ class AutoShutdownAppV2:
         except Exception as e:
             messagebox.showerror("업데이트 오류", f"서버와 통신 중 오류가 발생했습니다.\n인터넷 연결 상태를 확인해 주세요.\n{e}", parent=getattr(self, 'settings_win', self.root))
 
+    def get_tray_server_status(self, item=None):
+        if self.is_server_var.get():
+            return "✅ [서버 상태] 메인 서버 가동 중" if self.ngrok_url_var.get() else "🟡 [서버 상태] 서버 준비 중..."
+        else:
+            return "🔵 [서버 상태] 클라이언트 모드 작동 중"
+
     def cancel_shutdown(self, icon=None, item=None):
         self.pending_shutdown = False
         if self.icon: self.icon.notify("예약된 시스템 종료/절전이 취소되었습니다.", "종료 취소")
@@ -2096,7 +2102,15 @@ class AutoShutdownAppV2:
             import webbrowser
             webbrowser.open(remote_url)
             
+        if self.is_server_var.get():
+            ngrok_url = self.ngrok_url_var.get()
+            status_text = "✅ [메인 서버] 정상 가동 중" if ngrok_url else "🟡 [메인 서버] 준비 중..."
+        else:
+            status_text = "🔵 [클라이언트 모드] 연결 대기 중"
+            
         menu_items = [
+            pystray.MenuItem(status_text, lambda icon, item: None),
+            pystray.Menu.SEPARATOR,
             pystray.MenuItem(f'🌐 원격 제어: {remote_url}', open_remote),
             pystray.MenuItem('오늘 하루 끄지 않기', self.toggle_skip_state, checked=self.get_skip_state),
             pystray.MenuItem('열기 (대시보드)', self.show_window)
@@ -2330,7 +2344,7 @@ class AutoShutdownAppV2:
                 self.root.after(0, lambda: self.status_detail_var.set(detail_text))
             except Exception: pass
             
-        if self.icon: self.icon.title = tooltip_text
+        if self.icon: self.icon.title = tooltip_text + f"\n{self.get_tray_server_status()}"
 
     def show_toast_popup(self, title, message, duration, action):
         if hasattr(self, 'toast') and self.toast and self.toast.winfo_exists(): return
