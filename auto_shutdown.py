@@ -35,7 +35,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.31"
+CURRENT_VERSION = "1.1.32"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -1049,6 +1049,8 @@ class AutoShutdownAppV2:
         
         if self.is_server_var.get():
             threading.Thread(target=self.start_ngrok_background, daemon=True).start()
+        else:
+            self.stop_ngrok()
             
         today = datetime.today()
         monday_str = (today - timedelta(days=today.weekday())).strftime("%Y%m%d")
@@ -1058,6 +1060,9 @@ class AutoShutdownAppV2:
             self.root.after(0, self.update_timetable_ui)
         
     def start_ngrok_background(self):
+        try:
+            os.system("taskkill /f /im ngrok.exe >nul 2>&1")
+        except: pass
         try:
             import subprocess
             original_popen = subprocess.Popen
@@ -1100,6 +1105,13 @@ class AutoShutdownAppV2:
         try:
             from pyngrok import ngrok
             ngrok.kill()
+        except:
+            pass
+        try:
+            os.system("taskkill /f /im ngrok.exe >nul 2>&1")
+        except:
+            pass
+        try:
             self.ngrok_url_var.set("")
         except:
             pass
@@ -1235,6 +1247,19 @@ class AutoShutdownAppV2:
             'status': 'online',
             'next_event': f"{next_str} [{next_action}]" if next_time and next_time != "skip" else next_str
         })
+        
+        # 나 자신을 직접 등록 (UDP 루프백 실패 대비 및 로컬 IP 유지)
+        with data_lock:
+            connected_pcs[pc_id] = {
+                'ip': ip,
+                'hostname': pc_id,
+                'user': user,
+                'status': 'online',
+                'next_event': f"{next_str} [{next_action}]" if next_time and next_time != "skip" else next_str,
+                'last_seen': datetime.now().strftime('%H:%M:%S'),
+                'last_seen_ts': time.time()
+            }
+            
         send_udp_broadcast(payload)
 
     def p2p_broadcaster_thread(self):
