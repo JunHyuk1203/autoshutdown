@@ -35,7 +35,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.34"
+CURRENT_VERSION = "1.1.35"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -403,10 +403,12 @@ body{font-family:'Inter','Malgun Gothic',sans-serif;background:#0a0a1a;color:#e0
   <button class="btn btn-danger" onclick="sendAll('shutdown')">⏻ 전체 종료</button>
   <button class="btn btn-warning" onclick="sendAll('sleep')">💤 전체 절전</button>
   <button class="btn btn-info" onclick="sendAll('restart')">🔄 전체 재부팅</button>
+  <button class="btn btn-secondary" onclick="sendAll('update')" style="background:rgba(255,255,255,0.1)">⬆️ 전체 업데이트</button>
   <div class="sep"></div>
   <button class="btn btn-danger" onclick="sendSelected('shutdown')">⏻ 선택 종료</button>
   <button class="btn btn-warning" onclick="sendSelected('sleep')">💤 선택 절전</button>
   <button class="btn btn-info" onclick="sendSelected('restart')">🔄 선택 재부팅</button>
+  <button class="btn btn-secondary" onclick="sendSelected('update')" style="background:rgba(255,255,255,0.1)">⬆️ 선택 업데이트</button>
   <div class="sep"></div>
   <button class="btn btn-secondary" onclick="clearOffline()">🗑 오프라인 정리</button>
   <div class="sep"></div>
@@ -569,7 +571,7 @@ function toggleSelect(pcId) {
 }
 
 function sendAll(action) {
-    const labels = {shutdown:'전체 종료',sleep:'전체 절전',restart:'전체 재부팅'};
+    const labels = {shutdown:'전체 종료',sleep:'전체 절전',restart:'전체 재부팅',update:'전체 업데이트'};
     showModal(`${labels[action]} 확인`, `정말 모든 PC를 ${labels[action]}하시겠습니까?`, () => {
         fetch('/api/send_command', {
             method:'POST', headers:{'Content-Type':'application/json'},
@@ -580,7 +582,7 @@ function sendAll(action) {
 
 function sendSelected(action) {
     if (selectedPcs.size === 0) { alert('PC를 먼저 선택해주세요.'); return; }
-    const labels = {shutdown:'종료',sleep:'절전',restart:'재부팅'};
+    const labels = {shutdown:'종료',sleep:'절전',restart:'재부팅',update:'업데이트'};
     showModal(`선택 ${labels[action]} 확인`, `선택된 ${selectedPcs.size}대의 PC를 ${labels[action]}하시겠습니까?`, () => {
         for (const pcId of selectedPcs) {
             fetch('/api/send_command', {
@@ -1224,6 +1226,8 @@ class AutoShutdownAppV2:
                             os.system('rundll32.exe powrprof.dll,SetSuspendState 0,1,0')
                         elif action == 'restart':
                             os.system('shutdown /r /t 0')
+                        elif action == 'update':
+                            threading.Thread(target=self.check_for_updates, kwargs={'silent': True}, daemon=True).start()
                         elif action == 'message' and message:
                             self.root.after(0, lambda m=message: messagebox.showinfo("관리자 메시지", m, parent=self.root))
             except socket.timeout:
@@ -1276,6 +1280,10 @@ class AutoShutdownAppV2:
 
     def http_poller_thread(self):
         while self.is_running:
+            if self.is_server_var.get():
+                time.sleep(3)
+                continue
+                
             central_url = self.central_url_var.get().strip()
             if central_url:
                 try:
@@ -1313,6 +1321,7 @@ class AutoShutdownAppV2:
                             if action == 'shutdown': os.system('shutdown /s /t 0')
                             elif action == 'sleep': os.system('rundll32.exe powrprof.dll,SetSuspendState 0,1,0')
                             elif action == 'restart': os.system('shutdown /r /t 0')
+                            elif action == 'update': threading.Thread(target=self.check_for_updates, kwargs={'silent': True}, daemon=True).start()
                             elif action == 'message' and message:
                                 self.root.after(0, lambda m=message: messagebox.showinfo("관리자 메시지", m, parent=self.root))
                 except Exception:
@@ -1517,7 +1526,7 @@ class AutoShutdownAppV2:
                         if lbl.winfo_exists():
                             lbl.configure(text=f"({subj})" if subj else "")
 
-    def check_for_updates(self):
+    def check_for_updates(self, silent=False):
         try:
             # 캐시 방지를 위해 타임스탬프 추가
             url = f"https://raw.githubusercontent.com/JunHyuk1203/autoshutdown/main/version.json?t={int(time.time())}"
@@ -1528,14 +1537,21 @@ class AutoShutdownAppV2:
                 download_url = data.get("download_url")
                 
             if self._is_newer_version(remote_version, CURRENT_VERSION) and download_url:
-                self.perform_auto_update(download_url)
+                self.perform_auto_update(download_url, is_manual=False, silent=silent)
         except Exception as e:
-            print("업데이트 확인 실패:", e)
+            if not silent:
+                print("업데이트 확인 실패:", e)
 
     def _is_newer_version(self, remote, current):
-        r_parts = [int(x) for x in remote.split('.')]
-        c_parts = [int(x) for x in current.split('.')]
-        return r_parts > c_parts
+        try:
+            r_parts = [int(x) for x in remote.split('.')]
+            c_parts = [int(x) for x in current.split('.')]
+            max_len = max(len(r_parts), len(c_parts))
+            r_parts.extend([0] * (max_len - len(r_parts)))
+            c_parts.extend([0] * (max_len - len(c_parts)))
+            return r_parts > c_parts
+        except Exception:
+            return False
 
     def _show_update_error(self, msg):
         """업데이트 실패 알림 (메인 스레드에서 실행)"""
@@ -1543,7 +1559,7 @@ class AutoShutdownAppV2:
             self.root.after(0, lambda: messagebox.showerror("업데이트 실패", msg, parent=self.root))
         except: pass
 
-    def perform_auto_update(self, download_url, is_manual=False):
+    def perform_auto_update(self, download_url, is_manual=False, silent=False):
         update_exe_path = os.path.join(application_path, "update_temp.exe")
         try:
             # 1. 새 버전 다운로드
@@ -1559,7 +1575,7 @@ class AutoShutdownAppV2:
             
             # 2. 다운로드 무결성 검증 (최소 크기 체크 — 정상 exe는 수 MB 이상)
             if len(data) < 1_000_000:
-                self._show_update_error(f"다운로드된 파일이 너무 작습니다 ({len(data)} bytes).\n네트워크 오류일 수 있습니다. 다시 시도해주세요.")
+                if not silent: self._show_update_error(f"다운로드된 파일이 너무 작습니다 ({len(data)} bytes).\n네트워크 오류일 수 있습니다. 다시 시도해주세요.")
                 return
             
             with open(update_exe_path, 'wb') as out_file:
@@ -1567,7 +1583,7 @@ class AutoShutdownAppV2:
             
             # 디스크에 기록된 파일 크기 재확인
             if os.path.getsize(update_exe_path) != len(data):
-                self._show_update_error("다운로드 파일 저장 중 오류가 발생했습니다.\n디스크 공간을 확인해주세요.")
+                if not silent: self._show_update_error("다운로드 파일 저장 중 오류가 발생했습니다.\n디스크 공간을 확인해주세요.")
                 os.remove(update_exe_path)
                 return
                 
@@ -1596,7 +1612,7 @@ class AutoShutdownAppV2:
                     if os.path.exists(update_exe_path):
                         try: os.remove(update_exe_path)
                         except: pass
-                    self._show_update_error(f"실행 파일 교체에 실패했습니다.\n프로그램이 다른 곳에서 사용 중일 수 있습니다.\n\n오류: {e}")
+                    if not silent: self._show_update_error(f"실행 파일 교체에 실패했습니다.\n프로그램이 다른 곳에서 사용 중일 수 있습니다.\n\n오류: {e}")
                     return  # 교체 실패 시 여기서 중단 (프로그램 종료하지 않음)
                 
                 # 5. 파일 교체 성공 → 새 프로세스 실행
@@ -1626,7 +1642,7 @@ class AutoShutdownAppV2:
             if os.path.exists(update_exe_path):
                 try: os.remove(update_exe_path)
                 except: pass
-            self._show_update_error(f"업데이트 중 오류가 발생했습니다.\n인터넷 연결을 확인해주세요.\n\n오류: {e}")
+            if not silent: self._show_update_error(f"업데이트 중 오류가 발생했습니다.\n인터넷 연결을 확인해주세요.\n\n오류: {e}")
 
     def load_config(self):
         try:
@@ -2086,7 +2102,7 @@ class AutoShutdownAppV2:
 
     def get_tray_server_status(self, item=None):
         if self.is_server_var.get():
-            return "✅ [서버 상태] 메인 서버 가동 중" if self.ngrok_url_var.get() else "🟡 [서버 상태] 서버 준비 중..."
+            return "✅ [서버 상태] 외부망(Ngrok) 연동 완료" if self.ngrok_url_var.get() else "🟡 [서버 상태] 로컬망 전용 (외부망 대기)"
         else:
             return "🔵 [서버 상태] 클라이언트 모드 작동 중"
 
@@ -2104,7 +2120,7 @@ class AutoShutdownAppV2:
             
         if self.is_server_var.get():
             ngrok_url = self.ngrok_url_var.get()
-            status_text = "✅ [메인 서버] 정상 가동 중" if ngrok_url else "🟡 [메인 서버] 준비 중..."
+            status_text = "✅ [메인 서버] 외부 터널 개방됨" if ngrok_url else "🟡 [메인 서버] 로컬망 전용 가동 중"
         else:
             status_text = "🔵 [클라이언트 모드] 연결 대기 중"
             
@@ -2344,7 +2360,10 @@ class AutoShutdownAppV2:
                 self.root.after(0, lambda: self.status_detail_var.set(detail_text))
             except Exception: pass
             
-        if self.icon: self.icon.title = tooltip_text + f"\n{self.get_tray_server_status()}"
+        if self.icon:
+            self.icon.title = tooltip_text + f"\n{self.get_tray_server_status()}"
+            try: self.icon.update_menu()
+            except: pass
 
     def show_toast_popup(self, title, message, duration, action):
         if hasattr(self, 'toast') and self.toast and self.toast.winfo_exists(): return
@@ -2467,7 +2486,8 @@ class AutoShutdownAppV2:
                         target_hm = target_dt.strftime("%H:%M")
                         
                         if current_hm == target_hm and not getattr(self, 'pending_shutdown', False):
-                            if target_dt.strftime("%Y-%m-%d %H:%M") in self.skipped_events:
+                            actual_dt = datetime(now.year, now.month, now.day, target_dt.hour, target_dt.minute)
+                            if actual_dt.strftime("%Y-%m-%d %H:%M") in self.skipped_events:
                                 continue
                                 
                             self.last_triggered_time = current_hm
