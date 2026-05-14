@@ -16,7 +16,7 @@ connected_pcs = {}      # pc_id -> {ip, hostname, last_seen, status, user}
 pending_commands = {}   # pc_id -> {action, ...} 또는 "__ALL__" -> {action, ...}
 data_lock = threading.Lock()
 
-SERVER_PORT = 5000
+SERVER_PORT = 15555
 BROADCAST_PORT = 5555
 OFFLINE_THRESHOLD = 10  # 초 — 이 시간 동안 heartbeat 없으면 오프라인 판정
 

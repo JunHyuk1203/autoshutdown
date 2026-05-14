@@ -35,7 +35,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.32"
+CURRENT_VERSION = "1.1.33"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -97,7 +97,7 @@ log.setLevel(logging.ERROR)
 connected_pcs = {}
 pending_commands = {}
 data_lock = threading.Lock()
-SERVER_PORT = 5000
+SERVER_PORT = 15555
 BROADCAST_PORT = 5555
 OFFLINE_THRESHOLD = 8
 app_instance = None  # AutoShutdownAppV2 인스턴스 참조
@@ -1820,7 +1820,7 @@ class AutoShutdownAppV2:
         def setup_firewall_and_test():
             try:
                 commands = (
-                    "netsh advfirewall firewall add rule name=\"SmartPowerControl_TCP\" dir=in action=allow protocol=TCP localport=5000 & "
+                    "netsh advfirewall firewall add rule name=\"SmartPowerControl_TCP\" dir=in action=allow protocol=TCP localport=15555 & "
                     "netsh advfirewall firewall add rule name=\"SmartPowerControl_UDP\" dir=in action=allow protocol=UDP localport=5555"
                 )
                 ctypes.windll.shell32.ShellExecuteW(None, "runas", "cmd.exe", f"/c {commands}", None, 0)
@@ -1858,6 +1858,49 @@ class AutoShutdownAppV2:
         
         url_lbl = ctk.CTkEntry(ngrok_btn_frame, textvariable=self.ngrok_url_var, state="readonly", width=180, font=ctk.CTkFont(family=self.font_family, size=11))
         url_lbl.pack(side="left", padx=5)
+        
+        def run_server_diagnostics():
+            try:
+                import urllib.request
+                import json
+                
+                msgs = []
+                
+                # 1. 로컬 15555 포트 확인 (Flask)
+                try:
+                    req = urllib.request.Request(f"http://127.0.0.1:{SERVER_PORT}/api/pcs", method='GET')
+                    with urllib.request.urlopen(req, timeout=2) as res:
+                        if res.status == 200:
+                            msgs.append(f"✅ 로컬 서버({SERVER_PORT}포트) 정상 작동 중")
+                        else:
+                            msgs.append(f"❌ 로컬 서버 응답 오류: HTTP {res.status}")
+                except Exception as e:
+                    msgs.append(f"❌ 로컬 서버({SERVER_PORT}포트) 연결 실패\n  (포트 충돌로 서버가 닫혔을 수 있습니다: {e})")
+                    
+                # 2. Ngrok 터널 확인
+                if self.is_server_var.get():
+                    ngrok_url = self.ngrok_url_var.get().strip()
+                    if ngrok_url:
+                        try:
+                            nreq = urllib.request.Request(f"{ngrok_url.rstrip('/')}/api/pcs", method='GET', headers={'ngrok-skip-browser-warning': 'true'})
+                            with urllib.request.urlopen(nreq, timeout=3) as nres:
+                                if nres.status == 200:
+                                    msgs.append(f"✅ 외부 Ngrok 터널 정상 연결됨")
+                                else:
+                                    msgs.append(f"❌ Ngrok 터널 응답 오류: HTTP {nres.status}")
+                        except Exception as e:
+                            msgs.append(f"❌ Ngrok 외부망 연결 실패\n  ({e})")
+                    else:
+                        msgs.append("⚠️ Ngrok 주소가 발급되지 않았습니다.")
+                else:
+                    msgs.append("ℹ️ 이 PC는 메인 서버 모드가 아닙니다.")
+                    
+                messagebox.showinfo("서버 진단 결과", "\n\n".join(msgs), parent=self.settings_win)
+            except Exception as ex:
+                messagebox.showerror("진단 오류", str(ex), parent=self.settings_win)
+
+        ctk.CTkButton(ngrok_btn_frame, text="서버 진단", command=run_server_diagnostics, font=ctk.CTkFont(family=self.font_family, size=11, weight="bold"), width=70, height=24, fg_color="#E67E22", hover_color="#D35400").pack(side="left", padx=5)
+
         
         token_frame = ctk.CTkFrame(ngrok_card, fg_color="transparent")
         token_frame.pack(fill="x", padx=10, pady=(5, 0))
