@@ -396,7 +396,7 @@ if __name__ == '__main__':
     try:
         from pyngrok import ngrok
         # ngrok을 통해 5000 포트를 외부에 노출
-        public_url = ngrok.connect(SERVER_PORT)
+        public_url = ngrok.connect(f"127.0.0.1:{SERVER_PORT}")
         NGROK_URL = public_url.public_url
     except Exception as e:
         NGROK_URL = None

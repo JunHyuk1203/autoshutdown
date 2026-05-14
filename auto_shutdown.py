@@ -35,7 +35,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.30"
+CURRENT_VERSION = "1.1.31"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -1087,7 +1087,7 @@ class AutoShutdownAppV2:
             kwargs = {}
             if domain:
                 kwargs["domain"] = domain
-            url = ngrok.connect(SERVER_PORT, **kwargs).public_url
+            url = ngrok.connect(f"127.0.0.1:{SERVER_PORT}", **kwargs).public_url
             self.ngrok_url_var.set(url)
             
             subprocess.Popen = original_popen
