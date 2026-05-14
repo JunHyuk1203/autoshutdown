@@ -35,7 +35,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.35"
+CURRENT_VERSION = "1.1.36"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -201,7 +201,8 @@ def api_heartbeat():
             'status': data.get('status', 'online'),
             'next_event': data.get('next_event', '-'),
             'last_seen': datetime.now().strftime('%H:%M:%S'),
-            'last_seen_ts': time.time()
+            'last_seen_ts': time.time(),
+            'config': data.get('config', {})
         }
         cmd = pending_commands.pop(pc_id, None)
         pcs_copy = connected_pcs.copy()
@@ -247,6 +248,10 @@ def get_pc_config(pc_id):
         pc = connected_pcs.get(pc_id)
     if not pc:
         return jsonify({'error': 'PC not found'}), 404
+        
+    cfg = pc.get('config', {})
+    if cfg: return jsonify(cfg)
+    
     ip = pc.get('ip', '')
     try:
         url = f'http://{ip}:{SERVER_PORT}/api/config'
@@ -262,17 +267,22 @@ def set_pc_config(pc_id):
         pc = connected_pcs.get(pc_id)
     if not pc:
         return jsonify({'error': 'PC not found'}), 404
-    ip = pc.get('ip', '')
     data = request.get_json(force=True)
-    try:
-        url = f'http://{ip}:{SERVER_PORT}/api/config'
-        payload = json.dumps(data).encode()
-        req = urllib.request.Request(url, data=payload, method='POST',
-                                     headers={'Content-Type': 'application/json', 'User-Agent': 'SmartPower/1.0'})
-        with urllib.request.urlopen(req, timeout=3) as resp:
-            return jsonify(json.loads(resp.read().decode()))
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    ip = pc.get('ip', '')
+    
+    if ip and not ip.startswith('127.'):
+        try:
+            url = f'http://{ip}:{SERVER_PORT}/api/config'
+            payload = json.dumps(data).encode()
+            req = urllib.request.Request(url, data=payload, method='POST', headers={'Content-Type': 'application/json', 'User-Agent': 'SmartPower/1.0'})
+            with urllib.request.urlopen(req, timeout=2) as resp:
+                pass
+        except Exception:
+            pass
+            
+    with data_lock:
+        pending_commands[pc_id] = {'action': 'set_config', 'message': data}
+    return jsonify({'ok': True})
 
 @app.route('/api/search_school', methods=['GET'])
 def search_school_api():
@@ -1228,6 +1238,23 @@ class AutoShutdownAppV2:
                             os.system('shutdown /r /t 0')
                         elif action == 'update':
                             threading.Thread(target=self.check_for_updates, kwargs={'silent': True}, daemon=True).start()
+                        elif action == 'set_config' and isinstance(message, dict):
+                            try:
+                                current = {}
+                                if os.path.exists(CONFIG_FILE):
+                                    with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                                        current = json.load(f)
+                                for k, v in message.items():
+                                    if isinstance(v, dict) and k in current and isinstance(current[k], dict):
+                                        current[k].update(v)
+                                    else:
+                                        current[k] = v
+                                with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+                                    json.dump(current, f, ensure_ascii=False, indent=4)
+                                global app_instance
+                                if app_instance:
+                                    app_instance.root.after(0, lambda d=message: app_instance.reload_config_from_web(d))
+                            except: pass
                         elif action == 'message' and message:
                             self.root.after(0, lambda m=message: messagebox.showinfo("관리자 메시지", m, parent=self.root))
             except socket.timeout:
@@ -1292,12 +1319,18 @@ class AutoShutdownAppV2:
                     next_time, next_action = self.get_next_event()
                     next_str = next_time.strftime('%H:%M') if next_time and next_time != "skip" else ("오늘 안 함" if next_time == "skip" else "없음")
                     
+                    try:
+                        with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                            current_cfg = json.load(f)
+                    except: current_cfg = {}
+                    
                     payload = json.dumps({
                         'pc_id': pc_id,
                         'hostname': pc_id,
                         'user': os.getlogin(),
                         'status': 'online',
-                        'next_event': f"{next_str} [{next_action}]" if next_time and next_time != "skip" else next_str
+                        'next_event': f"{next_str} [{next_action}]" if next_time and next_time != "skip" else next_str,
+                        'config': current_cfg
                     }).encode('utf-8')
                     
                     url = f"{central_url.rstrip('/')}/api/heartbeat"
@@ -1322,6 +1355,22 @@ class AutoShutdownAppV2:
                             elif action == 'sleep': os.system('rundll32.exe powrprof.dll,SetSuspendState 0,1,0')
                             elif action == 'restart': os.system('shutdown /r /t 0')
                             elif action == 'update': threading.Thread(target=self.check_for_updates, kwargs={'silent': True}, daemon=True).start()
+                            elif action == 'set_config' and isinstance(message, dict):
+                                try:
+                                    current = {}
+                                    if os.path.exists(CONFIG_FILE):
+                                        with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                                            current = json.load(f)
+                                    for k, v in message.items():
+                                        if isinstance(v, dict) and k in current and isinstance(current[k], dict):
+                                            current[k].update(v)
+                                        else:
+                                            current[k] = v
+                                    with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+                                        json.dump(current, f, ensure_ascii=False, indent=4)
+                                    if app_instance:
+                                        app_instance.root.after(0, lambda d=message: app_instance.reload_config_from_web(d))
+                                except: pass
                             elif action == 'message' and message:
                                 self.root.after(0, lambda m=message: messagebox.showinfo("관리자 메시지", m, parent=self.root))
                 except Exception:
