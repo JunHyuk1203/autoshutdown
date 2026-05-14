@@ -35,7 +35,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.28"
+CURRENT_VERSION = "1.1.29"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -226,7 +226,13 @@ def update_config():
         if os.path.exists(CONFIG_FILE):
             with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
                 current = json.load(f)
-        current.update(data)
+                
+        for k, v in data.items():
+            if isinstance(v, dict) and k in current and isinstance(current[k], dict):
+                current[k].update(v)
+            else:
+                current[k] = v
+                
         with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
             json.dump(current, f, ensure_ascii=False, indent=4)
         if app_instance:
@@ -525,8 +531,12 @@ function renderPCs() {
     for (const pc of pcs) {
         const isOnline = pc.status === 'online';
         const isSelected = selectedPcs.has(pc.pc_id);
+        const gearBtn = isOnline 
+            ? `<button class="pc-gear-btn" onclick="openPcSettings('${pc.pc_id}','${pc.hostname||pc.pc_id}');event.stopPropagation()">⚙️</button>`
+            : `<button class="pc-gear-btn" style="opacity:0.4;cursor:not-allowed;" onclick="alert('오프라인 상태의 PC는 설정에 접근할 수 없습니다. (동기화 불가)');event.stopPropagation()">⚙️</button>`;
+
         html += `<div class="pc-card ${isOnline?'online':'offline'} ${isSelected?'selected':''}" onclick="toggleSelect('${pc.pc_id}')" style="position:relative">
-            <button class="pc-gear-btn" onclick="openPcSettings('${pc.pc_id}','${pc.hostname||pc.pc_id}');event.stopPropagation()">⚙️</button>
+            ${gearBtn}
             <div class="pc-check">${isSelected?'✓':''}</div>
             <div class="status-row">
                 <span class="dot ${isOnline?'online':'offline'}"></span>
@@ -691,6 +701,11 @@ let currentPcId = null;
 let currentPcCfg = {};
 
 async function openPcSettings(pcId, hostname) {
+    const pc = pcs.find(p => p.pc_id === pcId);
+    if (pc && pc.status !== 'online') {
+        alert('오프라인 상태의 PC는 설정에 접근할 수 없습니다. (동기화 불가)');
+        return;
+    }
     currentPcId = pcId;
     document.getElementById('pc-modal-title').textContent = `⚙️ ${hostname} 설정`;
     document.getElementById('pc-settings-overlay').classList.add('show');
@@ -940,6 +955,8 @@ class AutoShutdownAppV2:
         self.ngrok_domain_var = ctk.StringVar(value=domain_val)
         self.ngrok_url_var = ctk.StringVar()
         
+        self.is_server_var = ctk.BooleanVar(value=self.config.get("is_server", False))
+        
         for day in DAYS:
             for class_name in TIMETABLE.keys():
                 class_config = self.config.get(day, {}).get(class_name, {})
@@ -1029,7 +1046,16 @@ class AutoShutdownAppV2:
         threading.Thread(target=self.p2p_broadcaster_thread, daemon=True).start()
         threading.Thread(target=self.flask_server_thread, daemon=True).start()
         threading.Thread(target=self.http_poller_thread, daemon=True).start()
-        threading.Thread(target=self.start_ngrok_background, daemon=True).start()
+        
+        if self.is_server_var.get():
+            threading.Thread(target=self.start_ngrok_background, daemon=True).start()
+            
+        today = datetime.today()
+        monday_str = (today - timedelta(days=today.weekday())).strftime("%Y%m%d")
+        if self.school_info and monday_str not in self.timetable_cache:
+            threading.Thread(target=self.update_timetable_background, daemon=True).start()
+        else:
+            self.root.after(0, self.update_timetable_ui)
         
     def start_ngrok_background(self):
         try:
@@ -1063,13 +1089,21 @@ class AutoShutdownAppV2:
             try: subprocess.Popen = original_popen
             except: pass
             self.root.after(1000, lambda: messagebox.showerror("Ngrok 실행 실패", f"Ngrok 중앙 서버를 여는 데 실패했습니다.\n\n{e}\n\n상세 설정에서 Auth Token을 올바르게 입력했는지 확인하세요.", parent=self.root))
-        
-        today = datetime.today()
-        monday_str = (today - timedelta(days=today.weekday())).strftime("%Y%m%d")
-        if self.school_info and monday_str not in self.timetable_cache:
-            threading.Thread(target=self.update_timetable_background, daemon=True).start()
+
+    def stop_ngrok(self):
+        try:
+            from pyngrok import ngrok
+            ngrok.kill()
+            self.ngrok_url_var.set("")
+        except:
+            pass
+
+    def toggle_server_mode(self):
+        self.save_config()
+        if self.is_server_var.get():
+            threading.Thread(target=self.start_ngrok_background, daemon=True).start()
         else:
-            self.update_timetable_ui()
+            self.stop_ngrok()
 
     def reload_config_from_web(self, data):
         """Flask API에서 설정 변경 시 tkinter 변수 업데이트"""
@@ -1567,7 +1601,24 @@ class AutoShutdownAppV2:
         try:
             if os.path.exists(CONFIG_FILE):
                 with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
-                    return json.load(f)
+                    config = json.load(f)
+                    
+                    # 마이그레이션: 이전 버전의 "1교시" 키를 "1교시 (08:40)" 등으로 변환
+                    for day in DAYS:
+                        if day in config and isinstance(config[day], dict):
+                            new_day_config = {}
+                            for old_key, val in config[day].items():
+                                matched = False
+                                for new_key in TIMETABLE.keys():
+                                    if old_key.split(' ')[0] == new_key.split(' ')[0]:
+                                        new_day_config[new_key] = val
+                                        matched = True
+                                        break
+                                if not matched:
+                                    new_day_config[old_key] = val
+                            config[day] = new_day_config
+                    
+                    return config
         except Exception: pass
         return {}
 
@@ -1588,6 +1639,7 @@ class AutoShutdownAppV2:
                 "central_server_url": self.central_url_var.get().strip(),
                 "ngrok_token": self.ngrok_token_var.get().strip(),
                 "ngrok_domain": self.ngrok_domain_var.get().strip(),
+                "is_server": self.is_server_var.get(),
                 "school_info": getattr(self, 'school_info', {}),
                 "timetable_cache": getattr(self, 'timetable_cache', {}),
                 "meal_cache": getattr(self, 'meal_cache', {})
@@ -1761,7 +1813,11 @@ class AutoShutdownAppV2:
         ngrok_card.pack(fill="x", pady=5, ipady=5)
         ctk.CTkLabel(ngrok_card, text="🌐 원격 중앙 제어 (방화벽 무시)", font=ctk.CTkFont(family=self.font_family, size=12, weight="bold")).pack(pady=(8, 2))
         
-        ngrok_desc = "백그라운드에서 Ngrok 중앙 서버가 자동으로 실행 중입니다.\n스마트폰 등 외부 기기에서 브라우저에 아래 주소를 입력하세요."
+        mode_frame = ctk.CTkFrame(ngrok_card, fg_color="transparent")
+        mode_frame.pack(fill="x", padx=10, pady=(5,0))
+        ctk.CTkSwitch(mode_frame, text="이 PC를 메인 서버로 사용 (Ngrok 실행)", variable=self.is_server_var, font=ctk.CTkFont(family=self.font_family, size=11, weight="bold"), command=self.toggle_server_mode).pack(side="left", padx=5)
+        
+        ngrok_desc = "메인 서버로 설정된 PC 1대에서만 Ngrok을 실행해야 충돌이 발생하지 않습니다.\n나머지 PC는 하단에 중앙 서버 주소만 입력하세요."
         ctk.CTkLabel(ngrok_card, text=ngrok_desc, font=ctk.CTkFont(family=self.font_family, size=10), text_color="gray").pack(pady=2)
 
         ngrok_btn_frame = ctk.CTkFrame(ngrok_card, fg_color="transparent")
