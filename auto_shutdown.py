@@ -35,7 +35,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.37"
+CURRENT_VERSION = "1.1.38"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -1127,7 +1127,8 @@ class AutoShutdownAppV2:
                             os.system("taskkill /f /im ngrok.exe >nul 2>&1")
                         except: pass
                     else:
-                        self.root.after(1000, lambda msg=err_msg: messagebox.showerror("Ngrok 실행 실패", f"Ngrok 중앙 서버를 여는 데 실패했습니다.\n\n이전 메인 PC의 연결이 아직 끊어지지 않았거나 인증키 문제입니다.\n\n{msg}", parent=self.root))
+                        if getattr(self, 'auto_leader', False):
+                            self.demote_from_leader()
 
         threading.Thread(target=_run, daemon=True).start()
 
@@ -1395,6 +1396,8 @@ class AutoShutdownAppV2:
                     with urllib.request.urlopen(req, timeout=2) as res:
                         resp_data = json.loads(res.read().decode('utf-8'))
                         
+                        self.last_leader_seen_ts = time.time()
+                        
                         remote_pcs = resp_data.get("pcs", {})
                         if remote_pcs:
                             now_ts = time.time()
@@ -1469,7 +1472,6 @@ class AutoShutdownAppV2:
                     msg = data["RESULT"]["MESSAGE"]
                     if code == "ERROR-290":
                         if getattr(self, 'api_key_error_shown', False) is False:
-                            self.root.after(0, lambda: messagebox.showwarning("API 키 오류", f"나이스 API 키에 문제가 있습니다.\n(오류코드: {code})\n\n{msg}\n\n※ 인증키를 방금 발급받았다면 1~2시간 뒤에 활성화될 수 있습니다.\n임시로 5교시까지만 불러옵니다.", parent=self.root))
                             self.api_key_error_shown = True
                     api_key = "" # Fallback to no-key logic
             except Exception as e:
@@ -1661,9 +1663,7 @@ class AutoShutdownAppV2:
 
     def _show_update_error(self, msg):
         """업데이트 실패 알림 (메인 스레드에서 실행)"""
-        try:
-            self.root.after(0, lambda: messagebox.showerror("업데이트 실패", msg, parent=self.root))
-        except: pass
+        pass
 
     def perform_auto_update(self, download_url, is_manual=False, silent=False):
         update_exe_path = os.path.join(application_path, "update_temp.exe")
@@ -2019,7 +2019,7 @@ class AutoShutdownAppV2:
                     
                 messagebox.showinfo("서버 진단 결과", "\n\n".join(msgs), parent=self.settings_win)
             except Exception as ex:
-                messagebox.showerror("진단 오류", str(ex), parent=self.settings_win)
+                pass
 
         ctk.CTkButton(ngrok_btn_frame, text="서버 진단", command=run_server_diagnostics, font=ctk.CTkFont(family=self.font_family, size=11, weight="bold"), width=70, height=24, fg_color="#E67E22", hover_color="#D35400").pack(side="left", padx=5)
 
@@ -2202,9 +2202,9 @@ class AutoShutdownAppV2:
                 if messagebox.askyesno("업데이트 확인", f"현재 최신 버전(v{CURRENT_VERSION})을 사용 중입니다.\n강제로 최신 버전을 다시 다운로드하여 재설치하시겠습니까?", parent=getattr(self, 'settings_win', self.root)):
                     self.perform_auto_update(download_url, is_manual=True)
             else:
-                messagebox.showinfo("업데이트 오류", "다운로드 링크를 찾을 수 없습니다.", parent=getattr(self, 'settings_win', self.root))
+                pass
         except Exception as e:
-            messagebox.showerror("업데이트 오류", f"서버와 통신 중 오류가 발생했습니다.\n인터넷 연결 상태를 확인해 주세요.\n{e}", parent=getattr(self, 'settings_win', self.root))
+            pass
 
     def get_tray_server_status(self, item=None):
         if getattr(self, 'is_leader', False):
@@ -2618,8 +2618,6 @@ if __name__ == "__main__":
     mutex_name = "Global\\AutoShutdownAppV2_Mutex"
     mutex = ctypes.windll.kernel32.CreateMutexW(None, False, mutex_name)
     if ctypes.windll.kernel32.GetLastError() == 183:
-        import tkinter.messagebox
-        tkinter.messagebox.showinfo("알림", "프로그램이 이미 실행 중입니다.\n작업 표시줄 우측 하단의 숨겨진 아이콘(^)을 확인해주세요.")
         sys.exit(0)
 
     root = ctk.CTk()
