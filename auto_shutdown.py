@@ -35,7 +35,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.38"
+CURRENT_VERSION = "1.1.39"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -990,8 +990,14 @@ class AutoShutdownAppV2:
         self.autostart_var.trace_add('write', self.save_config_callback)
         self.minutes_var.trace_add('write', self.save_config_callback)
         
-        self.dash_frame = ctk.CTkFrame(self.root, fg_color="transparent")
-        self.dash_frame.pack(fill="both", expand=True, padx=15, pady=15)
+        self.main_tabview = ctk.CTkTabview(self.root)
+        self.main_tabview.pack(fill="both", expand=True, padx=10, pady=5)
+        
+        self.dash_frame = self.main_tabview.add("메인 화면")
+        self.alert_frame = self.main_tabview.add("시스템 알림")
+        
+        self.alert_textbox = ctk.CTkTextbox(self.alert_frame, font=ctk.CTkFont(family=self.font_family, size=11), state="disabled")
+        self.alert_textbox.pack(fill="both", expand=True, padx=10, pady=10)
         
         title_lbl = ctk.CTkLabel(self.dash_frame, text=f"스마트 전원 관리자 (v{CURRENT_VERSION})", font=ctk.CTkFont(family=self.font_family, size=16, weight="bold"))
         title_lbl.pack(pady=(0, 5))
@@ -1052,6 +1058,7 @@ class AutoShutdownAppV2:
         self.is_leader = self.is_server_var.get()
         self.auto_leader = False
         self.last_leader_seen_ts = time.time()
+        self.last_ngrok_error = ""
         
         global app_instance
         app_instance = self
@@ -1075,13 +1082,22 @@ class AutoShutdownAppV2:
         else:
             self.root.after(0, self.update_timetable_ui)
         
+    def add_system_alert(self, message):
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        try:
+            self.alert_textbox.configure(state="normal")
+            self.alert_textbox.insert("0.0", f"[{timestamp}] {message}\n\n")
+            self.alert_textbox.configure(state="disabled")
+        except:
+            pass
+
     def start_ngrok_background(self):
         def _run():
             try:
                 os.system("taskkill /f /im ngrok.exe >nul 2>&1")
             except: pass
             
-            for attempt in range(6):
+            for attempt in range(30):
                 try:
                     import subprocess
                     original_popen = subprocess.Popen
@@ -1113,15 +1129,23 @@ class AutoShutdownAppV2:
                         kwargs["domain"] = domain
                     url = ngrok.connect(f"127.0.0.1:{SERVER_PORT}", **kwargs).public_url
                     self.ngrok_url_var.set(url)
+                    self.last_ngrok_error = ""
                     
                     subprocess.Popen = original_popen
                     self.root.after(0, self.update_status_info)
+                    
+                    self.root.after(0, lambda: self.add_system_alert("✅ Ngrok 터널이 정상적으로 열렸습니다!"))
+                    
                     return
                 except Exception as e:
                     try: subprocess.Popen = original_popen
                     except: pass
                     err_msg = str(e)
-                    if attempt < 5:
+                    self.last_ngrok_error = err_msg
+                    
+                    self.root.after(0, lambda m=f"Ngrok 연결 실패 ({attempt+1}/30): {err_msg}": self.add_system_alert(m))
+                    
+                    if attempt < 29:
                         time.sleep(5)
                         try:
                             os.system("taskkill /f /im ngrok.exe >nul 2>&1")
@@ -2013,7 +2037,11 @@ class AutoShutdownAppV2:
                         except Exception as e:
                             msgs.append(f"❌ Ngrok 외부망 연결 실패\n  ({e})")
                     else:
-                        msgs.append("⚠️ Ngrok 주소가 발급되지 않았습니다.")
+                        error_str = getattr(self, 'last_ngrok_error', '')
+                        if error_str:
+                            msgs.append(f"⚠️ Ngrok 주소가 발급되지 않았습니다.\n(최근 에러: {error_str})")
+                        else:
+                            msgs.append("⚠️ Ngrok 주소가 발급되지 않았습니다. (할당 중이거나 오류)")
                 else:
                     msgs.append("ℹ️ 이 PC는 현재 클라이언트 모드입니다. (메인 서버가 꺼지면 자동으로 이어받음)")
                     
@@ -2243,6 +2271,14 @@ class AutoShutdownAppV2:
             pystray.MenuItem('열기 (대시보드)', self.show_window)
         ]
         menu_items.append(pystray.MenuItem('❌ 대기열에 있는 제어 강제 취소', self.cancel_shutdown, visible=lambda item: getattr(self, 'pending_shutdown', False)))
+        
+        ngrok_err = getattr(self, 'last_ngrok_error', '')
+        if ngrok_err:
+            short_err = ngrok_err.replace('\n', ' ')[:40]
+            menu_items.append(pystray.Menu.SEPARATOR)
+            menu_items.append(pystray.MenuItem(f"⚠️ 최근 에러: {short_err}...", lambda icon, item: None))
+            
+        menu_items.append(pystray.Menu.SEPARATOR)
         menu_items.append(pystray.MenuItem('종료', self.quit_app))
         return tuple(menu_items)
 
