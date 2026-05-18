@@ -35,7 +35,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.36"
+CURRENT_VERSION = "1.1.37"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -1049,6 +1049,10 @@ class AutoShutdownAppV2:
         self.pending_action = "시스템 종료"
         self.last_media_time = 0
         
+        self.is_leader = self.is_server_var.get()
+        self.auto_leader = False
+        self.last_leader_seen_ts = time.time()
+        
         global app_instance
         app_instance = self
         
@@ -1059,8 +1063,8 @@ class AutoShutdownAppV2:
         threading.Thread(target=self.flask_server_thread, daemon=True).start()
         threading.Thread(target=self.http_poller_thread, daemon=True).start()
         
-        if self.is_server_var.get():
-            threading.Thread(target=self.start_ngrok_background, daemon=True).start()
+        if self.is_leader:
+            self.start_ngrok_background()
         else:
             self.stop_ngrok()
             
@@ -1072,46 +1076,71 @@ class AutoShutdownAppV2:
             self.root.after(0, self.update_timetable_ui)
         
     def start_ngrok_background(self):
-        try:
-            os.system("taskkill /f /im ngrok.exe >nul 2>&1")
-        except: pass
-        try:
-            import subprocess
-            original_popen = subprocess.Popen
-            
-            def patched_popen(*args, **kwargs):
-                if 'startupinfo' not in kwargs:
-                    startupinfo = subprocess.STARTUPINFO()
-                    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                    startupinfo.wShowWindow = subprocess.SW_HIDE
-                    kwargs['startupinfo'] = startupinfo
-                kwargs['creationflags'] = kwargs.get('creationflags', 0) | subprocess.CREATE_NO_WINDOW
-                return original_popen(*args, **kwargs)
-                
-            subprocess.Popen = patched_popen
-            
-            from pyngrok import ngrok, conf
-            if getattr(sys, 'frozen', False):
-                # PyInstaller 환경일 경우 내장된 ngrok.exe 사용
-                bundled_ngrok = os.path.join(sys._MEIPASS, "ngrok.exe")
-                if os.path.exists(bundled_ngrok):
-                    conf.get_default().ngrok_path = bundled_ngrok
-
-            token = self.ngrok_token_var.get().strip()
-            domain = self.ngrok_domain_var.get().strip()
-            if token:
-                conf.get_default().auth_token = token
-            kwargs = {}
-            if domain:
-                kwargs["domain"] = domain
-            url = ngrok.connect(f"127.0.0.1:{SERVER_PORT}", **kwargs).public_url
-            self.ngrok_url_var.set(url)
-            
-            subprocess.Popen = original_popen
-        except Exception as e:
-            try: subprocess.Popen = original_popen
+        def _run():
+            try:
+                os.system("taskkill /f /im ngrok.exe >nul 2>&1")
             except: pass
-            self.root.after(1000, lambda: messagebox.showerror("Ngrok 실행 실패", f"Ngrok 중앙 서버를 여는 데 실패했습니다.\n\n{e}\n\n상세 설정에서 Auth Token을 올바르게 입력했는지 확인하세요.", parent=self.root))
+            
+            for attempt in range(6):
+                try:
+                    import subprocess
+                    original_popen = subprocess.Popen
+                    
+                    def patched_popen(*args, **kwargs):
+                        if 'startupinfo' not in kwargs:
+                            startupinfo = subprocess.STARTUPINFO()
+                            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                            startupinfo.wShowWindow = subprocess.SW_HIDE
+                            kwargs['startupinfo'] = startupinfo
+                        kwargs['creationflags'] = kwargs.get('creationflags', 0) | subprocess.CREATE_NO_WINDOW
+                        return original_popen(*args, **kwargs)
+                        
+                    subprocess.Popen = patched_popen
+                    
+                    from pyngrok import ngrok, conf
+                    if getattr(sys, 'frozen', False):
+                        # PyInstaller 환경일 경우 내장된 ngrok.exe 사용
+                        bundled_ngrok = os.path.join(sys._MEIPASS, "ngrok.exe")
+                        if os.path.exists(bundled_ngrok):
+                            conf.get_default().ngrok_path = bundled_ngrok
+
+                    token = self.ngrok_token_var.get().strip()
+                    domain = self.ngrok_domain_var.get().strip()
+                    if token:
+                        conf.get_default().auth_token = token
+                    kwargs = {}
+                    if domain:
+                        kwargs["domain"] = domain
+                    url = ngrok.connect(f"127.0.0.1:{SERVER_PORT}", **kwargs).public_url
+                    self.ngrok_url_var.set(url)
+                    
+                    subprocess.Popen = original_popen
+                    self.root.after(0, self.update_status_info)
+                    return
+                except Exception as e:
+                    try: subprocess.Popen = original_popen
+                    except: pass
+                    err_msg = str(e)
+                    if attempt < 5:
+                        time.sleep(5)
+                        try:
+                            os.system("taskkill /f /im ngrok.exe >nul 2>&1")
+                        except: pass
+                    else:
+                        self.root.after(1000, lambda msg=err_msg: messagebox.showerror("Ngrok 실행 실패", f"Ngrok 중앙 서버를 여는 데 실패했습니다.\n\n이전 메인 PC의 연결이 아직 끊어지지 않았거나 인증키 문제입니다.\n\n{msg}", parent=self.root))
+
+        threading.Thread(target=_run, daemon=True).start()
+
+    def promote_to_leader(self):
+        self.auto_leader = True
+        self.last_leader_seen_ts = time.time()
+        self.start_ngrok_background()
+
+    def demote_from_leader(self):
+        if self.auto_leader:
+            self.auto_leader = False
+            self.stop_ngrok()
+            self.root.after(0, self.update_status_info)
 
     def stop_ngrok(self):
         try:
@@ -1129,11 +1158,14 @@ class AutoShutdownAppV2:
             pass
 
     def toggle_server_mode(self):
+        self.is_leader = self.is_server_var.get()
         self.save_config()
-        if self.is_server_var.get():
-            threading.Thread(target=self.start_ngrok_background, daemon=True).start()
+        if self.is_leader:
+            self.auto_leader = False
+            self.start_ngrok_background()
         else:
             self.stop_ngrok()
+            self.root.after(0, self.update_status_info)
 
     def reload_config_from_web(self, data):
         """Flask API에서 설정 변경 시 tkinter 변수 업데이트"""
@@ -1214,6 +1246,16 @@ class AutoShutdownAppV2:
                 if msg_type == 'HEARTBEAT':
                     pc_id = payload.get('pc_id')
                     if pc_id:
+                        is_leader = payload.get('is_leader', False)
+                        real_leader = payload.get('real_leader', False)
+                        
+                        my_id = socket.gethostname()
+                        if is_leader and pc_id != my_id:
+                            self.last_leader_seen_ts = time.time()
+                            if getattr(self, 'auto_leader', False):
+                                if real_leader or pc_id < my_id:
+                                    self.demote_from_leader()
+                                    
                         with data_lock:
                             connected_pcs[pc_id] = {
                                 'ip': payload.get('ip', addr[0]),
@@ -1276,7 +1318,9 @@ class AutoShutdownAppV2:
             'hostname': pc_id,
             'user': user,
             'status': 'online',
-            'next_event': f"{next_str} [{next_action}]" if next_time and next_time != "skip" else next_str
+            'next_event': f"{next_str} [{next_action}]" if next_time and next_time != "skip" else next_str,
+            'is_leader': getattr(self, 'is_leader', False) or getattr(self, 'auto_leader', False),
+            'real_leader': getattr(self, 'is_leader', False)
         })
         
         # 나 자신을 직접 등록 (UDP 루프백 실패 대비 및 로컬 IP 유지)
@@ -1302,12 +1346,25 @@ class AutoShutdownAppV2:
                     if now_ts - info.get('last_seen_ts', 0) > OFFLINE_THRESHOLD:
                         info['status'] = 'offline'
 
+            # Leader Election
+            if not getattr(self, 'is_leader', False):
+                if now_ts - getattr(self, 'last_leader_seen_ts', now_ts) > 15:
+                    my_id = socket.gethostname()
+                    online_ids = [my_id]
+                    with data_lock:
+                        for pid, pinfo in connected_pcs.items():
+                            if pinfo.get('status') == 'online':
+                                online_ids.append(pid)
+                    online_ids.sort()
+                    if online_ids[0] == my_id and not getattr(self, 'auto_leader', False):
+                        self.promote_to_leader()
+
             self.send_heartbeat_now()
             time.sleep(2)
 
     def http_poller_thread(self):
         while self.is_running:
-            if self.is_server_var.get():
+            if getattr(self, 'is_leader', False) or getattr(self, 'auto_leader', False):
                 time.sleep(3)
                 continue
                 
@@ -1911,9 +1968,9 @@ class AutoShutdownAppV2:
         
         mode_frame = ctk.CTkFrame(ngrok_card, fg_color="transparent")
         mode_frame.pack(fill="x", padx=10, pady=(5,0))
-        ctk.CTkSwitch(mode_frame, text="이 PC를 메인 서버로 사용 (Ngrok 실행)", variable=self.is_server_var, font=ctk.CTkFont(family=self.font_family, size=11, weight="bold"), command=self.toggle_server_mode).pack(side="left", padx=5)
+        ctk.CTkSwitch(mode_frame, text="이 PC를 고정 메인 서버로 지정 (강제 Ngrok 실행)", variable=self.is_server_var, font=ctk.CTkFont(family=self.font_family, size=11, weight="bold"), command=self.toggle_server_mode).pack(side="left", padx=5)
         
-        ngrok_desc = "메인 서버로 설정된 PC 1대에서만 Ngrok을 실행해야 충돌이 발생하지 않습니다.\n나머지 PC는 하단에 중앙 서버 주소만 입력하세요."
+        ngrok_desc = "체크 해제 시 켜져 있는 PC 중 1대가 자동으로 서버 역할을 넘겨받습니다.\n고정 서버가 필요한 경우에만 1대의 PC에서 체크하세요."
         ctk.CTkLabel(ngrok_card, text=ngrok_desc, font=ctk.CTkFont(family=self.font_family, size=10), text_color="gray").pack(pady=2)
 
         ngrok_btn_frame = ctk.CTkFrame(ngrok_card, fg_color="transparent")
@@ -1943,7 +2000,7 @@ class AutoShutdownAppV2:
                     msgs.append(f"❌ 로컬 서버({SERVER_PORT}포트) 연결 실패\n  (포트 충돌로 서버가 닫혔을 수 있습니다: {e})")
                     
                 # 2. Ngrok 터널 확인
-                if self.is_server_var.get():
+                if getattr(self, 'is_leader', False) or getattr(self, 'auto_leader', False):
                     ngrok_url = self.ngrok_url_var.get().strip()
                     if ngrok_url:
                         try:
@@ -1958,7 +2015,7 @@ class AutoShutdownAppV2:
                     else:
                         msgs.append("⚠️ Ngrok 주소가 발급되지 않았습니다.")
                 else:
-                    msgs.append("ℹ️ 이 PC는 메인 서버 모드가 아닙니다.")
+                    msgs.append("ℹ️ 이 PC는 현재 클라이언트 모드입니다. (메인 서버가 꺼지면 자동으로 이어받음)")
                     
                 messagebox.showinfo("서버 진단 결과", "\n\n".join(msgs), parent=self.settings_win)
             except Exception as ex:
@@ -2150,10 +2207,12 @@ class AutoShutdownAppV2:
             messagebox.showerror("업데이트 오류", f"서버와 통신 중 오류가 발생했습니다.\n인터넷 연결 상태를 확인해 주세요.\n{e}", parent=getattr(self, 'settings_win', self.root))
 
     def get_tray_server_status(self, item=None):
-        if self.is_server_var.get():
-            return "✅ [서버 상태] 외부망(Ngrok) 연동 완료" if self.ngrok_url_var.get() else "🟡 [서버 상태] 로컬망 전용 (외부망 대기)"
+        if getattr(self, 'is_leader', False):
+            return "✅ [고정 서버] 외부망(Ngrok) 연동 완료" if self.ngrok_url_var.get() else "🟡 [고정 서버] 외부망 연결 대기 중"
+        elif getattr(self, 'auto_leader', False):
+            return "✅ [자동 서버] 이 PC가 메인 서버로 작동 중" if self.ngrok_url_var.get() else "🟡 [자동 서버] 외부망 연결 대기 중"
         else:
-            return "🔵 [서버 상태] 클라이언트 모드 작동 중"
+            return "🔵 [클라이언트] 연결 대기 중 (자동 페일오버 지원)"
 
     def cancel_shutdown(self, icon=None, item=None):
         self.pending_shutdown = False
@@ -2167,11 +2226,14 @@ class AutoShutdownAppV2:
             import webbrowser
             webbrowser.open(remote_url)
             
-        if self.is_server_var.get():
+        if getattr(self, 'is_leader', False):
             ngrok_url = self.ngrok_url_var.get()
-            status_text = "✅ [메인 서버] 외부 터널 개방됨" if ngrok_url else "🟡 [메인 서버] 로컬망 전용 가동 중"
+            status_text = "✅ [고정 메인 서버] 외부 터널 개방됨" if ngrok_url else "🟡 [고정 메인 서버] 연결 중..."
+        elif getattr(self, 'auto_leader', False):
+            ngrok_url = self.ngrok_url_var.get()
+            status_text = "✅ [자동 메인 서버] 외부 터널 개방됨" if ngrok_url else "🟡 [자동 메인 서버] 연결 중..."
         else:
-            status_text = "🔵 [클라이언트 모드] 연결 대기 중"
+            status_text = "🔵 [클라이언트 모드] 대기 중"
             
         menu_items = [
             pystray.MenuItem(status_text, lambda icon, item: None),
