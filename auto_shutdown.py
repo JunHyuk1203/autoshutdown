@@ -35,7 +35,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.46"
+CURRENT_VERSION = "1.1.47"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -2511,17 +2511,57 @@ class AutoShutdownAppV2:
         os.makedirs(on_folder, exist_ok=True)
         
         launched = 0
+        RUNNABLE_EXTS = ('.exe', '.lnk', '.bat', '.cmd', '.vbs')
+        # 우선순위: exe > lnk > bat > cmd > vbs (같은 stem이면 1개만 실행)
+        EXT_PRIORITY = {'.exe': 0, '.lnk': 1, '.bat': 2, '.cmd': 3, '.vbs': 4}
+        
         try:
+            # 이미 실행 중인 프로세스 목록 수집
+            running_procs = set()
+            try:
+                tl = subprocess.run(
+                    ['tasklist', '/fo', 'csv', '/nh'],
+                    capture_output=True, text=True,
+                    creationflags=subprocess.CREATE_NO_WINDOW
+                )
+                for line in tl.stdout.strip().split('\n'):
+                    line = line.strip()
+                    if not line: continue
+                    parts = line.strip('"').split('","')
+                    if parts:
+                        running_procs.add(parts[0].strip('"').lower())
+            except Exception:
+                pass
+            
+            # on 폴더 파일 목록을 stem 기준으로 중복 제거 (우선순위 높은 것만 실행)
+            stem_map = {}  # stem(소문자) -> (priority, filename)
             for f in os.listdir(on_folder):
-                if f.lower().endswith('.exe'):
-                    try:
-                        subprocess.Popen(
-                            os.path.join(on_folder, f),
-                            cwd=on_folder
-                        )
-                        launched += 1
-                    except Exception as e:
-                        self.root.after(0, lambda m=f"{f}: {e}": self.add_system_alert(f"⚠️ 실행 실패 - {m}"))
+                ext = os.path.splitext(f)[1].lower()
+                stem = os.path.splitext(f)[0].lower()
+                if ext not in EXT_PRIORITY:
+                    continue
+                pri = EXT_PRIORITY[ext]
+                if stem not in stem_map or pri < stem_map[stem][0]:
+                    stem_map[stem] = (pri, f)
+            
+            for stem, (pri, f) in stem_map.items():
+                ext = os.path.splitext(f)[1].lower()
+                # .exe의 경우 이미 실행 중이면 건너뜀
+                if ext == '.exe' and f.lower() in running_procs:
+                    self.root.after(0, lambda m=f: self.add_system_alert(f"⏭️ 이미 실행 중 (건너뜀): {m}"))
+                    continue
+                try:
+                    full_path = os.path.join(on_folder, f)
+                    subprocess.Popen(
+                        full_path,
+                        cwd=on_folder,
+                        shell=True,
+                        creationflags=subprocess.CREATE_NO_WINDOW
+                    )
+                    launched += 1
+                    time.sleep(0.3)  # 연속 실행 방지용 짧은 딜레이
+                except Exception as e:
+                    self.root.after(0, lambda m=f"{f}: {e}": self.add_system_alert(f"⚠️ 실행 실패 - {m}"))
         except Exception as e:
             self.root.after(0, lambda m=str(e): self.add_system_alert(f"⚠️ on 폴더 오류: {m}"))
         
