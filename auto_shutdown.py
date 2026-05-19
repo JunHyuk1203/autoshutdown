@@ -35,7 +35,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.39"
+CURRENT_VERSION = "1.1.40"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -1093,11 +1093,12 @@ class AutoShutdownAppV2:
 
     def start_ngrok_background(self):
         def _run():
+            import subprocess
             try:
-                os.system("taskkill /f /im ngrok.exe >nul 2>&1")
+                subprocess.run(['taskkill', '/f', '/im', 'ngrok.exe'], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
             except: pass
             
-            for attempt in range(30):
+            for attempt in range(3):
                 try:
                     import subprocess
                     original_popen = subprocess.Popen
@@ -1143,12 +1144,13 @@ class AutoShutdownAppV2:
                     err_msg = str(e)
                     self.last_ngrok_error = err_msg
                     
-                    self.root.after(0, lambda m=f"Ngrok 연결 실패 ({attempt+1}/30): {err_msg}": self.add_system_alert(m))
+                    self.root.after(0, lambda m=f"Ngrok 연결 실패 ({attempt+1}/3): {err_msg}": self.add_system_alert(m))
                     
-                    if attempt < 29:
-                        time.sleep(5)
+                    if attempt < 2:
+                        time.sleep(60)
                         try:
-                            os.system("taskkill /f /im ngrok.exe >nul 2>&1")
+                            import subprocess
+                            subprocess.run(['taskkill', '/f', '/im', 'ngrok.exe'], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
                         except: pass
                     else:
                         if getattr(self, 'auto_leader', False):
@@ -1174,7 +1176,8 @@ class AutoShutdownAppV2:
         except:
             pass
         try:
-            os.system("taskkill /f /im ngrok.exe >nul 2>&1")
+            import subprocess
+            subprocess.run(['taskkill', '/f', '/im', 'ngrok.exe'], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
         except:
             pass
         try:
