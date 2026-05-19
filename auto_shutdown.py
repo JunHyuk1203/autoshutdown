@@ -35,7 +35,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.41"
+CURRENT_VERSION = "1.1.42"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -1396,14 +1396,15 @@ class AutoShutdownAppV2:
 
     def http_poller_thread(self):
         while self.is_running:
-            if getattr(self, 'is_leader', False) or getattr(self, 'auto_leader', False):
+            central_url = self.central_url_var.get().strip()
+            if not central_url:
                 time.sleep(3)
                 continue
                 
-            central_url = self.central_url_var.get().strip()
+            if not central_url.startswith("http"): central_url = "http://" + central_url
+                    
             if central_url:
                 try:
-                    if not central_url.startswith("http"): central_url = "http://" + central_url
                     pc_id = socket.gethostname()
                     next_time, next_action = self.get_next_event()
                     next_str = next_time.strftime('%H:%M') if next_time and next_time != "skip" else ("오늘 안 함" if next_time == "skip" else "없음")
@@ -2277,7 +2278,8 @@ class AutoShutdownAppV2:
             pystray.Menu.SEPARATOR,
             pystray.MenuItem(f'🌐 원격 제어: {remote_url}', open_remote),
             pystray.MenuItem('오늘 하루 끄지 않기', self.toggle_skip_state, checked=self.get_skip_state),
-            pystray.MenuItem('열기 (대시보드)', self.show_window)
+            pystray.MenuItem('열기 (대시보드)', self.show_window),
+            pystray.MenuItem('🔄 업데이트 확인', lambda icon, item: self.root.after(0, self.manual_update_check))
         ]
         menu_items.append(pystray.MenuItem('❌ 대기열에 있는 제어 강제 취소', self.cancel_shutdown, visible=lambda item: getattr(self, 'pending_shutdown', False)))
         
