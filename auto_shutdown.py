@@ -35,7 +35,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.40"
+CURRENT_VERSION = "1.1.41"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -1144,7 +1144,11 @@ class AutoShutdownAppV2:
                     err_msg = str(e)
                     self.last_ngrok_error = err_msg
                     
-                    self.root.after(0, lambda m=f"Ngrok 연결 실패 ({attempt+1}/3): {err_msg}": self.add_system_alert(m))
+                    if "already online" in err_msg or "ERR_NGROK_334" in err_msg:
+                        human_err = "다른 기기(또는 이전 실행)에서 이미 동일한 Ngrok 도메인을 사용 중입니다.\n기존 연결이 종료되기를 기다리거나 다른 PC의 설정을 해제하세요."
+                        self.root.after(0, lambda m=f"Ngrok 연결 실패: {human_err}": self.add_system_alert(m))
+                    else:
+                        self.root.after(0, lambda m=f"Ngrok 연결 실패 ({attempt+1}/3): {err_msg}": self.add_system_alert(m))
                     
                     if attempt < 2:
                         time.sleep(60)
@@ -2267,6 +2271,8 @@ class AutoShutdownAppV2:
             status_text = "🔵 [클라이언트 모드] 대기 중"
             
         menu_items = [
+            pystray.MenuItem(f"버전: v{CURRENT_VERSION}", lambda icon, item: None),
+            pystray.Menu.SEPARATOR,
             pystray.MenuItem(status_text, lambda icon, item: None),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem(f'🌐 원격 제어: {remote_url}', open_remote),
