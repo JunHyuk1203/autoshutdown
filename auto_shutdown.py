@@ -35,7 +35,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.43"
+CURRENT_VERSION = "1.1.44"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -2434,6 +2434,10 @@ class AutoShutdownAppV2:
         def force_exit():
             try:
                 self.root.destroy()
+            except:
+                pass
+            try:
+                self.stop_ngrok()
             except:
                 pass
             # 데몬 스레드들이 남아있을 수 있으므로 프로세스 강제 종료로 확실히 마무리
