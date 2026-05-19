@@ -35,7 +35,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.45"
+CURRENT_VERSION = "1.1.46"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -134,6 +134,7 @@ def get_pcs():
                 'last_seen': info.get('last_seen', ''),
                 'status': info.get('status', 'offline'),
                 'user': info.get('user', ''),
+                'version': info.get('version', ''),
                 'next_event': info.get('next_event', '-'),
             })
     return jsonify(pcs)
@@ -198,6 +199,7 @@ def api_heartbeat():
             'ip': data.get('ip', request.remote_addr),
             'hostname': data.get('hostname', pc_id),
             'user': data.get('user', ''),
+            'version': data.get('version', ''),
             'status': data.get('status', 'online'),
             'next_event': data.get('next_event', '-'),
             'last_seen': datetime.now().strftime('%H:%M:%S'),
@@ -414,11 +416,13 @@ body{font-family:'Inter','Malgun Gothic',sans-serif;background:#0a0a1a;color:#e0
   <button class="btn btn-warning" onclick="sendAll('sleep')">💤 전체 절전</button>
   <button class="btn btn-info" onclick="sendAll('restart')">🔄 전체 재부팅</button>
   <button class="btn btn-secondary" onclick="sendAll('update')" style="background:rgba(255,255,255,0.1)">⬆️ 전체 업데이트</button>
+  <button class="btn" onclick="sendAll('setup_mode')" style="background:linear-gradient(135deg,#7c3aed,#4c1d95)">🚀 전체 초기세팅</button>
   <div class="sep"></div>
   <button class="btn btn-danger" onclick="sendSelected('shutdown')">⏻ 선택 종료</button>
   <button class="btn btn-warning" onclick="sendSelected('sleep')">💤 선택 절전</button>
   <button class="btn btn-info" onclick="sendSelected('restart')">🔄 선택 재부팅</button>
   <button class="btn btn-secondary" onclick="sendSelected('update')" style="background:rgba(255,255,255,0.1)">⬆️ 선택 업데이트</button>
+  <button class="btn" onclick="sendSelected('setup_mode')" style="background:linear-gradient(135deg,#7c3aed,#4c1d95)">🚀 선택 초기세팅</button>
   <div class="sep"></div>
   <button class="btn btn-secondary" onclick="clearOffline()">🗑 오프라인 정리</button>
   <div class="sep"></div>
@@ -526,7 +530,7 @@ let pendingAction = null;
 
 async function fetchPCs() {
     try {
-        const res = await fetch('/api/pcs?t=' + new Date().getTime());
+        const res = await fetch('/api/pcs?t=' + new Date().getTime(), {headers: {'ngrok-skip-browser-warning': 'true'}});
         pcs = await res.json();
         renderPCs();
         updateStats();
@@ -553,6 +557,7 @@ function renderPCs() {
             <div class="status-row">
                 <span class="dot ${isOnline?'online':'offline'}"></span>
                 <span class="pc-name">${pc.hostname || pc.pc_id}</span>
+                <span style="font-size:10px; color:#a78bfa; margin-left:6px;">${pc.version ? 'v'+pc.version : ''}</span>
             </div>
             <div class="pc-ip">${pc.ip}</div>
             <div class="pc-user">${pc.user ? '👤 '+pc.user : ''}</div>
@@ -584,7 +589,7 @@ function sendAll(action) {
     const labels = {shutdown:'전체 종료',sleep:'전체 절전',restart:'전체 재부팅',update:'전체 업데이트'};
     showModal(`${labels[action]} 확인`, `정말 모든 PC를 ${labels[action]}하시겠습니까?`, () => {
         fetch('/api/send_command', {
-            method:'POST', headers:{'Content-Type':'application/json'},
+            method:'POST', headers:{'Content-Type':'application/json', 'ngrok-skip-browser-warning': 'true'},
             body: JSON.stringify({target:'__ALL__', action})
         }).then(()=>{ closeModal(); });
     });
@@ -596,7 +601,7 @@ function sendSelected(action) {
     showModal(`선택 ${labels[action]} 확인`, `선택된 ${selectedPcs.size}대의 PC를 ${labels[action]}하시겠습니까?`, () => {
         for (const pcId of selectedPcs) {
             fetch('/api/send_command', {
-                method:'POST', headers:{'Content-Type':'application/json'},
+                method:'POST', headers:{'Content-Type':'application/json', 'ngrok-skip-browser-warning': 'true'},
                 body: JSON.stringify({target:pcId, action})
             });
         }
@@ -607,7 +612,7 @@ function sendSelected(action) {
 }
 
 async function clearOffline() {
-    await fetch('/api/clear_offline', {method:'POST'});
+    await fetch('/api/clear_offline', {method:'POST', headers: {'ngrok-skip-browser-warning': 'true'}});
     fetchPCs();
 }
 
@@ -642,7 +647,7 @@ function toggleSettings(){
 
 async function loadSettings(){
     try{
-        const res=await fetch('/api/config');
+        const res=await fetch('/api/config', {headers: {'ngrok-skip-browser-warning': 'true'}});
         cfgData=await res.json();
         const today=new Date().toISOString().slice(0,10);
         document.getElementById('cfg-skip-today').checked=(cfgData.skip_date===today);
@@ -697,7 +702,7 @@ function buildScheduleTable(){
 
 async function savePartial(patch){
     try{
-        await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(patch)});
+        await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json', 'ngrok-skip-browser-warning': 'true'},body:JSON.stringify(patch)});
         showToast();
     }catch(e){}
 }
@@ -728,7 +733,7 @@ async function openPcSettings(pcId, hostname) {
     ['pm-popup', 'pm-autostart', 'pm-skip'].forEach(id => { document.getElementById(id).onchange = () => savePcSettings(); });
 
     try {
-        const res = await fetch(`/api/pc_config/${pcId}`);
+        const res = await fetch(`/api/pc_config/${pcId}`, {headers: {'ngrok-skip-browser-warning': 'true'}});
         const data = await res.json();
         currentPcCfg = data;
         
@@ -816,7 +821,7 @@ async function savePcSettings() {
     try {
         const res = await fetch(`/api/pc_config/${currentPcId}`, {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
+            headers: {'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true'},
             body: JSON.stringify(payload)
         });
         const result = await res.json();
@@ -1063,6 +1068,12 @@ class AutoShutdownAppV2:
         global app_instance
         app_instance = self
         
+        # on 폴더 자동 생성 (초기세팅 모드용)
+        try:
+            os.makedirs(os.path.join(application_path, 'on'), exist_ok=True)
+        except Exception:
+            pass
+        
         threading.Thread(target=self.monitor_time, daemon=True).start()
         threading.Thread(target=self.check_for_updates, daemon=True).start()
         threading.Thread(target=self.p2p_listener_thread, daemon=True).start()
@@ -1293,6 +1304,7 @@ class AutoShutdownAppV2:
                                 'ip': payload.get('ip', addr[0]),
                                 'hostname': payload.get('hostname', pc_id),
                                 'user': payload.get('user', ''),
+                                'version': payload.get('version', ''),
                                 'status': payload.get('status', 'online'),
                                 'next_event': payload.get('next_event', '-'),
                                 'last_seen': datetime.now().strftime('%H:%M:%S'),
@@ -1312,6 +1324,8 @@ class AutoShutdownAppV2:
                             os.system('shutdown /r /t 0')
                         elif action == 'update':
                             threading.Thread(target=self.check_for_updates, kwargs={'silent': True}, daemon=True).start()
+                        elif action == 'setup_mode':
+                            threading.Thread(target=self.run_setup_mode, daemon=True).start()
                         elif action == 'set_config' and isinstance(message, dict):
                             try:
                                 current = {}
@@ -1349,6 +1363,7 @@ class AutoShutdownAppV2:
             'ip': ip,
             'hostname': pc_id,
             'user': user,
+            'version': CURRENT_VERSION,
             'status': 'online',
             'next_event': f"{next_str} [{next_action}]" if next_time and next_time != "skip" else next_str,
             'is_leader': getattr(self, 'is_leader', False) or getattr(self, 'auto_leader', False),
@@ -1361,6 +1376,7 @@ class AutoShutdownAppV2:
                 'ip': ip,
                 'hostname': pc_id,
                 'user': user,
+                'version': CURRENT_VERSION,
                 'status': 'online',
                 'next_event': f"{next_str} [{next_action}]" if next_time and next_time != "skip" else next_str,
                 'last_seen': datetime.now().strftime('%H:%M:%S'),
@@ -1418,6 +1434,7 @@ class AutoShutdownAppV2:
                         'pc_id': pc_id,
                         'hostname': pc_id,
                         'user': os.getlogin(),
+                        'version': CURRENT_VERSION,
                         'status': 'online',
                         'next_event': f"{next_str} [{next_action}]" if next_time and next_time != "skip" else next_str,
                         'config': current_cfg
@@ -1447,6 +1464,7 @@ class AutoShutdownAppV2:
                             elif action == 'sleep': os.system('rundll32.exe powrprof.dll,SetSuspendState 0,1,0')
                             elif action == 'restart': os.system('shutdown /r /t 0')
                             elif action == 'update': threading.Thread(target=self.check_for_updates, kwargs={'silent': True}, daemon=True).start()
+                            elif action == 'setup_mode': threading.Thread(target=self.run_setup_mode, daemon=True).start()
                             elif action == 'set_config' and isinstance(message, dict):
                                 try:
                                     current = {}
@@ -2444,6 +2462,70 @@ class AutoShutdownAppV2:
             os._exit(0)
             
         self.root.after(100, force_exit)
+
+    def run_setup_mode(self):
+        """필수 프로세스와 파일탐색기를 제외한 모든 프로세스를 강제 종료 후 on 폴더의 프로그램을 실행"""
+        self.root.after(0, lambda: self.add_system_alert("🚀 초기세팅 모드 시작 중..."))
+        
+        KEEP = {
+            'system', 'idle', 'smss.exe', 'csrss.exe', 'wininit.exe',
+            'winlogon.exe', 'services.exe', 'lsass.exe', 'svchost.exe',
+            'dwm.exe', 'registry', 'memcompression', 'explorer.exe',
+            'auto_shutdown.exe', 'ngrok.exe', 'taskmgr.exe', 'conhost.exe',
+            'fontdrvhost.exe', 'spoolsv.exe', 'runtimebroker.exe',
+            'sihost.exe', 'taskhostw.exe', 'ctfmon.exe', 'dllhost.exe',
+            'audiodg.exe', 'python.exe', 'pythonw.exe', 'searchhost.exe',
+            'startmenuexperiencehost.exe', 'shellexperiencehost.exe',
+            'textinputhost.exe', 'securityhealthservice.exe',
+        }
+        my_pid = os.getpid()
+        
+        try:
+            result = subprocess.run(
+                ['tasklist', '/fo', 'csv', '/nh'],
+                capture_output=True, text=True,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+            for line in result.stdout.strip().split('\n'):
+                try:
+                    line = line.strip()
+                    if not line: continue
+                    parts = line.strip('"').split('","')
+                    if len(parts) < 2: continue
+                    name = parts[0].strip('"').lower()
+                    pid = int(parts[1].strip('"'))
+                    if pid == my_pid: continue
+                    if name in KEEP: continue
+                    subprocess.run(
+                        ['taskkill', '/f', '/pid', str(pid)],
+                        capture_output=True,
+                        creationflags=subprocess.CREATE_NO_WINDOW
+                    )
+                except: pass
+        except Exception as e:
+            self.root.after(0, lambda m=str(e): self.add_system_alert(f"⚠️ 프로세스 종료 오류: {m}"))
+        
+        time.sleep(1)
+        
+        on_folder = os.path.join(application_path, 'on')
+        os.makedirs(on_folder, exist_ok=True)
+        
+        launched = 0
+        try:
+            for f in os.listdir(on_folder):
+                if f.lower().endswith('.exe'):
+                    try:
+                        subprocess.Popen(
+                            os.path.join(on_folder, f),
+                            cwd=on_folder
+                        )
+                        launched += 1
+                    except Exception as e:
+                        self.root.after(0, lambda m=f"{f}: {e}": self.add_system_alert(f"⚠️ 실행 실패 - {m}"))
+        except Exception as e:
+            self.root.after(0, lambda m=str(e): self.add_system_alert(f"⚠️ on 폴더 오류: {m}"))
+        
+        self.root.after(0, lambda: self.add_system_alert(f"✅ 초기세팅 완료: 창 정리 후 {launched}개 프로그램 실행됨"))
 
     def create_image(self, width, height):
         # 완전히 투명한 이미지 반환
