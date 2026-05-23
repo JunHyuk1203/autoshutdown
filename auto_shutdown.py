@@ -36,7 +36,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.50"
+CURRENT_VERSION = "1.1.51"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -2880,5 +2880,9 @@ if __name__ == "__main__":
 
     root = ctk.CTk()
     app = AutoShutdownAppV2(root)
+    
+    # 전역 app_instance 연동 복원 패치 (전역 레벨이므로 global 제거)
+    app_instance = app
+    
     root.after(0, app.hide_window)
     root.mainloop()
