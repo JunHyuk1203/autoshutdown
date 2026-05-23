@@ -36,7 +36,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.57"
+CURRENT_VERSION = "1.1.58"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -1229,28 +1229,68 @@ class AutoShutdownAppV2:
         """Flask API에서 설정 변경 시 tkinter 변수 업데이트"""
         try:
             self._is_reloading = True
+            
+            # 먼저 CONFIG_FILE에 저장된 최신 전체 설정을 로드하여 school_code 유실 방지
+            self.config = self.load_config()
+            
             if 'school_info' in data:
                 old_info = getattr(self, 'school_info', {})
-                self.school_info = data['school_info']
-                # 핵심 정보(학교코드, 학년, 반, API키)가 변경된 경우 시간표 재동기화
-                if (old_info.get('school_code') != self.school_info.get('school_code') or
-                    old_info.get('grade') != self.school_info.get('grade') or
-                    old_info.get('class_nm') != self.school_info.get('class_nm') or
-                    old_info.get('api_key') != self.school_info.get('api_key')):
-                    
-                    self.timetable_cache = {}
-                    self.meal_cache = {}
-                    if hasattr(self, 'timetable_label') and self.timetable_label.winfo_exists():
-                        self.timetable_label.configure(text="시간표 정보를 불러오는 중...")
-                    if hasattr(self, 'meal_label') and self.meal_label.winfo_exists():
-                        self.meal_label.configure(text="급식 정보를 불러오는 중...")
-                    if hasattr(self, 'lbl_school') and self.lbl_school.winfo_exists():
-                        school_name = self.school_info.get("name", "학교 미설정")
-                        grade = self.school_info.get("grade", "")
-                        class_nm = self.school_info.get("class_nm", "")
-                        self.lbl_school.configure(text=f"{school_name} {grade}학년 {class_nm}반" if grade else school_name)
+                self.school_info = self.config.get('school_info', {})
+                
+                name = self.school_info.get("name", "")
+                office = self.school_info.get("office_code", "")
+                
+                # school_code가 유실되었거나 학교명/교육청코드가 변경된 경우 자동으로 NEIS API를 통해 복구/갱신
+                if name and office and (not self.school_info.get("school_code") or 
+                                       old_info.get("name") != name or 
+                                       old_info.get("office_code") != office):
+                    def auto_resolve_school_code():
+                        try:
+                            url = f"https://open.neis.go.kr/hub/schoolInfo?Type=json&pIndex=1&pSize=5&SCHUL_NM={urllib.parse.quote(name)}"
+                            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                            with urllib.request.urlopen(req, timeout=5) as res:
+                                res_data = json.loads(res.read().decode('utf-8'))
+                                if "schoolInfo" in res_data:
+                                    row = res_data["schoolInfo"][1]["row"][0]
+                                    self.school_info["school_code"] = row["SD_SCHUL_CODE"]
+                                    self.school_info["school_kind"] = row["SCHUL_KND_SC_NM"]
+                                    self.config["school_info"] = self.school_info
+                                    self.save_config()
+                        except Exception as ex:
+                            try:
+                                with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
+                                    ef.write(f"[{datetime.now()}] auto_resolve_school_code error: {ex}\n")
+                            except: pass
                         
-                    threading.Thread(target=self.update_timetable_background, daemon=True).start()
+                        # 복구/갱신 완료 후 시간표 및 급식 정보 다시 가져오기
+                        self.timetable_cache = {}
+                        self.meal_cache = {}
+                        self.root.after(0, lambda: self.timetable_label.configure(text="시간표 정보를 불러오는 중...") if hasattr(self, 'timetable_label') and self.timetable_label.winfo_exists() else None)
+                        self.root.after(0, lambda: self.meal_label.configure(text="급식 정보를 불러오는 중...") if hasattr(self, 'meal_label') and self.meal_label.winfo_exists() else None)
+                        threading.Thread(target=self.update_timetable_background, daemon=True).start()
+                        
+                    threading.Thread(target=auto_resolve_school_code, daemon=True).start()
+                else:
+                    # 정보가 같거나 단순 학년/반/API키 변경 시 일반 시간표 업데이트 수행
+                    if (old_info.get('grade') != self.school_info.get('grade') or
+                        old_info.get('class_nm') != self.school_info.get('class_nm') or
+                        old_info.get('api_key') != self.school_info.get('api_key')):
+                        
+                        self.timetable_cache = {}
+                        self.meal_cache = {}
+                        if hasattr(self, 'timetable_label') and self.timetable_label.winfo_exists():
+                            self.timetable_label.configure(text="시간표 정보를 불러오는 중...")
+                        if hasattr(self, 'meal_label') and self.meal_label.winfo_exists():
+                            self.meal_label.configure(text="급식 정보를 불러오는 중...")
+                            
+                        threading.Thread(target=self.update_timetable_background, daemon=True).start()
+                
+                # GUI 학교명 라벨 갱신
+                if hasattr(self, 'lbl_school') and self.lbl_school.winfo_exists():
+                    school_name = self.school_info.get("name", "학교 미설정")
+                    grade = self.school_info.get("grade", "")
+                    class_nm = self.school_info.get("class_nm", "")
+                    self.lbl_school.configure(text=f"{school_name} {grade}학년 {class_nm}반" if grade else school_name)
 
             if 'minutes_before' in data:
                 self.minutes_var.set(str(data['minutes_before']))

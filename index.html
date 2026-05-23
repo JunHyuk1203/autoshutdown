@@ -1236,10 +1236,11 @@ async function applyRemoteConfig() {
         "원격 설정 변경 확인",
         `[${pcs[activeConfigTarget].hostname || activeConfigTarget}] PC의 환경설정 및 자동 종료 스케줄을 즉시 원격 변경하여 적용하시겠습니까?`,
         async () => {
+            const targetPc = activeConfigTarget;
             closeModal();
             closeConfigModal();
             
-            const success = await writeCommandToDB(activeConfigTarget, "set_config", configPayload);
+            const success = await writeCommandToDB(targetPc, "set_config", configPayload);
             if (success) {
                 alert("원격 설정 및 종료 스케줄 변경 명령이 성공적으로 전송되었습니다! PC가 수초 내에 이를 적용합니다.");
             } else {
