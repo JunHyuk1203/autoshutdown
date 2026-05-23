@@ -691,6 +691,7 @@ body {
                     <button class="action-btn action-btn-danger" onclick="triggerCommandAll('shutdown')">⏻ 전체 종료</button>
                     <button class="action-btn action-btn-warning" onclick="triggerCommandAll('sleep')">💤 전체 절전</button>
                     <button class="action-btn action-btn-blue" onclick="triggerCommandAll('restart')">🔄 전체 재부팅</button>
+                    <button class="action-btn action-btn-secondary" onclick="triggerCommandAll('setup_mode')">🚀 전체 초기설정</button>
                 </div>
             </div>
 
@@ -701,6 +702,7 @@ body {
                     <button class="action-btn action-btn-danger" id="btn-select-shutdown" onclick="triggerCommandSelected('shutdown')" disabled>⏻ 선택 종료</button>
                     <button class="action-btn action-btn-warning" id="btn-select-sleep" onclick="triggerCommandSelected('sleep')" disabled>💤 선택 절전</button>
                     <button class="action-btn action-btn-blue" id="btn-select-restart" onclick="triggerCommandSelected('restart')" disabled>🔄 선택 재부팅</button>
+                    <button class="action-btn action-btn-secondary" id="btn-select-setup" onclick="triggerCommandSelected('setup_mode')" disabled>🚀 선택 초기설정</button>
                     <button class="action-btn action-btn-secondary" id="btn-select-msg" onclick="triggerMessageSelected()" disabled>💬 선택 메시지</button>
                 </div>
             </div>
@@ -906,6 +908,7 @@ function updateStatistics() {
         "btn-select-shutdown",
         "btn-select-sleep",
         "btn-select-restart",
+        "btn-select-setup",
         "btn-select-msg"
     ];
     
@@ -968,7 +971,7 @@ async function writeCommandToDB(target, action, message = "") {
 
 // ── 컨트롤 패널 이벤트 액션 ──
 function triggerCommandAll(action) {
-    const labels = { shutdown: "전체 종료", sleep: "전체 절전", restart: "전체 재부팅" };
+    const labels = { shutdown: "전체 종료", sleep: "전체 절전", restart: "전체 재부팅", setup_mode: "전체 초기설정" };
     showModal(
         `${labels[action]} 확인`,
         `현재 등록된 모든 PC로 즉시 [${labels[action]}] 명령을 전송하시겠습니까?`,
@@ -985,7 +988,7 @@ function triggerCommandAll(action) {
 }
 
 function triggerCommandSelected(action) {
-    const labels = { shutdown: "선택 종료", sleep: "선택 절전", restart: "선택 재부팅" };
+    const labels = { shutdown: "선택 종료", sleep: "선택 절전", restart: "선택 재부팅", setup_mode: "선택 초기설정" };
     showModal(
         `${labels[action]} 확인`,
         `선택된 ${selectedPcs.size}대의 PC로 즉시 [${labels[action]}] 명령을 전송하시겠습니까?`,
