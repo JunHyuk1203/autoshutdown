@@ -36,7 +36,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.58"
+CURRENT_VERSION = "1.1.59"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -249,10 +249,16 @@ def update_config():
 def get_pc_config(pc_id):
     with data_lock:
         pc = connected_pcs.get(pc_id)
-    if not pc:
-        return jsonify({'error': 'PC not found'}), 404
-        
-    cfg = pc.get('config', {})
+        if not pc:
+            return jsonify({'error': 'PC not found'}), 404
+        cfg = pc.get('config', {})
+        # config가 없으면 같은 IP를 가진 다른 항목(Firebase 동기화된 sanitized key)에서 찾기
+        if not cfg:
+            pc_ip = pc.get('ip', '')
+            for _id, _info in connected_pcs.items():
+                if _id != pc_id and _info.get('ip') == pc_ip and _info.get('config'):
+                    cfg = _info['config']
+                    break
     if cfg: return jsonify(cfg)
     
     ip = pc.get('ip', '')
@@ -268,21 +274,54 @@ def get_pc_config(pc_id):
 def set_pc_config(pc_id):
     with data_lock:
         pc = connected_pcs.get(pc_id)
+        # sanitized key 로도 탐색 (Firebase 동기화된 항목)
+        if not pc:
+            for _id, _info in connected_pcs.items():
+                if _info.get('hostname') == pc_id or _id.replace('-', '.') == pc_id:
+                    pc = _info
+                    break
     if not pc:
         return jsonify({'error': 'PC not found'}), 404
     data = request.get_json(force=True)
     ip = pc.get('ip', '')
     
+    # 1. LAN 직접 HTTP 시도 (같은 네트워크일 경우 즉시 적용)
     if ip and not ip.startswith('127.'):
         try:
             url = f'http://{ip}:{SERVER_PORT}/api/config'
             payload = json.dumps(data).encode()
-            req = urllib.request.Request(url, data=payload, method='POST', headers={'Content-Type': 'application/json', 'User-Agent': 'SmartPower/1.0'})
+            req = urllib.request.Request(url, data=payload, method='POST',
+                                         headers={'Content-Type': 'application/json',
+                                                  'User-Agent': 'SmartPower/1.0'})
             with urllib.request.urlopen(req, timeout=2) as resp:
                 pass
         except Exception:
             pass
-            
+    
+    # 2. Firebase 명령 큐에 기록 (학생 PC가 3초마다 폴링하여 수신)
+    #    학생 PC의 http_poller_thread는 pending_commands가 아닌 Firebase를 읽으므로
+    #    반드시 Firebase에도 써야 원격 환경에서 설정이 적용됨
+    def _write_firebase_cmd():
+        try:
+            firebase_pc_id = pc_id
+            for char in [".", "$", "#", "[", "]", "/"]:
+                firebase_pc_id = firebase_pc_id.replace(char, "-")
+            central_url = "https://atss-a1f9e-default-rtdb.firebaseio.com/"
+            ssl_context = ssl._create_unverified_context()
+            firebase_data = sanitize_rtdb_keys(data)
+            cmd_payload = json.dumps({'action': 'set_config', 'message': firebase_data}).encode('utf-8')
+            cmd_url = f"{central_url.rstrip('/')}/commands/{firebase_pc_id}.json"
+            cmd_req = urllib.request.Request(
+                cmd_url, data=cmd_payload, method='PUT',
+                headers={'Content-Type': 'application/json'}
+            )
+            with urllib.request.urlopen(cmd_req, timeout=8, context=ssl_context) as res:
+                pass
+        except Exception as e:
+            print(f"Firebase 명령 전송 실패: {e}")
+    threading.Thread(target=_write_firebase_cmd, daemon=True).start()
+    
+    # 3. LAN pending_commands 에도 저장 (로컬 P2P 백업용)
     with data_lock:
         pending_commands[pc_id] = {'action': 'set_config', 'message': data}
     return jsonify({'ok': True})
@@ -1647,7 +1686,7 @@ class AutoShutdownAppV2:
                     with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
                         ef.write(f"[{datetime.now()}] General thread error: {ge}\n")
                 except: pass
-            time.sleep(3)
+            time.sleep(2)
 
     def get_timetable_endpoint(self, school_kind):
         if "초등" in school_kind: return "elsTimetable"

@@ -20,11 +20,11 @@
     "meal_cache": {},
     "월": {
         "1교시 (08:40)": {
-            "enabled": false,
+            "enabled": true,
             "action": "시스템 종료"
         },
         "2교시 (09:40)": {
-            "enabled": false,
+            "enabled": true,
             "action": "시스템 종료"
         },
         "3교시 (10:40)": {
