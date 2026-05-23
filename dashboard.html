@@ -867,10 +867,30 @@ function renderPCGrid() {
     }
     
     let html = "";
+    const nowTs = Date.now() / 1000.0;
+    
     pcKeys.sort().forEach(pcId => {
         const pc = pcs[pcId];
-        const isOnline = pc.status === "online";
+        const lastSeenTs = pc.last_seen_ts || 0;
+        const diffSeconds = Math.max(0, nowTs - lastSeenTs);
+        
+        // 15초 이상 통신 응답이 없으면 강제로 오프라인으로 취급
+        const isOnline = (pc.status === "online") && (diffSeconds < 15);
         const isSelected = selectedPcs.has(pcId);
+        
+        // 마지막 응답 시간 텍스트 연산
+        let timeStr = "-";
+        if (lastSeenTs > 0) {
+            if (diffSeconds < 5) {
+                timeStr = "방금 전";
+            } else if (diffSeconds < 60) {
+                timeStr = `${Math.floor(diffSeconds)}초 전`;
+            } else if (diffSeconds < 3600) {
+                timeStr = `${Math.floor(diffSeconds / 60)}분 전`;
+            } else {
+                timeStr = `${Math.floor(diffSeconds / 3600)}시간 전`;
+            }
+        }
         
         html += `
             <div class="pc-card ${isOnline ? 'online' : 'offline'} ${isSelected ? 'selected' : ''}" onclick="toggleSelectDevice('${pcId}')">
@@ -882,7 +902,7 @@ function renderPCGrid() {
                 <div class="pc-name" title="${pcId}">${pc.hostname || pcId}</div>
                 <div class="pc-meta">👤 ${pc.user || 'N/A'}</div>
                 <div class="pc-meta">🖥️ IP: ${pc.ip || 'N/A'}</div>
-                <div class="pc-meta">⏳ 응답: ${pc.last_seen || '-'}</div>
+                <div class="pc-meta">⏳ 응답: ${timeStr} (${pc.last_seen || '-'})</div>
                 ${pc.next_event && pc.next_event !== '없음' ? `<div class="pc-event">⏰ 예정: ${pc.next_event}</div>` : ''}
             </div>`;
     });
@@ -893,7 +913,14 @@ function renderPCGrid() {
 function updateStatistics() {
     const pcKeys = Object.keys(pcs);
     const total = pcKeys.length;
-    const online = pcKeys.filter(k => pcs[k].status === "online").length;
+    const nowTs = Date.now() / 1000.0;
+    
+    // 15초 이내에 활발히 응답을 보낸 기기만 온라인 기기로 집계
+    const online = pcKeys.filter(k => {
+        const pc = pcs[k];
+        const lastSeenTs = pc.last_seen_ts || 0;
+        return (pc.status === "online") && (nowTs - lastSeenTs < 15);
+    }).length;
     const offline = total - online;
     
     document.getElementById("stat-total").innerText = total;
