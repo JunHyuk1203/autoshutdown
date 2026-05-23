@@ -36,7 +36,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.48"
+CURRENT_VERSION = "1.1.49"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -1445,7 +1445,15 @@ class AutoShutdownAppV2:
                 }).encode('utf-8')
                 
                 patch_url = f"{central_url.rstrip('/')}/pcs/{pc_id}.json"
-                patch_req = urllib.request.Request(patch_url, data=status_payload, method='PATCH', headers={'Content-Type': 'application/json'})
+                patch_req = urllib.request.Request(
+                    patch_url, 
+                    data=status_payload, 
+                    method='PATCH', 
+                    headers={
+                        'Content-Type': 'application/json',
+                        'Content-Length': str(len(status_payload))
+                    }
+                )
                 try:
                     with urllib.request.urlopen(patch_req, timeout=2, context=ssl_context) as res:
                         pass
