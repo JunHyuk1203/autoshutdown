@@ -703,6 +703,7 @@ body {
                     <button class="action-btn action-btn-warning" id="btn-select-sleep" onclick="triggerCommandSelected('sleep')" disabled>💤 선택 절전</button>
                     <button class="action-btn action-btn-blue" id="btn-select-restart" onclick="triggerCommandSelected('restart')" disabled>🔄 선택 재부팅</button>
                     <button class="action-btn action-btn-secondary" id="btn-select-setup" onclick="triggerCommandSelected('setup_mode')" disabled>🚀 선택 초기설정</button>
+                    <button class="action-btn action-btn-secondary" id="btn-select-config" onclick="openConfigModal()" disabled>⚙️ 원격 설정</button>
                     <button class="action-btn action-btn-secondary" id="btn-select-msg" onclick="triggerMessageSelected()" disabled>💬 선택 메시지</button>
                 </div>
             </div>
@@ -742,6 +743,80 @@ body {
         <div class="modal-actions">
             <button class="modal-btn modal-btn-cancel" onclick="closeModal()">취소</button>
             <button class="modal-btn modal-btn-confirm" id="modal-ok-btn">실행</button>
+        </div>
+    </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────
+   원격 설정 모달
+   ───────────────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="config-modal">
+    <div class="modal-card" style="max-width: 500px; width: 95%; max-height: 90vh; overflow-y: auto; text-align: left;">
+        <h3 class="modal-title" style="margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between;">
+            <span>⚙️ 원격 환경설정</span>
+            <span style="font-size: 12px; color: var(--accent-blue);" id="config-target-pc">PC이름</span>
+        </h3>
+        
+        <div style="display: flex; flex-direction: column; gap: 16px;">
+            <!-- 기본 제어 설정 -->
+            <div style="border-bottom: 1px solid var(--border-light); padding-bottom: 16px;">
+                <h4 style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">기본 제어 설정</h4>
+                <div class="form-group" style="margin-bottom: 12px;">
+                    <label class="form-label">종료 사전 경고 시간 (분)</label>
+                    <input class="form-input" id="cfg-minutes-before" type="number" min="0" max="60">
+                </div>
+                <div style="display: flex; gap: 20px; margin-top: 10px;">
+                    <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer;">
+                        <input type="checkbox" id="cfg-autostart" style="accent-color: var(--accent-blue);"> 윈도우 시작 시 자동 실행
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer;">
+                        <input type="checkbox" id="cfg-popup-alert" style="accent-color: var(--accent-blue);"> 종료 팝업 알림 표시
+                    </label>
+                </div>
+            </div>
+            
+            <!-- 학교 정보 설정 (NEIS 연동) -->
+            <div>
+                <h4 style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">NEIS 학교 연동 정보</h4>
+                <div class="form-group" style="margin-bottom: 12px;">
+                    <label class="form-label">학교명</label>
+                    <input class="form-input" id="cfg-school-name" type="text" placeholder="예: 마산중앙고등학교">
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label class="form-label">교육청 코드</label>
+                        <input class="form-input" id="cfg-office-code" type="text" placeholder="예: S10">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label class="form-label">학교 구분</label>
+                        <select class="form-input" id="cfg-school-kind" style="background: #0f0f23;">
+                            <option value="초등학교">초등학교</option>
+                            <option value="중학교">중학교</option>
+                            <option value="고등학교">고등학교</option>
+                            <option value="특수학교">특수학교</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label class="form-label">학년</label>
+                        <input class="form-input" id="cfg-grade" type="number" min="1" max="6">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label class="form-label">반</label>
+                        <input class="form-input" id="cfg-class" type="text" placeholder="예: 1">
+                    </div>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label">NEIS API 키</label>
+                    <input class="form-input" id="cfg-api-key" type="password" placeholder="오픈NEIS API Key">
+                </div>
+            </div>
+        </div>
+        
+        <div class="modal-actions" style="margin-top: 30px;">
+            <button class="modal-btn modal-btn-cancel" onclick="closeConfigModal()">취소</button>
+            <button class="modal-btn modal-btn-confirm" style="background: var(--primary);" onclick="applyRemoteConfig()">설정 전송/적용</button>
         </div>
     </div>
 </div>
@@ -867,14 +942,26 @@ function renderPCGrid() {
     }
     
     let html = "";
+    
+    // 대시보드 기기와 여러 PC간의 컴퓨터 내부 시각 시차 오프셋 보정 (Time Sync Calibration)
+    let maxSeenTs = 0;
+    pcKeys.forEach(k => {
+        const ts = pcs[k].last_seen_ts || 0;
+        if (ts > maxSeenTs) maxSeenTs = ts;
+    });
+    
     const nowTs = Date.now() / 1000.0;
+    // 가장 최근 수신한 PC 신호 기준 시차 offset 계산
+    const timeOffset = maxSeenTs > 0 ? (nowTs - maxSeenTs) : 0;
     
     pcKeys.sort().forEach(pcId => {
         const pc = pcs[pcId];
         const lastSeenTs = pc.last_seen_ts || 0;
-        const diffSeconds = Math.max(0, nowTs - lastSeenTs);
         
-        // 15초 이상 통신 응답이 없으면 강제로 오프라인으로 취급
+        // 보정 시각 기준 차이 계산 (시스템간 시차 문제 완벽 회피)
+        const diffSeconds = Math.max(0, (nowTs - timeOffset) - lastSeenTs);
+        
+        // 15초 이상 통신이 없으면 강제로 오프라인으로 취급
         const isOnline = (pc.status === "online") && (diffSeconds < 15);
         const isSelected = selectedPcs.has(pcId);
         
@@ -913,13 +1000,21 @@ function renderPCGrid() {
 function updateStatistics() {
     const pcKeys = Object.keys(pcs);
     const total = pcKeys.length;
-    const nowTs = Date.now() / 1000.0;
     
-    // 15초 이내에 활발히 응답을 보낸 기기만 온라인 기기로 집계
+    // 시차 보정 기준 온라인 필터링
+    let maxSeenTs = 0;
+    pcKeys.forEach(k => {
+        const ts = pcs[k].last_seen_ts || 0;
+        if (ts > maxSeenTs) maxSeenTs = ts;
+    });
+    const nowTs = Date.now() / 1000.0;
+    const timeOffset = maxSeenTs > 0 ? (nowTs - maxSeenTs) : 0;
+    
     const online = pcKeys.filter(k => {
         const pc = pcs[k];
         const lastSeenTs = pc.last_seen_ts || 0;
-        return (pc.status === "online") && (nowTs - lastSeenTs < 15);
+        const diffSeconds = Math.max(0, (nowTs - timeOffset) - lastSeenTs);
+        return (pc.status === "online") && (diffSeconds < 15);
     }).length;
     const offline = total - online;
     
@@ -942,6 +1037,9 @@ function updateStatistics() {
     elementsToToggle.forEach(id => {
         document.getElementById(id).disabled = selectCount === 0;
     });
+    
+    // 원격 설정 버튼은 정확히 1대 선택 시에만 활성화
+    document.getElementById("btn-select-config").disabled = selectCount !== 1;
 }
 
 function toggleSelectDevice(pcId) {
@@ -953,6 +1051,91 @@ function toggleSelectDevice(pcId) {
     renderPCGrid();
     updateStatistics();
 }
+
+// ── 원격 환경설정 모달 제어 ──
+let activeConfigTarget = null;
+
+function openConfigModal() {
+    if (selectedPcs.size !== 1) return;
+    
+    const pcId = Array.from(selectedPcs)[0];
+    const pc = pcs[pcId];
+    if (!pc) return;
+    
+    activeConfigTarget = pcId;
+    document.getElementById("config-target-pc").innerText = pc.hostname || pcId;
+    
+    // PC가 보고한 로컬 config 로드 (없을 시 빈값 처리)
+    const cfg = pc.config || {};
+    const school = cfg.school_info || {};
+    
+    document.getElementById("cfg-minutes-before").value = cfg.minutes_before !== undefined ? cfg.minutes_before : 5;
+    document.getElementById("cfg-autostart").checked = cfg.autostart !== undefined ? cfg.autostart : true;
+    document.getElementById("cfg-popup-alert").checked = cfg.show_popup_alert !== undefined ? cfg.show_popup_alert : false;
+    
+    document.getElementById("cfg-school-name").value = school.name || "";
+    document.getElementById("cfg-office-code").value = school.office_code || "";
+    document.getElementById("cfg-school-kind").value = school.school_kind || "고등학교";
+    document.getElementById("cfg-grade").value = school.grade || "1";
+    document.getElementById("cfg-class").value = school.class_nm || "1";
+    document.getElementById("cfg-api-key").value = school.api_key || "";
+    
+    document.getElementById("config-modal").classList.add("show");
+}
+
+function closeConfigModal() {
+    document.getElementById("config-modal").classList.remove("show");
+    activeConfigTarget = null;
+}
+
+async function applyRemoteConfig() {
+    if (!activeConfigTarget) return;
+    
+    const minutesBefore = parseInt(document.getElementById("cfg-minutes-before").value) || 5;
+    const autostart = document.getElementById("cfg-autostart").checked;
+    const popupAlert = document.getElementById("cfg-popup-alert").checked;
+    
+    const schoolName = document.getElementById("cfg-school-name").value.trim();
+    const officeCode = document.getElementById("cfg-office-code").value.trim();
+    const schoolKind = document.getElementById("cfg-school-kind").value;
+    const grade = document.getElementById("cfg-grade").value.trim();
+    const classNm = document.getElementById("cfg-class").value.trim();
+    const apiKey = document.getElementById("cfg-api-key").value.trim();
+    
+    // 전송할 설정 패키지 구성
+    const configPayload = {
+        minutes_before: minutesBefore,
+        autostart: autostart,
+        show_popup_alert: popupAlert,
+        school_info: {
+            name: schoolName,
+            office_code: officeCode,
+            school_kind: schoolKind,
+            grade: grade,
+            class_nm: classNm,
+            api_key: apiKey
+        }
+    };
+    
+    showModal(
+        "원격 설정 변경 확인",
+        `[${pcs[activeConfigTarget].hostname || activeConfigTarget}] PC의 환경설정을 즉시 원격 변경 및 적용하시겠습니까?`,
+        async () => {
+            closeModal();
+            closeConfigModal();
+            
+            const success = await writeCommandToDB(activeConfigTarget, "set_config", configPayload);
+            if (success) {
+                alert("원격 설정 변경 명령이 성공적으로 전송되었습니다! PC가 수초 내에 이를 적용합니다.");
+            } else {
+                alert("설정 전송 중 오류가 발생했습니다.");
+            }
+            selectedPcs.clear();
+            updateStatistics();
+        }
+    );
+}
+
 
 // ── 전원 제어 명령 작성 기능 ──
 async function writeCommandToDB(target, action, message = "") {
