@@ -704,6 +704,7 @@ body {
                     <button class="action-btn action-btn-blue" id="btn-select-restart" onclick="triggerCommandSelected('restart')" disabled>🔄 선택 재부팅</button>
                     <button class="action-btn action-btn-secondary" id="btn-select-setup" onclick="triggerCommandSelected('setup_mode')" disabled>🚀 선택 초기설정</button>
                     <button class="action-btn action-btn-secondary" id="btn-select-config" onclick="openConfigModal()" disabled>⚙️ 원격 설정</button>
+                    <button class="action-btn action-btn-secondary" id="btn-select-update" onclick="triggerCommandSelected('update')" disabled>🔄 원격 업데이트</button>
                     <button class="action-btn action-btn-secondary" id="btn-select-msg" onclick="triggerMessageSelected()" disabled>💬 선택 메시지</button>
                 </div>
             </div>
@@ -1055,6 +1056,7 @@ function updateStatistics() {
         "btn-select-sleep",
         "btn-select-restart",
         "btn-select-setup",
+        "btn-select-update",
         "btn-select-msg"
     ];
     
@@ -1323,7 +1325,7 @@ function triggerCommandAll(action) {
 }
 
 function triggerCommandSelected(action) {
-    const labels = { shutdown: "선택 종료", sleep: "선택 절전", restart: "선택 재부팅", setup_mode: "선택 초기설정" };
+    const labels = { shutdown: "선택 종료", sleep: "선택 절전", restart: "선택 재부팅", setup_mode: "선택 초기설정", update: "원격 업데이트" };
     showModal(
         `${labels[action]} 확인`,
         `선택된 ${selectedPcs.size}대의 PC로 즉시 [${labels[action]}] 명령을 전송하시겠습니까?`,
