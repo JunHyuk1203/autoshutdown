@@ -812,6 +812,19 @@ body {
                     <input class="form-input" id="cfg-api-key" type="password" placeholder="오픈NEIS API Key">
                 </div>
             </div>
+
+            <!-- 자동 종료 스케줄 설정 (끄는 시간 체크) -->
+            <div style="border-top: 1px solid var(--border-light); padding-top: 16px;">
+                <h4 style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">자동 종료 시간 설정 (교시별 스케줄)</h4>
+                <!-- 요일 선택 탭 -->
+                <div style="display: flex; gap: 6px; margin-bottom: 12px; overflow-x: auto; padding-bottom: 6px;" id="cfg-day-tabs">
+                    <!-- 스크립트로 월~일 버튼 동적 생성 -->
+                </div>
+                <!-- 교시 스케줄 체크리스트 -->
+                <div style="background: rgba(0, 0, 0, 0.2); border: 1px solid var(--border-light); border-radius: 12px; padding: 12px; max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;" id="cfg-schedule-list">
+                    <!-- 선택된 요일의 스케줄 항목이 동적으로 생성됨 -->
+                </div>
+            </div>
         </div>
         
         <div class="modal-actions" style="margin-top: 30px;">
@@ -967,6 +980,8 @@ function renderPCGrid() {
         
         // 마지막 응답 시간 텍스트 연산
         let timeStr = "-";
+        let calibratedTimeStr = pc.last_seen || "-"; // 기본값 백업
+        
         if (lastSeenTs > 0) {
             if (diffSeconds < 5) {
                 timeStr = "방금 전";
@@ -977,6 +992,15 @@ function renderPCGrid() {
             } else {
                 timeStr = `${Math.floor(diffSeconds / 3600)}시간 전`;
             }
+            
+            // 수신 시각을 대시보드(폰)의 현재 시각 기준으로 보정 계산하여 매칭시킴 (시차 불일치 제거)
+            try {
+                const calibratedDate = new Date((lastSeenTs + timeOffset) * 1000);
+                const hrs = String(calibratedDate.getHours()).padStart(2, '0');
+                const mins = String(calibratedDate.getMinutes()).padStart(2, '0');
+                const secs = String(calibratedDate.getSeconds()).padStart(2, '0');
+                calibratedTimeStr = `${hrs}:${mins}:${secs}`;
+            } catch(e) {}
         }
         
         html += `
@@ -989,7 +1013,7 @@ function renderPCGrid() {
                 <div class="pc-name" title="${pcId}">${pc.hostname || pcId}</div>
                 <div class="pc-meta">👤 ${pc.user || 'N/A'}</div>
                 <div class="pc-meta">🖥️ IP: ${pc.ip || 'N/A'}</div>
-                <div class="pc-meta">⏳ 응답: ${timeStr} (${pc.last_seen || '-'})</div>
+                <div class="pc-meta">⏳ 응답: ${timeStr} (${calibratedTimeStr})</div>
                 ${pc.next_event && pc.next_event !== '없음' ? `<div class="pc-event">⏰ 예정: ${pc.next_event}</div>` : ''}
             </div>`;
     });
@@ -1054,6 +1078,12 @@ function toggleSelectDevice(pcId) {
 
 // ── 원격 환경설정 모달 제어 ──
 let activeConfigTarget = null;
+let cfgActiveSchedule = {}; // 임시 저장용 요일별 교시 스케줄 객체
+const DAYS_LIST = ["월", "화", "수", "목", "금", "토", "일"];
+const PERIODS_LIST = [
+    "1교시 (08:40)", "2교시 (09:40)", "3교시 (10:40)", "4교시 (11:40)", 
+    "점심시간 (12:40)", "5교시 (13:30)", "6교시 (14:30)", "7교시 (15:30)", "방과후/기타 (16:30)"
+];
 
 function openConfigModal() {
     if (selectedPcs.size !== 1) return;
@@ -1080,12 +1110,96 @@ function openConfigModal() {
     document.getElementById("cfg-class").value = school.class_nm || "1";
     document.getElementById("cfg-api-key").value = school.api_key || "";
     
+    // 요일 스케줄 데이터 Deep Copy 및 로드
+    cfgActiveSchedule = {};
+    DAYS_LIST.forEach(day => {
+        cfgActiveSchedule[day] = {};
+        const daySchedule = cfg[day] || {};
+        
+        PERIODS_LIST.forEach(period => {
+            const periodData = daySchedule[period] || {};
+            cfgActiveSchedule[day][period] = {
+                enabled: periodData.enabled !== undefined ? periodData.enabled : false,
+                action: periodData.action || "시스템 종료"
+            };
+        });
+    });
+    
+    // 요일 탭 버튼 및 스케줄 초기 렌더링 ("월")
+    renderScheduleTabs("월");
+    
     document.getElementById("config-modal").classList.add("show");
+}
+
+function renderScheduleTabs(activeDay) {
+    const tabsContainer = document.getElementById("cfg-day-tabs");
+    const listContainer = document.getElementById("cfg-schedule-list");
+    
+    // 요일 탭 그리기
+    let tabsHtml = "";
+    DAYS_LIST.forEach(day => {
+        const isActive = day === activeDay;
+        tabsHtml += `
+            <button onclick="renderScheduleTabs('${day}')" style="
+                background: ${isActive ? 'var(--accent-blue)' : 'rgba(255,255,255,0.05)'};
+                color: ${isActive ? '#000' : 'var(--text-main)'};
+                border: 1px solid ${isActive ? 'var(--accent-blue)' : 'var(--border-light)'};
+                padding: 6px 14px;
+                border-radius: 8px;
+                font-size: 12px;
+                font-weight: 700;
+                cursor: pointer;
+                transition: var(--transition-smooth);
+                white-space: nowrap;
+            ">${day}</button>`;
+    });
+    tabsContainer.innerHTML = tabsHtml;
+    
+    // 선택된 요일의 9개 시간대(교시) 목록 렌더링
+    let listHtml = "";
+    PERIODS_LIST.forEach(period => {
+        const item = cfgActiveSchedule[activeDay][period];
+        const isChecked = item.enabled;
+        
+        listHtml += `
+            <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.04); border-radius: 8px; padding: 8px 12px;">
+                <label style="display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 600; cursor: pointer;">
+                    <input type="checkbox" onchange="updateScheduleEnabled('${activeDay}', '${period}', this.checked)" ${isChecked ? 'checked' : ''} style="accent-color: var(--accent-blue);">
+                    <span>${period}</span>
+                </label>
+                <select onchange="updateScheduleAction('${activeDay}', '${period}', this.value)" style="
+                    background: #0f0f23;
+                    border: 1px solid var(--border-light);
+                    color: var(--text-main);
+                    border-radius: 6px;
+                    padding: 4px 8px;
+                    font-size: 12px;
+                    outline: none;
+                ">
+                    <option value="시스템 종료" ${item.action === "시스템 종료" ? "selected" : ""}>시스템 종료</option>
+                    <option value="절전 모드" ${item.action === "절전 모드" ? "selected" : ""}>절전 모드</option>
+                </select>
+            </div>`;
+    });
+    listContainer.innerHTML = listHtml;
+}
+
+function updateScheduleEnabled(day, period, isChecked) {
+    if (cfgActiveSchedule[day] && cfgActiveSchedule[day][period]) {
+        cfgActiveSchedule[day][period].enabled = isChecked;
+    }
+}
+
+function updateScheduleAction(day, period, value) {
+    if (cfgActiveSchedule[day] && cfgActiveSchedule[day][period]) {
+        cfgActiveSchedule[day][period].action = value;
+    }
 }
 
 function closeConfigModal() {
     document.getElementById("config-modal").classList.remove("show");
     activeConfigTarget = null;
+    cfgActiveSchedule = {};
 }
 
 async function applyRemoteConfig() {
@@ -1102,7 +1216,7 @@ async function applyRemoteConfig() {
     const classNm = document.getElementById("cfg-class").value.trim();
     const apiKey = document.getElementById("cfg-api-key").value.trim();
     
-    // 전송할 설정 패키지 구성
+    // 기본 설정 + 학교 정보 + 요일별 교시 스케줄 병합하여 Payload 구성
     const configPayload = {
         minutes_before: minutesBefore,
         autostart: autostart,
@@ -1114,19 +1228,20 @@ async function applyRemoteConfig() {
             grade: grade,
             class_nm: classNm,
             api_key: apiKey
-        }
+        },
+        ...cfgActiveSchedule // 끄는 요일 스케줄 데이터 주입!
     };
     
     showModal(
         "원격 설정 변경 확인",
-        `[${pcs[activeConfigTarget].hostname || activeConfigTarget}] PC의 환경설정을 즉시 원격 변경 및 적용하시겠습니까?`,
+        `[${pcs[activeConfigTarget].hostname || activeConfigTarget}] PC의 환경설정 및 자동 종료 스케줄을 즉시 원격 변경하여 적용하시겠습니까?`,
         async () => {
             closeModal();
             closeConfigModal();
             
             const success = await writeCommandToDB(activeConfigTarget, "set_config", configPayload);
             if (success) {
-                alert("원격 설정 변경 명령이 성공적으로 전송되었습니다! PC가 수초 내에 이를 적용합니다.");
+                alert("원격 설정 및 종료 스케줄 변경 명령이 성공적으로 전송되었습니다! PC가 수초 내에 이를 적용합니다.");
             } else {
                 alert("설정 전송 중 오류가 발생했습니다.");
             }
