@@ -36,7 +36,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.54"
+CURRENT_VERSION = "1.1.55"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -2545,6 +2545,32 @@ class AutoShutdownAppV2:
     def show_window(self, icon=None, item=None):
         self.root.after(0, self._prompt_password)
 
+    def send_offline_status(self):
+        try:
+            pc_id = socket.gethostname()
+            for char in [".", "$", "#", "[", "]", "/"]:
+                pc_id = pc_id.replace(char, "-")
+            central_url = "https://atss-a1f9e-default-rtdb.firebaseio.com/"
+            ssl_context = ssl._create_unverified_context()
+            
+            offline_payload = json.dumps({
+                'status': 'offline',
+                'last_seen': datetime.now().strftime('%H:%M:%S'),
+                'last_seen_ts': time.time()
+            }).encode('utf-8')
+            
+            patch_url = f"{central_url.rstrip('/')}/pcs/{pc_id}.json"
+            req = urllib.request.Request(
+                patch_url,
+                data=offline_payload,
+                method='PATCH',
+                headers={'Content-Type': 'application/json'}
+            )
+            with urllib.request.urlopen(req, timeout=3, context=ssl_context) as res:
+                pass
+        except Exception:
+            pass
+
     def quit_app(self, icon=None, item=None):
         self.is_running = False
         try:
@@ -2555,6 +2581,7 @@ class AutoShutdownAppV2:
             
         # 메인 스레드에서 안전하게 종료하기 위해 root.after 사용
         def force_exit():
+            self.send_offline_status()
             try:
                 self.root.destroy()
             except:

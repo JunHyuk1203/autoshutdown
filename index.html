@@ -941,6 +941,21 @@ async function fetchPCData() {
 }
 
 // ── UI 렌더링 및 통계 업데이트 ──
+// 시차 보정 오프셋 계산 (실제 온라인인 5분 이내의 신호만 샘플로 채택하여 시차 보정 오류 방지)
+function getTimeOffset(pcs, pcKeys, nowTs) {
+    let maxSeenTs = 0;
+    pcKeys.forEach(k => {
+        const pc = pcs[k];
+        if (pc.status === "online") {
+            const ts = pc.last_seen_ts || 0;
+            if (Math.abs(nowTs - ts) < 300) {
+                if (ts > maxSeenTs) maxSeenTs = ts;
+            }
+        }
+    });
+    return maxSeenTs > 0 ? (nowTs - maxSeenTs) : 0;
+}
+
 function renderPCGrid() {
     const gridArea = document.getElementById("pc-grid-area");
     const pcKeys = Object.keys(pcs);
@@ -956,17 +971,8 @@ function renderPCGrid() {
     }
     
     let html = "";
-    
-    // 대시보드 기기와 여러 PC간의 컴퓨터 내부 시각 시차 오프셋 보정 (Time Sync Calibration)
-    let maxSeenTs = 0;
-    pcKeys.forEach(k => {
-        const ts = pcs[k].last_seen_ts || 0;
-        if (ts > maxSeenTs) maxSeenTs = ts;
-    });
-    
     const nowTs = Date.now() / 1000.0;
-    // 가장 최근 수신한 PC 신호 기준 시차 offset 계산
-    const timeOffset = maxSeenTs > 0 ? (nowTs - maxSeenTs) : 0;
+    const timeOffset = getTimeOffset(pcs, pcKeys, nowTs);
     
     pcKeys.sort().forEach(pcId => {
         const pc = pcs[pcId];
@@ -1026,14 +1032,8 @@ function updateStatistics() {
     const pcKeys = Object.keys(pcs);
     const total = pcKeys.length;
     
-    // 시차 보정 기준 온라인 필터링
-    let maxSeenTs = 0;
-    pcKeys.forEach(k => {
-        const ts = pcs[k].last_seen_ts || 0;
-        if (ts > maxSeenTs) maxSeenTs = ts;
-    });
     const nowTs = Date.now() / 1000.0;
-    const timeOffset = maxSeenTs > 0 ? (nowTs - maxSeenTs) : 0;
+    const timeOffset = getTimeOffset(pcs, pcKeys, nowTs);
     
     const online = pcKeys.filter(k => {
         const pc = pcs[k];
