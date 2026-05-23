@@ -9,6 +9,7 @@ import urllib.error
 import urllib.parse
 import re
 from datetime import datetime, timedelta
+import ssl
 
 # Flask & P2P 
 from flask import Flask, request, jsonify, render_template_string
@@ -35,7 +36,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.47"
+CURRENT_VERSION = "1.1.48"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -959,8 +960,8 @@ class AutoShutdownAppV2:
         self.autostart_var = ctk.BooleanVar(value=self.config.get("autostart", False))
         self.minutes_var = ctk.StringVar(value=str(self.config.get("minutes_before", 2)))
         self.skip_today_var = ctk.BooleanVar(value=(self.config.get("skip_date") == datetime.now().strftime("%Y-%m-%d")))
-        url_val = self.config.get("central_server_url", "")
-        if not url_val: url_val = "https://crudely-feast-colt.ngrok-free.dev"
+        url_val = self.config.get("central_server_url", "https://atss-a1f9e-default-rtdb.firebaseio.com/")
+        if not url_val: url_val = "https://atss-a1f9e-default-rtdb.firebaseio.com/"
         self.central_url_var = ctk.StringVar(value=url_val)
         
         token_val = self.config.get("ngrok_token", "")
@@ -1412,79 +1413,149 @@ class AutoShutdownAppV2:
 
     def http_poller_thread(self):
         while self.is_running:
-            central_url = self.central_url_var.get().strip()
-            if not central_url:
-                time.sleep(3)
-                continue
+            central_url = "https://atss-a1f9e-default-rtdb.firebaseio.com/"
+            try:
+                pc_id = socket.gethostname()
+                # Firebase 키에 허용되지 않는 문자(., $, #, [, ], /) 제거 또는 대체
+                for char in [".", "$", "#", "[", "]", "/"]:
+                    pc_id = pc_id.replace(char, "-")
+                    
+                next_time, next_action = self.get_next_event()
+                next_str = next_time.strftime('%H:%M') if next_time and next_time != "skip" else ("오늘 안 함" if next_time == "skip" else "없음")
                 
-            if not central_url.startswith("http"): central_url = "http://" + central_url
-                    
-            if central_url:
                 try:
-                    pc_id = socket.gethostname()
-                    next_time, next_action = self.get_next_event()
-                    next_str = next_time.strftime('%H:%M') if next_time and next_time != "skip" else ("오늘 안 함" if next_time == "skip" else "없음")
-                    
+                    with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                        current_cfg = json.load(f)
+                except: current_cfg = {}
+                
+                ip = get_local_ip()
+                ssl_context = ssl._create_unverified_context()
+                
+                # 1. 내 PC 상태 보고 (PATCH)
+                status_payload = json.dumps({
+                    'ip': ip,
+                    'hostname': pc_id,
+                    'user': os.getlogin(),
+                    'version': CURRENT_VERSION,
+                    'status': 'online',
+                    'next_event': f"{next_str} [{next_action}]" if next_time and next_time != "skip" else next_str,
+                    'last_seen': datetime.now().strftime('%H:%M:%S'),
+                    'last_seen_ts': time.time(),
+                    'config': current_cfg
+                }).encode('utf-8')
+                
+                patch_url = f"{central_url.rstrip('/')}/pcs/{pc_id}.json"
+                patch_req = urllib.request.Request(patch_url, data=status_payload, method='PATCH', headers={'Content-Type': 'application/json'})
+                try:
+                    with urllib.request.urlopen(patch_req, timeout=2, context=ssl_context) as res:
+                        pass
+                except Exception as e:
                     try:
-                        with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
-                            current_cfg = json.load(f)
-                    except: current_cfg = {}
-                    
-                    payload = json.dumps({
-                        'pc_id': pc_id,
-                        'hostname': pc_id,
-                        'user': os.getlogin(),
-                        'version': CURRENT_VERSION,
-                        'status': 'online',
-                        'next_event': f"{next_str} [{next_action}]" if next_time and next_time != "skip" else next_str,
-                        'config': current_cfg
-                    }).encode('utf-8')
-                    
-                    url = f"{central_url.rstrip('/')}/api/heartbeat"
-                    req = urllib.request.Request(url, data=payload, method='POST', headers={'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true'})
-                    with urllib.request.urlopen(req, timeout=2) as res:
-                        resp_data = json.loads(res.read().decode('utf-8'))
-                        
-                        self.last_leader_seen_ts = time.time()
-                        
-                        remote_pcs = resp_data.get("pcs", {})
-                        if remote_pcs:
-                            now_ts = time.time()
-                            with data_lock:
-                                for pid, pinfo in remote_pcs.items():
-                                    if pid != pc_id:
-                                        pinfo['last_seen_ts'] = now_ts
-                                        connected_pcs[pid] = pinfo
-                                        
-                        cmd = resp_data.get("command")
+                        with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
+                            ef.write(f"[{datetime.now()}] PATCH error: {e}\n")
+                    except: pass
+                
+                # 2. 다른 PC 목록 가져오기 (GET)
+                pcs_url = f"{central_url.rstrip('/')}/pcs.json"
+                pcs_req = urllib.request.Request(pcs_url, method='GET')
+                try:
+                    with urllib.request.urlopen(pcs_req, timeout=2, context=ssl_context) as res:
+                        pcs_data = json.loads(res.read().decode('utf-8')) or {}
+                        now_ts = time.time()
+                        with data_lock:
+                            for pid, pinfo in pcs_data.items():
+                                if pid != pc_id and isinstance(pinfo, dict):
+                                    pinfo['last_seen_ts'] = pinfo.get('last_seen_ts', now_ts)
+                                    connected_pcs[pid] = pinfo
+                except Exception as e:
+                    try:
+                        with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
+                            ef.write(f"[{datetime.now()}] GET pcs error: {e}\n")
+                    except: pass
+                
+                # 3. 대기 중인 명령 확인 (GET)
+                cmd = None
+                cmd_type = None
+                
+                # 개별 명령 조회
+                cmd_url = f"{central_url.rstrip('/')}/commands/{pc_id}.json"
+                cmd_req = urllib.request.Request(cmd_url, method='GET')
+                try:
+                    with urllib.request.urlopen(cmd_req, timeout=2, context=ssl_context) as res:
+                        cmd = json.loads(res.read().decode('utf-8'))
                         if cmd:
-                            action = cmd.get("action")
-                            message = cmd.get("message", "")
-                            if action == 'shutdown': os.system('shutdown /s /t 0')
-                            elif action == 'sleep': os.system('rundll32.exe powrprof.dll,SetSuspendState 0,1,0')
-                            elif action == 'restart': os.system('shutdown /r /t 0')
-                            elif action == 'update': threading.Thread(target=self.check_for_updates, kwargs={'silent': True}, daemon=True).start()
-                            elif action == 'setup_mode': threading.Thread(target=self.run_setup_mode, daemon=True).start()
-                            elif action == 'set_config' and isinstance(message, dict):
-                                try:
-                                    current = {}
-                                    if os.path.exists(CONFIG_FILE):
-                                        with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
-                                            current = json.load(f)
-                                    for k, v in message.items():
-                                        if isinstance(v, dict) and k in current and isinstance(current[k], dict):
-                                            current[k].update(v)
-                                        else:
-                                            current[k] = v
-                                    with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
-                                        json.dump(current, f, ensure_ascii=False, indent=4)
-                                    if app_instance:
-                                        app_instance.root.after(0, lambda d=message: app_instance.reload_config_from_web(d))
-                                except: pass
-                            elif action == 'message' and message:
-                                self.root.after(0, lambda m=message: messagebox.showinfo("관리자 메시지", m, parent=self.root))
-                except Exception:
-                    pass
+                            cmd_type = 'individual'
+                except Exception as e:
+                    try:
+                        with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
+                            ef.write(f"[{datetime.now()}] GET cmd error: {e}\n")
+                    except: pass
+                        
+                # 개별 명령이 없으면 전체 명령 조회
+                if not cmd:
+                    all_cmd_url = f"{central_url.rstrip('/')}/commands/__ALL__.json"
+                    all_cmd_req = urllib.request.Request(all_cmd_url, method='GET')
+                    try:
+                        with urllib.request.urlopen(all_cmd_req, timeout=2, context=ssl_context) as res:
+                            cmd = json.loads(res.read().decode('utf-8'))
+                            if cmd:
+                                cmd_type = 'all'
+                                cmd_ts = cmd.get('timestamp', 0)
+                                if time.time() - cmd_ts > 8.0:
+                                    cmd = None
+                    except Exception as e:
+                        try:
+                            with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
+                                ef.write(f"[{datetime.now()}] GET all cmd error: {e}\n")
+                        except: pass
+                                
+                # 명령 실행
+                if cmd and isinstance(cmd, dict):
+                    action = cmd.get("action")
+                    message = cmd.get("message", "")
+                    
+                    # 개별 명령 즉시 삭제
+                    if cmd_type == 'individual':
+                        del_url = f"{central_url.rstrip('/')}/commands/{pc_id}.json"
+                        del_req = urllib.request.Request(del_url, method='DELETE')
+                        try:
+                            with urllib.request.urlopen(del_req, timeout=2, context=ssl_context) as res:
+                                pass
+                        except Exception as e:
+                            try:
+                                with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
+                                    ef.write(f"[{datetime.now()}] DELETE cmd error: {e}\n")
+                            except: pass
+                    
+                    # 명령 실행 액션
+                    if action == 'shutdown': os.system('shutdown /s /t 0')
+                    elif action == 'sleep': os.system('rundll32.exe powrprof.dll,SetSuspendState 0,1,0')
+                    elif action == 'restart': os.system('shutdown /r /t 0')
+                    elif action == 'update': threading.Thread(target=self.check_for_updates, kwargs={'silent': True}, daemon=True).start()
+                    elif action == 'setup_mode': threading.Thread(target=self.run_setup_mode, daemon=True).start()
+                    elif action == 'set_config' and isinstance(message, dict):
+                        try:
+                            current = {}
+                            if os.path.exists(CONFIG_FILE):
+                                with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                                    current = json.load(f)
+                            for k, v in message.items():
+                                if isinstance(v, dict) and k in current and isinstance(current[k], dict):
+                                    current[k].update(v)
+                                else:
+                                    current[k] = v
+                            with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+                                json.dump(current, f, ensure_ascii=False, indent=4)
+                            if app_instance:
+                                app_instance.root.after(0, lambda d=message: app_instance.reload_config_from_web(d))
+                        except: pass
+                    elif action == 'message' and message:
+                        self.root.after(0, lambda m=message: messagebox.showinfo("관리자 메시지", m, parent=self.root))
+            except Exception as ge:
+                try:
+                    with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
+                        ef.write(f"[{datetime.now()}] General thread error: {ge}\n")
+                except: pass
             time.sleep(3)
 
     def get_timetable_endpoint(self, school_kind):
