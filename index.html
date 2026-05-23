@@ -931,32 +931,29 @@ async function fetchPCData() {
         const response = await fetch(url);
         if (!response.ok) throw new Error("네트워크 응답 이상");
         
+        // Firebase 서버 시간 획득 (Date 헤더 파싱)
+        const serverDateStr = response.headers.get("Date");
+        const serverNowMs = serverDateStr ? new Date(serverDateStr).getTime() : Date.now();
+        
         const data = await response.json();
         pcs = data || {};
-        renderPCGrid();
-        updateStatistics();
+        renderPCGrid(serverNowMs);
+        updateStatistics(serverNowMs);
     } catch (e) {
         document.getElementById("label-connected-db").innerText = "⚠️ 데이터베이스에 연결할 수 없습니다. 설정을 확인하세요.";
     }
 }
 
 // ── UI 렌더링 및 통계 업데이트 ──
-// 시차 보정 오프셋 계산 (실제 온라인인 5분 이내의 신호만 샘플로 채택하여 시차 보정 오류 방지)
-function getTimeOffset(pcs, pcKeys, nowTs) {
-    let maxSeenTs = 0;
-    pcKeys.forEach(k => {
-        const pc = pcs[k];
-        if (pc.status === "online") {
-            const ts = pc.last_seen_ts || 0;
-            if (Math.abs(nowTs - ts) < 300) {
-                if (ts > maxSeenTs) maxSeenTs = ts;
-            }
-        }
-    });
-    return maxSeenTs > 0 ? (nowTs - maxSeenTs) : 0;
+function getPCDiffSeconds(pc, serverNowMs) {
+    const lastSeenRaw = pc.last_seen_ts || 0;
+    if (lastSeenRaw <= 0) return 999999;
+    // 하위 호환성 유지: 초 단위 타임스탬프인 경우 밀리초 단위로 변환
+    const lastSeenMs = lastSeenRaw > 1e11 ? lastSeenRaw : lastSeenRaw * 1000;
+    return Math.max(0, (serverNowMs - lastSeenMs) / 1000.0);
 }
 
-function renderPCGrid() {
+function renderPCGrid(serverNowMs) {
     const gridArea = document.getElementById("pc-grid-area");
     const pcKeys = Object.keys(pcs);
     
@@ -971,15 +968,10 @@ function renderPCGrid() {
     }
     
     let html = "";
-    const nowTs = Date.now() / 1000.0;
-    const timeOffset = getTimeOffset(pcs, pcKeys, nowTs);
     
     pcKeys.sort().forEach(pcId => {
         const pc = pcs[pcId];
-        const lastSeenTs = pc.last_seen_ts || 0;
-        
-        // 보정 시각 기준 차이 계산 (시스템간 시차 문제 완벽 회피)
-        const diffSeconds = Math.max(0, (nowTs - timeOffset) - lastSeenTs);
+        const diffSeconds = getPCDiffSeconds(pc, serverNowMs);
         
         // 15초 이상 통신이 없으면 강제로 오프라인으로 취급
         const isOnline = (pc.status === "online") && (diffSeconds < 15);
@@ -989,7 +981,7 @@ function renderPCGrid() {
         let timeStr = "-";
         let calibratedTimeStr = pc.last_seen || "-"; // 기본값 백업
         
-        if (lastSeenTs > 0) {
+        if (pc.last_seen_ts > 0) {
             if (diffSeconds < 5) {
                 timeStr = "방금 전";
             } else if (diffSeconds < 60) {
@@ -1002,7 +994,7 @@ function renderPCGrid() {
             
             // 수신 시각을 대시보드(폰)의 현재 시각 기준으로 보정 계산하여 매칭시킴 (시차 불일치 제거)
             try {
-                const calibratedDate = new Date((lastSeenTs + timeOffset) * 1000);
+                const calibratedDate = new Date(Date.now() - diffSeconds * 1000);
                 const hrs = String(calibratedDate.getHours()).padStart(2, '0');
                 const mins = String(calibratedDate.getMinutes()).padStart(2, '0');
                 const secs = String(calibratedDate.getSeconds()).padStart(2, '0');
@@ -1028,17 +1020,13 @@ function renderPCGrid() {
     gridArea.innerHTML = html;
 }
 
-function updateStatistics() {
+function updateStatistics(serverNowMs) {
     const pcKeys = Object.keys(pcs);
     const total = pcKeys.length;
     
-    const nowTs = Date.now() / 1000.0;
-    const timeOffset = getTimeOffset(pcs, pcKeys, nowTs);
-    
     const online = pcKeys.filter(k => {
         const pc = pcs[k];
-        const lastSeenTs = pc.last_seen_ts || 0;
-        const diffSeconds = Math.max(0, (nowTs - timeOffset) - lastSeenTs);
+        const diffSeconds = getPCDiffSeconds(pc, serverNowMs);
         return (pc.status === "online") && (diffSeconds < 15);
     }).length;
     const offline = total - online;

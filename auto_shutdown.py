@@ -36,7 +36,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.56"
+CURRENT_VERSION = "1.1.57"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -1454,7 +1454,7 @@ class AutoShutdownAppV2:
                     'status': 'online',
                     'next_event': f"{next_str} [{next_action}]" if next_time and next_time != "skip" else next_str,
                     'last_seen': datetime.now().strftime('%H:%M:%S'),
-                    'last_seen_ts': time.time(),
+                    'last_seen_ts': {'.sv': 'timestamp'},
                     'config': current_cfg
                 }).encode('utf-8')
                 
@@ -1493,7 +1493,10 @@ class AutoShutdownAppV2:
                         with data_lock:
                             for pid, pinfo in pcs_data.items():
                                 if pid != pc_id and isinstance(pinfo, dict):
-                                    pinfo['last_seen_ts'] = pinfo.get('last_seen_ts', now_ts)
+                                    ts = pinfo.get('last_seen_ts', now_ts)
+                                    if isinstance(ts, (int, float)) and ts > 1e11:
+                                        ts = ts / 1000.0
+                                    pinfo['last_seen_ts'] = ts
                                     connected_pcs[pid] = pinfo
                 except Exception as e:
                     try:
@@ -2570,7 +2573,7 @@ class AutoShutdownAppV2:
             offline_payload = json.dumps({
                 'status': 'offline',
                 'last_seen': datetime.now().strftime('%H:%M:%S'),
-                'last_seen_ts': time.time()
+                'last_seen_ts': {'.sv': 'timestamp'}
             }).encode('utf-8')
             
             patch_url = f"{central_url.rstrip('/')}/pcs/{pc_id}.json"
