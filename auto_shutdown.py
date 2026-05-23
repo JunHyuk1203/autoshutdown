@@ -36,7 +36,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.49"
+CURRENT_VERSION = "1.1.50"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -1448,19 +1448,25 @@ class AutoShutdownAppV2:
                 patch_req = urllib.request.Request(
                     patch_url, 
                     data=status_payload, 
-                    method='PATCH', 
+                    method='PUT', 
                     headers={
                         'Content-Type': 'application/json',
                         'Content-Length': str(len(status_payload))
                     }
                 )
                 try:
-                    with urllib.request.urlopen(patch_req, timeout=2, context=ssl_context) as res:
+                    with urllib.request.urlopen(patch_req, timeout=10, context=ssl_context) as res:
                         pass
+                except urllib.error.HTTPError as he:
+                    try:
+                        err_body = he.read().decode('utf-8', errors='replace')
+                        with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
+                            ef.write(f"[{datetime.now()}] PUT error: {he.code} {he.reason} | URL: {patch_url} | Body: {err_body}\n")
+                    except: pass
                 except Exception as e:
                     try:
                         with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
-                            ef.write(f"[{datetime.now()}] PATCH error: {e}\n")
+                            ef.write(f"[{datetime.now()}] PUT error: {e}\n")
                     except: pass
                 
                 # 2. 다른 PC 목록 가져오기 (GET)
