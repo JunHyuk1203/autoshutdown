@@ -36,7 +36,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.53"
+CURRENT_VERSION = "1.1.54"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -1553,24 +1553,36 @@ class AutoShutdownAppV2:
                             if os.path.exists(CONFIG_FILE):
                                 with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
                                     current = json.load(f)
+                                    
+                            # 복구된 설정을 GUI 릴로드에도 적용하기 위해 message_clean 딕셔너리 생성
+                            message_clean = {}
                             for k, v in message.items():
                                 # 요일 스케줄 데이터 처리 (Firebase 우회용 언더바를 원래 슬래시로 De-sanitize 복구)
                                 if k in DAYS and isinstance(v, dict):
                                     if k not in current:
                                         current[k] = {}
+                                    message_clean[k] = {}
                                     for period, p_data in v.items():
                                         orig_period = period.replace("_", "/") # '방과후_기타' -> '방과후/기타'
                                         current[k][orig_period] = p_data
+                                        message_clean[k][orig_period] = p_data
                                 else:
+                                    message_clean[k] = v
                                     if isinstance(v, dict) and k in current and isinstance(current[k], dict):
                                         current[k].update(v)
                                     else:
                                         current[k] = v
+                                        
                             with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
                                 json.dump(current, f, ensure_ascii=False, indent=4)
+                                
                             if app_instance:
-                                app_instance.root.after(0, lambda d=message: app_instance.reload_config_from_web(d))
-                        except: pass
+                                app_instance.root.after(0, lambda d=message_clean: app_instance.reload_config_from_web(d))
+                        except Exception as ex:
+                            try:
+                                with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
+                                    ef.write(f"[{datetime.now()}] set_config error: {ex}\n")
+                            except: pass
                     elif action == 'message' and message:
                         self.root.after(0, lambda m=message: messagebox.showinfo("관리자 메시지", m, parent=self.root))
             except Exception as ge:
