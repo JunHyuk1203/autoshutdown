@@ -1554,10 +1554,18 @@ class AutoShutdownAppV2:
                                 with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
                                     current = json.load(f)
                             for k, v in message.items():
-                                if isinstance(v, dict) and k in current and isinstance(current[k], dict):
-                                    current[k].update(v)
+                                # 요일 스케줄 데이터 처리 (Firebase 우회용 언더바를 원래 슬래시로 De-sanitize 복구)
+                                if k in DAYS and isinstance(v, dict):
+                                    if k not in current:
+                                        current[k] = {}
+                                    for period, p_data in v.items():
+                                        orig_period = period.replace("_", "/") # '방과후_기타' -> '방과후/기타'
+                                        current[k][orig_period] = p_data
                                 else:
-                                    current[k] = v
+                                    if isinstance(v, dict) and k in current and isinstance(current[k], dict):
+                                        current[k].update(v)
+                                    else:
+                                        current[k] = v
                             with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
                                 json.dump(current, f, ensure_ascii=False, indent=4)
                             if app_instance:

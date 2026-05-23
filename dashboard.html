@@ -1216,6 +1216,16 @@ async function applyRemoteConfig() {
     const classNm = document.getElementById("cfg-class").value.trim();
     const apiKey = document.getElementById("cfg-api-key").value.trim();
     
+    // Firebase 키 이름 제한 우회: 요일 스케줄 데이터의 키 슬래시(/)를 언더바(_)로 치환하여 Sanitization
+    const sanitizedSchedule = {};
+    for (const day in cfgActiveSchedule) {
+        sanitizedSchedule[day] = {};
+        for (const period in cfgActiveSchedule[day]) {
+            const cleanPeriod = period.replace("/", "_"); // '방과후/기타' -> '방과후_기타'
+            sanitizedSchedule[day][cleanPeriod] = cfgActiveSchedule[day][period];
+        }
+    }
+    
     // 기본 설정 + 학교 정보 + 요일별 교시 스케줄 병합하여 Payload 구성
     const configPayload = {
         minutes_before: minutesBefore,
@@ -1229,7 +1239,7 @@ async function applyRemoteConfig() {
             class_nm: classNm,
             api_key: apiKey
         },
-        ...cfgActiveSchedule // 끄는 요일 스케줄 데이터 주입!
+        ...sanitizedSchedule // 슬래시가 제거된 스케줄 데이터 주입!
     };
     
     showModal(
