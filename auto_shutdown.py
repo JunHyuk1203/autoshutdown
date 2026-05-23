@@ -36,7 +36,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.55"
+CURRENT_VERSION = "1.1.56"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -906,6 +906,20 @@ def is_media_playing():
 ctk.set_appearance_mode("System")
 ctk.set_default_color_theme("blue")
 
+def sanitize_rtdb_keys(data):
+    if isinstance(data, dict):
+        new_data = {}
+        for k, v in data.items():
+            new_key = k
+            if isinstance(k, str):
+                for char in [".", "$", "#", "[", "]", "/"]:
+                    new_key = new_key.replace(char, "_")
+            new_data[new_key] = sanitize_rtdb_keys(v)
+        return new_data
+    elif isinstance(data, list):
+        return [sanitize_rtdb_keys(x) for x in data]
+    return data
+
 class AutoShutdownAppV2:
     def __init__(self, root):
         self.root = root
@@ -1425,7 +1439,7 @@ class AutoShutdownAppV2:
                 
                 try:
                     with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
-                        current_cfg = json.load(f)
+                        current_cfg = sanitize_rtdb_keys(json.load(f))
                 except: current_cfg = {}
                 
                 ip = get_local_ip()
