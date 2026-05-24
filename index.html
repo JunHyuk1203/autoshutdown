@@ -212,26 +212,93 @@ body {
 .main-content {
     flex: 1;
     padding: 16px;
-    display: grid;
-    grid-template-columns: 240px 1fr;
+    display: flex;
+    flex-direction: column;
     gap: 16px;
     max-width: 100%;
     width: 100%;
     margin: 0 auto;
 }
 
-/* ── 사이드바 제어 패널 ── */
-.sidebar {
+/* ── 상단 연결 현황 바 ── */
+.top-status-bar {
     display: flex;
-    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--bg-card);
+    border: 1px solid var(--border-light);
+    border-radius: 10px;
+    padding: 8px 16px;
+    backdrop-filter: blur(10px);
+}
+
+.status-panel {
+    display: flex;
+    align-items: center;
     gap: 12px;
 }
 
-.sidebar-panel {
+.status-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-muted);
+}
+
+.status-chip {
+    font-size: 12px;
+    font-weight: 600;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-light);
+    padding: 4px 10px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.status-chip strong {
+    font-size: 13px;
+    font-weight: 800;
+}
+
+.status-chip.active {
+    color: var(--success);
+    border-color: rgba(16, 185, 129, 0.2);
+}
+
+.status-chip.inactive {
+    color: var(--danger);
+    border-color: rgba(239, 68, 68, 0.2);
+}
+
+.btn-clear-offline {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-light);
+    color: var(--text-main);
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition-smooth);
+}
+
+.btn-clear-offline:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+/* ── 가로 제어 행 ── */
+.control-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.control-panel {
     background: var(--bg-card);
     border: 1px solid var(--border-light);
     border-radius: 12px;
-    padding: 14px;
+    padding: 12px;
     backdrop-filter: blur(10px);
 }
 
@@ -241,50 +308,19 @@ body {
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    margin-bottom: 10px;
+    margin-bottom: 8px;
 }
 
-/* 상태 현황판 */
-.stats-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 6px;
-}
-
-.stat-item {
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.04);
-    border-radius: 8px;
-    padding: 8px 4px;
-    text-align: center;
-}
-
-.stat-val {
-    font-size: 16px;
-    font-weight: 800;
-}
-
-.stat-val.active { color: var(--success); }
-.stat-val.inactive { color: var(--danger); }
-
-.stat-lbl {
-    font-size: 10px;
-    color: var(--text-muted);
-    margin-top: 4px;
-}
-
-/* 액션 버튼 그룹 */
-.btn-group {
+.btn-row {
     display: flex;
-    flex-direction: column;
+    flex-wrap: wrap;
     gap: 6px;
 }
 
 .action-btn {
-    width: 100%;
-    padding: 8px 10px;
+    padding: 6px 12px;
     border: none;
-    border-radius: 8px;
+    border-radius: 6px;
     font-size: 12px;
     font-weight: 700;
     color: #fff;
@@ -694,33 +730,25 @@ body {
 
     <!-- 메인 콘텐츠 -->
     <main class="main-content">
-        <!-- 좌측 제어 사이드바 -->
-        <aside class="sidebar">
-            <!-- 현황판 -->
-            <div class="sidebar-panel">
-                <h3 class="panel-title">연결 현황</h3>
-                <div class="stats-grid">
-                    <div class="stat-item">
-                        <div class="stat-val" id="stat-total">0</div>
-                        <div class="stat-lbl">전체</div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="stat-val active" id="stat-online">0</div>
-                        <div class="stat-lbl">온라인</div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="stat-val inactive" id="stat-offline">0</div>
-                        <div class="stat-lbl">오프라인</div>
-                    </div>
-                </div>
+        <!-- 상단 연결 현황 바 -->
+        <div class="top-status-bar">
+            <div class="status-panel">
+                <span class="status-title">연결 현황:</span>
+                <span class="status-chip">전체 <strong id="stat-total">0</strong></span>
+                <span class="status-chip active">온라인 <strong id="stat-online">0</strong></span>
+                <span class="status-chip inactive">오프라인 <strong id="stat-offline">0</strong></span>
             </div>
+            <button class="btn-clear-offline" onclick="clearOfflineDevices()">🗑 오프라인 PC 목록 삭제</button>
+        </div>
 
+        <!-- 가로 제어 행 (전체 원격 제어 및 선택 제어) -->
+        <div class="control-row">
             <!-- 전체 원격 제어 -->
-            <div class="sidebar-panel">
-                <h3 class="panel-title">전체 PC 제어</h3>
-                <div class="btn-group">
+            <div class="control-panel">
+                <h3 class="panel-title">⚡ 전체 PC 제어</h3>
+                <div class="btn-row">
                     <button class="action-btn action-btn-danger" onclick="triggerCommandAll('shutdown')">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle;"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle;"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
                         전체 종료
                     </button>
                     <button class="action-btn action-btn-warning" onclick="triggerCommandAll('sleep')">💤 전체 절전</button>
@@ -730,11 +758,11 @@ body {
             </div>
 
             <!-- 선택 PC 제어 -->
-            <div class="sidebar-panel">
-                <h3 class="panel-title">선택 제어 <span class="selected-badge" id="badge-selected-count">0</span></h3>
-                <div class="btn-group">
+            <div class="control-panel">
+                <h3 class="panel-title">⚙️ 선택 제어 <span class="selected-badge" id="badge-selected-count">0</span></h3>
+                <div class="btn-row">
                     <button class="action-btn action-btn-danger" id="btn-select-shutdown" onclick="triggerCommandSelected('shutdown')" disabled>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle;"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle;"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
                         선택 종료
                     </button>
                     <button class="action-btn action-btn-warning" id="btn-select-sleep" onclick="triggerCommandSelected('sleep')" disabled>💤 선택 절전</button>
@@ -744,13 +772,7 @@ body {
                     <button class="action-btn action-btn-secondary" id="btn-select-msg" onclick="triggerMessageSelected()" disabled>💬 선택 메시지</button>
                 </div>
             </div>
-
-            <!-- 데이터 관리 -->
-            <div class="sidebar-panel">
-                <h3 class="panel-title">데이터 관리</h3>
-                <button class="action-btn action-btn-secondary" onclick="clearOfflineDevices()">🗑 오프라인 PC 목록 삭제</button>
-            </div>
-        </aside>
+        </div>
 
         <!-- 우측 PC 모니터링 그리드 -->
         <section class="grid-container">
