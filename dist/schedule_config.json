@@ -24,7 +24,7 @@
             "action": "시스템 종료"
         },
         "2교시 (09:40)": {
-            "enabled": true,
+            "enabled": false,
             "action": "시스템 종료"
         },
         "3교시 (10:40)": {
@@ -36,11 +36,11 @@
             "action": "시스템 종료"
         },
         "점심시간 (12:40)": {
-            "enabled": false,
+            "enabled": true,
             "action": "시스템 종료"
         },
         "5교시 (13:30)": {
-            "enabled": false,
+            "enabled": true,
             "action": "시스템 종료"
         },
         "6교시 (14:30)": {
@@ -48,7 +48,7 @@
             "action": "시스템 종료"
         },
         "7교시 (15:30)": {
-            "enabled": false,
+            "enabled": true,
             "action": "시스템 종료"
         },
         "방과후/기타 (16:30)": {

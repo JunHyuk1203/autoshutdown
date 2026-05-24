@@ -11,9 +11,7 @@ import re
 from datetime import datetime, timedelta
 import ssl
 
-# Flask & P2P 
-from flask import Flask, request, jsonify, render_template_string
-import logging
+# (Flask & P2P imports removed)
 
 # PyInstaller 환경 변수 오염(init.tcl) 방지 패치
 # 업데이트 후 부모 프로세스의 환경변수가 상속되면 삭제된 임시 폴더를 참조하므로
@@ -36,7 +34,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.59"
+CURRENT_VERSION = "1.1.61"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -88,21 +86,6 @@ def is_media_playing():
     except Exception: pass
     return False
 
-# ──────────────────────────────────────────────
-# P2P Server Setup (Flask & UDP)
-# ──────────────────────────────────────────────
-app = Flask(__name__)
-log = logging.getLogger('werkzeug')
-log.setLevel(logging.ERROR)
-
-connected_pcs = {}
-pending_commands = {}
-data_lock = threading.Lock()
-SERVER_PORT = 15555
-BROADCAST_PORT = 5555
-OFFLINE_THRESHOLD = 8
-app_instance = None  # AutoShutdownAppV2 인스턴스 참조
-
 def get_local_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
@@ -113,834 +96,6 @@ def get_local_ip():
     finally:
         s.close()
     return ip
-
-def send_udp_broadcast(msg_str):
-    try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        sock.sendto(msg_str.encode('utf-8'), ('<broadcast>', BROADCAST_PORT))
-        sock.close()
-    except Exception:
-        pass
-
-@app.route('/api/pcs')
-def get_pcs():
-    with data_lock:
-        pcs = []
-        for pc_id, info in sorted(connected_pcs.items()):
-            pcs.append({
-                'pc_id': pc_id,
-                'ip': info.get('ip', ''),
-                'hostname': info.get('hostname', ''),
-                'last_seen': info.get('last_seen', ''),
-                'status': info.get('status', 'offline'),
-                'user': info.get('user', ''),
-                'version': info.get('version', ''),
-                'next_event': info.get('next_event', '-'),
-            })
-    return jsonify(pcs)
-
-@app.route('/api/send_command', methods=['POST'])
-def send_command():
-    global app_instance
-    data = request.get_json(force=True)
-    target = data.get('target', '__ALL__')
-    action = data.get('action', '')
-    message = data.get('message', '')
-    
-    # 1. P2P (UDP)
-    payload = json.dumps({
-        'type': 'COMMAND',
-        'target': target,
-        'action': action,
-        'message': message
-    })
-    send_udp_broadcast(payload)
-    
-    # 2. Local Central Server (Ngrok) - 큐에 명령 저장
-    with data_lock:
-        if target == '__ALL__':
-            for pc in connected_pcs.keys():
-                pending_commands[pc] = {'action': action, 'message': message}
-        else:
-            pending_commands[target] = {'action': action, 'message': message}
-            
-    # 3. Cloud P2P Forwarding - 내가 중앙 서버가 아닌 경우 중앙 서버로 전달
-    if not data.get('forwarded'):
-        url = app_instance.central_url_var.get().strip() if app_instance else ""
-        if url:
-            if not url.startswith("http"): url = "http://" + url
-            def forward():
-                try:
-                    fdata = data.copy()
-                    fdata['forwarded'] = True
-                    req = urllib.request.Request(f"{url.rstrip('/')}/api/send_command", data=json.dumps(fdata).encode('utf-8'), method='POST', headers={'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true'})
-                    urllib.request.urlopen(req, timeout=3)
-                except Exception as e:
-                    print(f"Forwarding to central server failed: {e}")
-            threading.Thread(target=forward, daemon=True).start()
-            
-    return jsonify({'ok': True})
-
-@app.route('/api/clear_offline', methods=['POST'])
-def clear_offline():
-    with data_lock:
-        to_remove = [k for k, v in connected_pcs.items() if v.get('status') == 'offline']
-        for k in to_remove:
-            del connected_pcs[k]
-    return jsonify({'ok': True})
-
-@app.route('/api/heartbeat', methods=['POST'])
-def api_heartbeat():
-    data = request.get_json(force=True)
-    pc_id = data.get('pc_id')
-    if not pc_id: return jsonify({'error': 'no pc_id'})
-    with data_lock:
-        connected_pcs[pc_id] = {
-            'ip': data.get('ip', request.remote_addr),
-            'hostname': data.get('hostname', pc_id),
-            'user': data.get('user', ''),
-            'version': data.get('version', ''),
-            'status': data.get('status', 'online'),
-            'next_event': data.get('next_event', '-'),
-            'last_seen': datetime.now().strftime('%H:%M:%S'),
-            'last_seen_ts': time.time(),
-            'config': data.get('config', {})
-        }
-        cmd = pending_commands.pop(pc_id, None)
-        pcs_copy = connected_pcs.copy()
-    return jsonify({"status": "ok", "command": cmd, "pcs": pcs_copy})
-
-@app.route('/api/config')
-def get_config():
-    try:
-        if os.path.exists(CONFIG_FILE):
-            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
-                return jsonify(json.load(f))
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-    return jsonify({})
-
-@app.route('/api/config', methods=['POST'])
-def update_config():
-    global app_instance
-    data = request.get_json(force=True)
-    try:
-        current = {}
-        if os.path.exists(CONFIG_FILE):
-            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
-                current = json.load(f)
-                
-        for k, v in data.items():
-            if isinstance(v, dict) and k in current and isinstance(current[k], dict):
-                current[k].update(v)
-            else:
-                current[k] = v
-                
-        with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
-            json.dump(current, f, ensure_ascii=False, indent=4)
-        if app_instance:
-            app_instance.root.after(0, lambda d=data: app_instance.reload_config_from_web(d))
-        return jsonify({'ok': True})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/pc_config/<pc_id>')
-def get_pc_config(pc_id):
-    with data_lock:
-        pc = connected_pcs.get(pc_id)
-        if not pc:
-            return jsonify({'error': 'PC not found'}), 404
-        cfg = pc.get('config', {})
-        # config가 없으면 같은 IP를 가진 다른 항목(Firebase 동기화된 sanitized key)에서 찾기
-        if not cfg:
-            pc_ip = pc.get('ip', '')
-            for _id, _info in connected_pcs.items():
-                if _id != pc_id and _info.get('ip') == pc_ip and _info.get('config'):
-                    cfg = _info['config']
-                    break
-    if cfg: return jsonify(cfg)
-    
-    ip = pc.get('ip', '')
-    try:
-        url = f'http://{ip}:{SERVER_PORT}/api/config'
-        req = urllib.request.Request(url, headers={'User-Agent': 'SmartPower/1.0'})
-        with urllib.request.urlopen(req, timeout=3) as resp:
-            return jsonify(json.loads(resp.read().decode()))
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/pc_config/<pc_id>', methods=['POST'])
-def set_pc_config(pc_id):
-    with data_lock:
-        pc = connected_pcs.get(pc_id)
-        # sanitized key 로도 탐색 (Firebase 동기화된 항목)
-        if not pc:
-            for _id, _info in connected_pcs.items():
-                if _info.get('hostname') == pc_id or _id.replace('-', '.') == pc_id:
-                    pc = _info
-                    break
-    if not pc:
-        return jsonify({'error': 'PC not found'}), 404
-    data = request.get_json(force=True)
-    ip = pc.get('ip', '')
-    
-    # 1. LAN 직접 HTTP 시도 (같은 네트워크일 경우 즉시 적용)
-    if ip and not ip.startswith('127.'):
-        try:
-            url = f'http://{ip}:{SERVER_PORT}/api/config'
-            payload = json.dumps(data).encode()
-            req = urllib.request.Request(url, data=payload, method='POST',
-                                         headers={'Content-Type': 'application/json',
-                                                  'User-Agent': 'SmartPower/1.0'})
-            with urllib.request.urlopen(req, timeout=2) as resp:
-                pass
-        except Exception:
-            pass
-    
-    # 2. Firebase 명령 큐에 기록 (학생 PC가 3초마다 폴링하여 수신)
-    #    학생 PC의 http_poller_thread는 pending_commands가 아닌 Firebase를 읽으므로
-    #    반드시 Firebase에도 써야 원격 환경에서 설정이 적용됨
-    def _write_firebase_cmd():
-        try:
-            firebase_pc_id = pc_id
-            for char in [".", "$", "#", "[", "]", "/"]:
-                firebase_pc_id = firebase_pc_id.replace(char, "-")
-            central_url = "https://atss-a1f9e-default-rtdb.firebaseio.com/"
-            ssl_context = ssl._create_unverified_context()
-            firebase_data = sanitize_rtdb_keys(data)
-            cmd_payload = json.dumps({'action': 'set_config', 'message': firebase_data}).encode('utf-8')
-            cmd_url = f"{central_url.rstrip('/')}/commands/{firebase_pc_id}.json"
-            cmd_req = urllib.request.Request(
-                cmd_url, data=cmd_payload, method='PUT',
-                headers={'Content-Type': 'application/json'}
-            )
-            with urllib.request.urlopen(cmd_req, timeout=8, context=ssl_context) as res:
-                pass
-        except Exception as e:
-            print(f"Firebase 명령 전송 실패: {e}")
-    threading.Thread(target=_write_firebase_cmd, daemon=True).start()
-    
-    # 3. LAN pending_commands 에도 저장 (로컬 P2P 백업용)
-    with data_lock:
-        pending_commands[pc_id] = {'action': 'set_config', 'message': data}
-    return jsonify({'ok': True})
-
-@app.route('/api/search_school', methods=['GET'])
-def search_school_api():
-    q = request.args.get('q', '')
-    url = f"https://open.neis.go.kr/hub/schoolInfo?Type=json&pIndex=1&pSize=20&SCHUL_NM={urllib.parse.quote(q)}"
-    try:
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=5) as res:
-            return jsonify(json.loads(res.read().decode('utf-8')))
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-DASHBOARD_HTML = r"""<!DOCTYPE html>
-<html lang="ko">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>전원 중앙 제어 시스템</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
-<style>
-*{margin:0;padding:0;box-sizing:border-box;}
-body{font-family:'Inter','Malgun Gothic',sans-serif;background:#0a0a1a;color:#e0e0e0;min-height:100vh;}
-.header{background:linear-gradient(135deg,#0f1128,#1a1145);padding:18px 28px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.06);}
-.header-left h1{font-size:20px;font-weight:800;background:linear-gradient(90deg,#60a5fa,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
-.header-left .server-ip{font-size:12px;color:#666;margin-top:2px;}
-.stats{display:flex;gap:14px;}
-.stat{text-align:center;padding:8px 16px;background:rgba(255,255,255,.04);border-radius:10px;min-width:70px;}
-.stat .num{font-size:22px;font-weight:800;}
-.stat .lbl{font-size:10px;color:#777;margin-top:1px;letter-spacing:.5px;}
-.stat.online .num{color:#34d399;} .stat.offline .num{color:#f87171;}
-.controls{padding:14px 28px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;border-bottom:1px solid rgba(255,255,255,.04);}
-.btn{padding:9px 18px;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;transition:all .15s;color:#fff;letter-spacing:.3px;}
-.btn:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(0,0,0,.4);}
-.btn:active{transform:translateY(0);}
-.btn-danger{background:linear-gradient(135deg,#ef4444,#b91c1c);}
-.btn-warning{background:linear-gradient(135deg,#f59e0b,#b45309);}
-.btn-info{background:linear-gradient(135deg,#3b82f6,#1d4ed8);}
-.btn-secondary{background:rgba(255,255,255,.08);color:#aaa;} .btn-secondary:hover{background:rgba(255,255,255,.12);}
-.controls .sep{width:1px;height:28px;background:rgba(255,255,255,.08);margin:0 4px;}
-.selected-info{font-size:12px;color:#888;margin-left:auto;}
-.pc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:12px;padding:20px 28px;}
-.pc-card{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:12px;padding:14px 16px;transition:all .2s;cursor:pointer;position:relative;user-select:none;}
-.pc-card:hover{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.12);transform:translateY(-2px);box-shadow:0 8px 25px rgba(0,0,0,.3);}
-.pc-card.selected{border-color:#3b82f6;background:rgba(59,130,246,.08);box-shadow:0 0 0 1px #3b82f6;}
-.pc-card.online{border-left:3px solid #34d399;}
-.pc-card.offline{border-left:3px solid #ef4444;opacity:.5;}
-.pc-card.offline:hover{opacity:.8;}
-.status-row{display:flex;align-items:center;margin-bottom:6px;}
-.dot{width:9px;height:9px;border-radius:50%;margin-right:7px;flex-shrink:0;}
-.dot.online{background:#34d399;box-shadow:0 0 8px #34d39980;animation:pulse 2s infinite;}
-.dot.offline{background:#ef4444;box-shadow:0 0 6px #ef444460;}
-@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.4;}}
-.pc-name{font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.pc-ip{font-size:11px;color:#666;margin-top:2px;}
-.pc-user{font-size:10px;color:#555;margin-top:1px;}
-.pc-time{font-size:10px;color:#444;margin-top:3px;}
-.pc-status-text{font-size:10px;font-weight:600;margin-top:4px;}
-.pc-status-text.on{color:#34d399;} .pc-status-text.off{color:#ef4444;}
-.pc-next{font-size:11px;color:#a78bfa;margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,.04);font-weight:600;}
-.pc-check{position:absolute;top:8px;left:10px;width:18px;height:18px;border-radius:4px;border:2px solid rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:11px;transition:all .15s;}
-.pc-card.selected .pc-check{background:#3b82f6;border-color:#3b82f6;color:#fff;}
-.empty{text-align:center;padding:80px 20px;color:#555;}
-.empty .icon{font-size:48px;margin-bottom:16px;}
-.empty .msg{font-size:15px;font-weight:600;}
-.empty .sub{font-size:12px;color:#444;margin-top:6px;}
-.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);z-index:100;align-items:center;justify-content:center;}
-.modal-overlay.show{display:flex;}
-.modal{background:#16162a;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:24px;min-width:320px;max-width:400px;}
-.modal h3{font-size:16px;margin-bottom:14px;font-weight:700;}
-.modal p{font-size:13px;color:#999;margin-bottom:18px;line-height:1.5;}
-.modal .btn-row{display:flex;gap:8px;justify-content:flex-end;}
-.modal input[type=text]{width:100%;padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);color:#eee;font-size:13px;margin-bottom:12px;outline:none;}
-.modal input[type=text]:focus{border-color:#3b82f6;}
-/* PC 별 설정 모달 */
-.pc-modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(6px);z-index:200;align-items:center;justify-content:center;}
-.pc-modal-overlay.show{display:flex;}
-.pc-modal{background:#16162a;border:1px solid rgba(255,255,255,.12);border-radius:18px;padding:24px;width:min(700px,95vw);max-height:90vh;overflow-y:auto;}
-.pc-modal h2{font-size:16px;font-weight:800;margin-bottom:16px;background:linear-gradient(90deg,#60a5fa,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
-.pc-section{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:12px;padding:14px;margin-bottom:12px;}
-.pc-section h4{font-size:12px;font-weight:700;color:#a78bfa;margin-bottom:10px;}
-.pc-row{display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap;}
-.pc-row label{font-size:11px;color:#aaa;min-width:110px;}
-.pc-row input[type=text],.pc-row input[type=number],.pc-row select{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#eee;padding:5px 9px;font-size:12px;outline:none;}
-.pc-row input[type=text]{flex:1;min-width:140px;}
-.pc-sched{width:100%;border-collapse:collapse;font-size:10px;}
-.pc-sched th{background:rgba(255,255,255,.05);padding:4px;text-align:center;color:#888;}
-.pc-sched td{padding:3px;text-align:center;border-bottom:1px solid rgba(255,255,255,.03);}
-.pc-sched select{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:4px;color:#ccc;padding:1px;font-size:9px;}
-.pc-gear-btn{position:absolute;top:8px;right:8px;background:rgba(255,255,255,.08);border:none;border-radius:6px;color:#aaa;padding:3px 7px;cursor:pointer;font-size:13px;z-index:2;}
-.pc-gear-btn:hover{background:rgba(167,139,250,.25);color:#a78bfa;}
-/* 설정 패널 */
-.settings-panel{display:none;padding:20px 28px;border-top:1px solid rgba(255,255,255,.06);}
-.settings-panel.open{display:block;}
-.settings-section{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:12px;padding:16px;margin-bottom:14px;}
-.settings-section h3{font-size:13px;font-weight:700;margin-bottom:12px;color:#a78bfa;}
-.settings-row{display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap;}
-.settings-row label{font-size:12px;color:#aaa;min-width:120px;}
-.settings-row input[type=number],.settings-row select{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#eee;padding:5px 10px;font-size:12px;}
-.toggle-sw{position:relative;width:36px;height:20px;flex-shrink:0;}
-.toggle-sw input{opacity:0;width:0;height:0;}
-.toggle-slider{position:absolute;inset:0;background:#444;border-radius:20px;cursor:pointer;transition:.2s;}
-.toggle-slider:before{content:'';position:absolute;width:14px;height:14px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s;}
-.toggle-sw input:checked+.toggle-slider{background:#3b82f6;}
-.toggle-sw input:checked+.toggle-slider:before{transform:translateX(16px);}
-.schedule-table{width:100%;border-collapse:collapse;font-size:11px;}
-.schedule-table th{background:rgba(255,255,255,.05);padding:5px 4px;text-align:center;font-weight:600;color:#888;}
-.schedule-table td{padding:3px 4px;text-align:center;border-bottom:1px solid rgba(255,255,255,.04);}
-.schedule-table select{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:4px;color:#ccc;padding:2px;font-size:10px;}
-.btn-success{background:linear-gradient(135deg,#10b981,#059669);}
-.save-toast{position:fixed;bottom:24px;right:24px;background:#10b981;color:#fff;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:700;display:none;z-index:200;}
-</style>
-</head>
-<body>
-<div class="header">
-  <div class="header-left">
-    <h1>🖥️ 전원 중앙 제어 시스템 (P2P)</h1>
-    <div class="server-ip">내부 접속: {{ server_ip }}:{{ server_port }}</div>
-  </div>
-  <div class="stats">
-    <div class="stat"><div class="num" id="stat-total">0</div><div class="lbl">전체</div></div>
-    <div class="stat online"><div class="num" id="stat-online">0</div><div class="lbl">켜짐</div></div>
-    <div class="stat offline"><div class="num" id="stat-offline">0</div><div class="lbl">꺼짐</div></div>
-  </div>
-</div>
-
-<div class="controls">
-  <button class="btn btn-danger" onclick="sendAll('shutdown')">⏻ 전체 종료</button>
-  <button class="btn btn-warning" onclick="sendAll('sleep')">💤 전체 절전</button>
-  <button class="btn btn-info" onclick="sendAll('restart')">🔄 전체 재부팅</button>
-  <button class="btn btn-secondary" onclick="sendAll('update')" style="background:rgba(255,255,255,0.1)">⬆️ 전체 업데이트</button>
-  <button class="btn" onclick="sendAll('setup_mode')" style="background:linear-gradient(135deg,#7c3aed,#4c1d95)">🚀 전체 초기세팅</button>
-  <div class="sep"></div>
-  <button class="btn btn-danger" onclick="sendSelected('shutdown')">⏻ 선택 종료</button>
-  <button class="btn btn-warning" onclick="sendSelected('sleep')">💤 선택 절전</button>
-  <button class="btn btn-info" onclick="sendSelected('restart')">🔄 선택 재부팅</button>
-  <button class="btn btn-secondary" onclick="sendSelected('update')" style="background:rgba(255,255,255,0.1)">⬆️ 선택 업데이트</button>
-  <button class="btn" onclick="sendSelected('setup_mode')" style="background:linear-gradient(135deg,#7c3aed,#4c1d95)">🚀 선택 초기세팅</button>
-  <div class="sep"></div>
-  <button class="btn btn-secondary" onclick="clearOffline()">🗑 오프라인 정리</button>
-  <div class="sep"></div>
-  <button class="btn btn-secondary" id="settings-toggle-btn" onclick="toggleSettings()">⚙️ 설정</button>
-  <span class="selected-info" id="selected-info"></span>
-</div>
-
-<div class="pc-grid" id="pc-grid"></div>
-
-<!-- 설정 패널 -->
-<div class="settings-panel" id="settings-panel">
-  <div class="settings-section">
-    <h3>🔔 일반 설정</h3>
-    <div class="settings-row">
-      <label>오늘 하루 작동 끄기</label>
-      <label class="toggle-sw"><input type="checkbox" id="cfg-skip-today"><span class="toggle-slider"></span></label>
-    </div>
-    <div class="settings-row">
-      <label>화면 팝업 알림 표시</label>
-      <label class="toggle-sw"><input type="checkbox" id="cfg-popup"><span class="toggle-slider"></span></label>
-    </div>
-    <div class="settings-row">
-      <label>시작프로그램 등록</label>
-      <label class="toggle-sw"><input type="checkbox" id="cfg-autostart"><span class="toggle-slider"></span></label>
-    </div>
-    <div class="settings-row">
-      <label>실행 N분 전</label>
-      <input type="number" id="cfg-minutes" min="0" max="120" style="width:70px">
-      <span style="font-size:12px;color:#888">분</span>
-    </div>
-  </div>
-  <div class="settings-section">
-    <h3>📅 주간 스케줄</h3>
-    <div style="overflow-x:auto">
-    <table class="schedule-table">
-      <thead><tr><th>시간</th><th>월</th><th>화</th><th>수</th><th>목</th><th>금</th><th>토</th><th>일</th></tr></thead>
-      <tbody id="schedule-tbody"></tbody>
-    </table>
-    </div>
-  </div>
-</div>
-
-<div class="modal-overlay" id="confirm-modal">
-  <div class="modal">
-    <h3 id="modal-title">확인</h3>
-    <p id="modal-msg">정말 실행하시겠습니까?</p>
-    <div class="btn-row">
-      <button class="btn btn-secondary" onclick="closeModal()">취소</button>
-      <button class="btn btn-danger" id="modal-ok" onclick="modalConfirm()">실행</button>
-    </div>
-  </div>
-</div>
-
-<!-- PC 별 설정 모달 -->
-<div class="pc-modal-overlay" id="pc-settings-overlay">
-  <div class="pc-modal">
-    <h2 id="pc-modal-title">⚙️ PC 설정</h2>
-    <div class="pc-section">
-      <h4>📚 학교 / NEIS 설정</h4>
-      <div class="pc-row"><label>NEIS API 키</label><input type="text" id="pm-api-key" placeholder="인증키 입력"></div>
-      <div class="pc-row"><label>학교명</label><input type="text" id="pm-school-name" placeholder="예: 서울초등학교" readonly style="background:rgba(255,255,255,.03);flex:1;"><button class="btn btn-secondary" onclick="openSchoolSearch()" style="padding:4px 8px;font-size:11px;margin-left:4px;">검색</button></div>
-      <input type="hidden" id="pm-school-code">
-      <input type="hidden" id="pm-office-code">
-      <input type="hidden" id="pm-school-kind">
-      <div class="pc-row"><label>학년</label><input type="number" id="pm-grade" min="1" max="6" style="width:60px"></div>
-      <div class="pc-row"><label>반</label><input type="number" id="pm-class" min="1" max="20" style="width:60px"></div>
-    </div>
-    <div class="pc-section">
-      <h4>🔔 일반 설정</h4>
-      <div class="pc-row"><label>오늘 하루 기</label><label class="toggle-sw"><input type="checkbox" id="pm-skip"><span class="toggle-slider"></span></label></div>
-      <div class="pc-row"><label>팝업 알림</label><label class="toggle-sw"><input type="checkbox" id="pm-popup"><span class="toggle-slider"></span></label></div>
-      <div class="pc-row"><label>시작프로그램</label><label class="toggle-sw"><input type="checkbox" id="pm-autostart"><span class="toggle-slider"></span></label></div>
-      <div class="pc-row"><label>N분 전 실행</label><input type="number" id="pm-minutes" min="0" max="120" style="width:60px"> <span style="font-size:11px;color:#888">분</span></div>
-    </div>
-    <div class="pc-section">
-      <h4>📅 주간 스케줄</h4>
-      <div style="overflow-x:auto"><table class="pc-sched"><thead><tr><th>시간</th><th>월</th><th>화</th><th>수</th><th>목</th><th>금</th><th>토</th><th>일</th></tr></thead><tbody id="pm-sched-tbody"></tbody></table></div>
-    </div>
-    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
-      <button class="btn btn-secondary" onclick="closePcSettings()">&#x2715; 닫기</button>
-      <button class="btn btn-success" onclick="savePcSettings()">💾 저장</button>
-    </div>
-  </div>
-</div>
-
-<!-- 학교 검색 모달 -->
-<div class="pc-modal-overlay" id="school-search-overlay" style="z-index: 300;">
-  <div class="pc-modal" style="width: 400px; max-width: 90vw;">
-    <h2 style="font-size:15px; margin-bottom:12px;">🔍 학교 검색</h2>
-    <div style="display:flex; gap:8px; margin-bottom:12px;">
-      <input type="text" id="school-search-input" placeholder="학교명 입력 (예: 서울과학고)" style="flex:1; padding:8px; border-radius:6px; border:1px solid rgba(255,255,255,.1); background:rgba(255,255,255,.05); color:#fff; font-size:12px;" onkeypress="if(event.key==='Enter') doSchoolSearch()">
-      <button class="btn btn-info" onclick="doSchoolSearch()" style="padding:8px 14px;">검색</button>
-    </div>
-    <div id="school-search-results" style="max-height: 250px; overflow-y: auto; margin-bottom:12px; font-size:12px;"></div>
-    <div style="text-align:right;">
-      <button class="btn btn-secondary" onclick="closeSchoolSearch()">닫기</button>
-    </div>
-  </div>
-</div>
-
-<script>
-let pcs = [];
-let selectedPcs = new Set();
-let pendingAction = null;
-
-async function fetchPCs() {
-    try {
-        const res = await fetch('/api/pcs?t=' + new Date().getTime(), {headers: {'ngrok-skip-browser-warning': 'true'}});
-        pcs = await res.json();
-        renderPCs();
-        updateStats();
-    } catch(e) {}
-}
-
-function renderPCs() {
-    const grid = document.getElementById('pc-grid');
-    if (pcs.length === 0) {
-        grid.innerHTML = '<div class="empty"><div class="icon">📡</div><div class="msg">연결된 PC가 없습니다</div><div class="sub">학생 PC에서 스마트 전원 관리자가 실행되면 자동으로 표시됩니다</div></div>';
-        return;
-    }
-    let html = '';
-    for (const pc of pcs) {
-        const isOnline = pc.status === 'online';
-        const isSelected = selectedPcs.has(pc.pc_id);
-        const gearBtn = isOnline 
-            ? `<button class="pc-gear-btn" onclick="openPcSettings('${pc.pc_id}','${pc.hostname||pc.pc_id}');event.stopPropagation()">⚙️</button>`
-            : `<button class="pc-gear-btn" style="opacity:0.4;cursor:not-allowed;" onclick="alert('오프라인 상태의 PC는 설정에 접근할 수 없습니다. (동기화 불가)');event.stopPropagation()">⚙️</button>`;
-
-        html += `<div class="pc-card ${isOnline?'online':'offline'} ${isSelected?'selected':''}" onclick="toggleSelect('${pc.pc_id}')" style="position:relative">
-            ${gearBtn}
-            <div class="pc-check">${isSelected?'✓':''}</div>
-            <div class="status-row">
-                <span class="dot ${isOnline?'online':'offline'}"></span>
-                <span class="pc-name">${pc.hostname || pc.pc_id}</span>
-                <span style="font-size:10px; color:#a78bfa; margin-left:6px;">${pc.version ? 'v'+pc.version : ''}</span>
-            </div>
-            <div class="pc-ip">${pc.ip}</div>
-            <div class="pc-user">${pc.user ? '👤 '+pc.user : ''}</div>
-            <div class="pc-time">마지막 응답: ${pc.last_seen || '-'}</div>
-            <div class="pc-status-text ${isOnline?'on':'off'}">${isOnline?'● 켜짐':'● 꺼짐'}</div>
-            <div class="pc-next">${isOnline ? '⏰ 다음: ' + (pc.next_event || '-') : '오프라인'}</div>
-        </div>`;
-    }
-    grid.innerHTML = html;
-    document.getElementById('selected-info').textContent =
-        selectedPcs.size > 0 ? `${selectedPcs.size}대 선택됨` : '';
-}
-
-function updateStats() {
-    const total = pcs.length;
-    const online = pcs.filter(p => p.status === 'online').length;
-    document.getElementById('stat-total').textContent = total;
-    document.getElementById('stat-online').textContent = online;
-    document.getElementById('stat-offline').textContent = total - online;
-}
-
-function toggleSelect(pcId) {
-    if (selectedPcs.has(pcId)) selectedPcs.delete(pcId);
-    else selectedPcs.add(pcId);
-    renderPCs();
-}
-
-function sendAll(action) {
-    const labels = {shutdown:'전체 종료',sleep:'전체 절전',restart:'전체 재부팅',update:'전체 업데이트'};
-    showModal(`${labels[action]} 확인`, `정말 모든 PC를 ${labels[action]}하시겠습니까?`, () => {
-        fetch('/api/send_command', {
-            method:'POST', headers:{'Content-Type':'application/json', 'ngrok-skip-browser-warning': 'true'},
-            body: JSON.stringify({target:'__ALL__', action})
-        }).then(()=>{ closeModal(); });
-    });
-}
-
-function sendSelected(action) {
-    if (selectedPcs.size === 0) { alert('PC를 먼저 선택해주세요.'); return; }
-    const labels = {shutdown:'종료',sleep:'절전',restart:'재부팅',update:'업데이트'};
-    showModal(`선택 ${labels[action]} 확인`, `선택된 ${selectedPcs.size}대의 PC를 ${labels[action]}하시겠습니까?`, () => {
-        for (const pcId of selectedPcs) {
-            fetch('/api/send_command', {
-                method:'POST', headers:{'Content-Type':'application/json', 'ngrok-skip-browser-warning': 'true'},
-                body: JSON.stringify({target:pcId, action})
-            });
-        }
-        selectedPcs.clear();
-        closeModal();
-        renderPCs();
-    });
-}
-
-async function clearOffline() {
-    await fetch('/api/clear_offline', {method:'POST', headers: {'ngrok-skip-browser-warning': 'true'}});
-    fetchPCs();
-}
-
-function showModal(title, msg, onOk) {
-    document.getElementById('modal-title').textContent = title;
-    document.getElementById('modal-msg').textContent = msg;
-    pendingAction = onOk;
-    document.getElementById('confirm-modal').classList.add('show');
-}
-function closeModal() { document.getElementById('confirm-modal').classList.remove('show'); pendingAction=null; }
-function modalConfirm() { if(pendingAction) pendingAction(); }
-
-setInterval(fetchPCs, 2000);
-fetchPCs();
-
-// 설정 패널
-const DAYS=['\uc6d4','\ud654','\uc218','\ubaa9','\uae08','\ud1a0','\uc77c'];
-const SLOTS=['1\uad50\uc2dc (08:40)','2\uad50\uc2dc (09:40)','3\uad50\uc2dc (10:40)','4\uad50\uc2dc (11:40)','\uc810\uc2ec\uc2dc\uac04 (12:40)','5\uad50\uc2dc (13:30)','6\uad50\uc2dc (14:30)','7\uad50\uc2dc (15:30)','\ubc29\uacfc\ud6c4/\uae30\ud0c0 (16:30)'];
-let cfgData = {};
-
-function toggleSettings(){
-    const p=document.getElementById('settings-panel');
-    const btn=document.getElementById('settings-toggle-btn');
-    p.classList.toggle('open');
-    if(p.classList.contains('open')){
-        btn.style.background='rgba(167,139,250,.3)';
-        loadSettings();
-    } else {
-        btn.style.background='';
-    }
-}
-
-async function loadSettings(){
-    try{
-        const res=await fetch('/api/config', {headers: {'ngrok-skip-browser-warning': 'true'}});
-        cfgData=await res.json();
-        const today=new Date().toISOString().slice(0,10);
-        document.getElementById('cfg-skip-today').checked=(cfgData.skip_date===today);
-        document.getElementById('cfg-popup').checked=cfgData.show_popup_alert!==false;
-        document.getElementById('cfg-autostart').checked=!!cfgData.autostart;
-        document.getElementById('cfg-minutes').value=cfgData.minutes_before||2;
-        // 개별 즉시 저장 핸들러
-        document.getElementById('cfg-skip-today').onchange=function(){savePartial({skip_date:this.checked?new Date().toISOString().slice(0,10):''});}
-        document.getElementById('cfg-popup').onchange=function(){savePartial({show_popup_alert:this.checked});}
-        document.getElementById('cfg-autostart').onchange=function(){savePartial({autostart:this.checked});}
-        document.getElementById('cfg-minutes').onchange=function(){savePartial({minutes_before:parseInt(this.value)||2});}
-        buildScheduleTable();
-    }catch(e){}
-}
-
-function buildScheduleTable(){
-    const tbody=document.getElementById('schedule-tbody');
-    let html='';
-    for(const slot of SLOTS){
-        html+=`<tr><td style="font-size:10px;color:#aaa;white-space:nowrap;padding-right:8px">${slot.replace(/ \(.+\)/,'')}</td>`;
-        for(const day of DAYS){
-            const val=cfgData[day]?cfgData[day][slot]:null;
-            const en=val?val.enabled:false;
-            const ac=val?val.action:'\uc2dc\uc2a4\ud15c \uc885\ub8cc';
-            const shut=ac==='\uc2dc\uc2a4\ud15c \uc885\ub8cc'?'selected':'';
-            const slp=ac==='\uc808\uc804 \ubaa8\ub4dc'?'selected':'';
-            html+=`<td><input type="checkbox" data-day="${day}" data-slot="${slot}" class="sch-chk" ${en?'checked':''}><br><select data-day="${day}" data-slot="${slot}" class="sch-act" style="display:${en?'':'none'}"><option ${shut}>\uc885\ub8cc</option><option value="\uc808\uc804 \ubaa8\ub4dc" ${slp}>\uc808\uc804</option></select></td>`;
-        }
-        html+='</tr>';
-    }
-    tbody.innerHTML=html;
-    // 체크박스: 즈시 저장
-    document.querySelectorAll('.sch-chk').forEach(chk=>{
-        chk.addEventListener('change',function(){
-            const day=this.dataset.day, slot=this.dataset.slot;
-            const sel=tbody.querySelector(`select[data-day="${day}"][data-slot="${slot}"]`);
-            if(sel) sel.style.display=this.checked?'':'none';
-            const action=sel&&this.checked?(sel.value||'\uc2dc\uc2a4\ud15c \uc885\ub8cc'):'\uc2dc\uc2a4\ud15c \uc885\ub8cc';
-            const patch={}; patch[day]={}; patch[day][slot]={enabled:this.checked,action};
-            savePartial(patch);
-        });
-    });
-    // 드롭다운: 즈시 저장
-    document.querySelectorAll('.sch-act').forEach(sel=>{
-        sel.addEventListener('change',function(){
-            const day=this.dataset.day, slot=this.dataset.slot;
-            const patch={}; patch[day]={}; patch[day][slot]={enabled:true,action:this.value||'\uc2dc\uc2a4\ud15c \uc885\ub8cc'};
-            savePartial(patch);
-        });
-    });
-}
-
-async function savePartial(patch){
-    try{
-        await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json', 'ngrok-skip-browser-warning': 'true'},body:JSON.stringify(patch)});
-        showToast();
-    }catch(e){}
-}
-
-function showToast(){
-    const t=document.querySelector('.save-toast');
-    t.style.display='block';
-    clearTimeout(t._tid);
-    t._tid=setTimeout(()=>t.style.display='none',1500);
-}
-
-let currentPcId = null;
-let currentPcCfg = {};
-
-async function openPcSettings(pcId, hostname) {
-    const pc = pcs.find(p => p.pc_id === pcId);
-    if (pc && pc.status !== 'online') {
-        alert('오프라인 상태의 PC는 설정에 접근할 수 없습니다. (동기화 불가)');
-        return;
-    }
-    currentPcId = pcId;
-    document.getElementById('pc-modal-title').textContent = `⚙️ ${hostname} 설정`;
-    document.getElementById('pc-settings-overlay').classList.add('show');
-    
-    // 자동 저장 바인딩
-    const inputs = ['pm-api-key', 'pm-school-code', 'pm-office-code', 'pm-school-kind', 'pm-grade', 'pm-class', 'pm-minutes'];
-    inputs.forEach(id => { document.getElementById(id).onchange = () => savePcSettings(); });
-    ['pm-popup', 'pm-autostart', 'pm-skip'].forEach(id => { document.getElementById(id).onchange = () => savePcSettings(); });
-
-    try {
-        const res = await fetch(`/api/pc_config/${pcId}`, {headers: {'ngrok-skip-browser-warning': 'true'}});
-        const data = await res.json();
-        currentPcCfg = data;
-        
-        const info = data.school_info || {};
-        document.getElementById('pm-api-key').value = info.api_key || '';
-        document.getElementById('pm-school-name').value = info.name || info.school_name || '';
-        document.getElementById('pm-school-code').value = info.school_code || '';
-        document.getElementById('pm-office-code').value = info.office_code || '';
-        document.getElementById('pm-school-kind').value = info.school_kind || '';
-        document.getElementById('pm-grade').value = info.grade || '';
-        document.getElementById('pm-class').value = info.class_nm || '';
-        
-        document.getElementById('pm-popup').checked = data.show_popup_alert !== false;
-        document.getElementById('pm-autostart').checked = !!data.autostart;
-        document.getElementById('pm-minutes').value = data.minutes_before || 2;
-        const today = new Date().toISOString().slice(0,10);
-        document.getElementById('pm-skip').checked = (data.skip_date === today);
-        
-        buildPcScheduleTable();
-    } catch(e) {
-        alert('설정을 불러오는데 실패했습니다: ' + e);
-        closePcSettings();
-    }
-}
-
-function closePcSettings() {
-    document.getElementById('pc-settings-overlay').classList.remove('show');
-    currentPcId = null;
-}
-
-function buildPcScheduleTable() {
-    const tbody = document.getElementById('pm-sched-tbody');
-    let html = '';
-    for(const slot of SLOTS) {
-        html += `<tr><td style="white-space:nowrap">${slot.replace(/ \(.+\)/,'')}</td>`;
-        for(const day of DAYS) {
-            const val = currentPcCfg[day] ? currentPcCfg[day][slot] : null;
-            const en = val ? val.enabled : false;
-            const ac = val ? val.action : '시스템 종료';
-            const shut = ac === '시스템 종료' ? 'selected' : '';
-            const slp = ac === '절전 모드' ? 'selected' : '';
-            html += `<td><input type="checkbox" data-day="${day}" data-slot="${slot}" class="pm-chk" ${en?'checked':''}><br><select data-day="${day}" data-slot="${slot}" class="pm-act" style="display:${en?'':'none'}"><option ${shut}>종료</option><option value="절전 모드" ${slp}>절전</option></select></td>`;
-        }
-        html += '</tr>';
-    }
-    tbody.innerHTML = html;
-    tbody.querySelectorAll('.pm-chk, .pm-act').forEach(el => {
-        el.onchange = function() {
-            if(this.classList.contains('pm-chk')) {
-                const sel = tbody.querySelector(`select[data-day="${this.dataset.day}"][data-slot="${this.dataset.slot}"]`);
-                if(sel) sel.style.display = this.checked ? '' : 'none';
-            }
-            savePcSettings();
-        };
-    });
-}
-
-async function savePcSettings() {
-    if(!currentPcId) return;
-    const today = new Date().toISOString().slice(0,10);
-    const payload = {
-        school_info: {
-            api_key: document.getElementById('pm-api-key').value,
-            name: document.getElementById('pm-school-name').value,
-            school_code: document.getElementById('pm-school-code').value,
-            office_code: document.getElementById('pm-office-code').value,
-            school_kind: document.getElementById('pm-school-kind').value,
-            grade: document.getElementById('pm-grade').value,
-            class_nm: document.getElementById('pm-class').value
-        },
-        show_popup_alert: document.getElementById('pm-popup').checked,
-        autostart: document.getElementById('pm-autostart').checked,
-        minutes_before: parseInt(document.getElementById('pm-minutes').value) || 2,
-        skip_date: document.getElementById('pm-skip').checked ? today : ''
-    };
-    
-    for(const day of DAYS) { payload[day] = {}; }
-    document.querySelectorAll('.pm-chk').forEach(chk => {
-        const day = chk.dataset.day, slot = chk.dataset.slot;
-        const sel = document.querySelector(`.pm-act[data-day="${day}"][data-slot="${slot}"]`);
-        const action = sel ? sel.value || '시스템 종료' : '시스템 종료';
-        payload[day][slot] = { enabled: chk.checked, action: chk.checked ? action : '시스템 종료' };
-    });
-    
-    try {
-        const res = await fetch(`/api/pc_config/${currentPcId}`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true'},
-            body: JSON.stringify(payload)
-        });
-        const result = await res.json();
-        if(result.error) throw new Error(result.error);
-        showToast();
-        setTimeout(fetchPCs, 500);
-    } catch(e) {
-        console.error('저장 실패:', e);
-    }
-}
-
-function openSchoolSearch() {
-    document.getElementById('school-search-input').value = '';
-    document.getElementById('school-search-results').innerHTML = '';
-    document.getElementById('school-search-overlay').classList.add('show');
-    document.getElementById('school-search-input').focus();
-}
-
-function closeSchoolSearch() {
-    document.getElementById('school-search-overlay').classList.remove('show');
-}
-
-async function doSchoolSearch() {
-    const q = document.getElementById('school-search-input').value.trim();
-    if(!q) return;
-    const resDiv = document.getElementById('school-search-results');
-    resDiv.innerHTML = '<div style="text-align:center;color:#888;padding:10px;">검색 중...</div>';
-    try {
-        const res = await fetch(`/api/search_school?q=${encodeURIComponent(q)}`);
-        const data = await res.json();
-        resDiv.innerHTML = '';
-        if(data.schoolInfo) {
-            const rows = data.schoolInfo[1].row;
-            rows.forEach(r => {
-                const div = document.createElement('div');
-                div.style.padding = '10px';
-                div.style.borderBottom = '1px solid rgba(255,255,255,.05)';
-                div.style.cursor = 'pointer';
-                div.innerHTML = `<strong style="color:#a78bfa;">${r.SCHUL_NM}</strong><br><span style="font-size:10px;color:#aaa;">${r.ORG_RDNMA}</span>`;
-                div.onclick = () => {
-                    document.getElementById('pm-school-name').value = r.SCHUL_NM;
-                    document.getElementById('pm-school-code').value = r.SD_SCHUL_CODE;
-                    document.getElementById('pm-office-code').value = r.ATPT_OFCDC_SC_CODE;
-                    document.getElementById('pm-school-kind').value = r.SCHUL_KND_SC_NM;
-                    closeSchoolSearch();
-                    savePcSettings();
-                };
-                div.onmouseover = () => div.style.background = 'rgba(255,255,255,.05)';
-                div.onmouseout = () => div.style.background = 'transparent';
-                resDiv.appendChild(div);
-            });
-        } else {
-            resDiv.innerHTML = '<div style="text-align:center;color:#888;padding:10px;">검색 결과가 없습니다.</div>';
-        }
-    } catch(e) {
-        resDiv.innerHTML = `<div style="text-align:center;color:#ef4444;padding:10px;">오류 발생: ${e}</div>`;
-    }
-}
-</script>
-<div class="save-toast">✅ 설정이 저장되었습니다</div>
-</body>
-</html>"""
-
-@app.route('/')
-def dashboard():
-    return render_template_string(
-        DASHBOARD_HTML,
-        server_ip=get_local_ip(),
-        server_port=SERVER_PORT
-    )
-
-def is_media_playing():
-    if not HAS_PYCAW: return False
-    try:
-        sessions = AudioUtilities.GetAllSessions()
-        for session in sessions:
-            if session.State == 1: return True
-    except Exception: pass
-    return False
 
 ctk.set_appearance_mode("System")
 ctk.set_default_color_theme("blue")
@@ -1013,20 +168,6 @@ class AutoShutdownAppV2:
         self.autostart_var = ctk.BooleanVar(value=self.config.get("autostart", False))
         self.minutes_var = ctk.StringVar(value=str(self.config.get("minutes_before", 2)))
         self.skip_today_var = ctk.BooleanVar(value=(self.config.get("skip_date") == datetime.now().strftime("%Y-%m-%d")))
-        url_val = self.config.get("central_server_url", "https://atss-a1f9e-default-rtdb.firebaseio.com/")
-        if not url_val: url_val = "https://atss-a1f9e-default-rtdb.firebaseio.com/"
-        self.central_url_var = ctk.StringVar(value=url_val)
-        
-        token_val = self.config.get("ngrok_token", "")
-        if not token_val: token_val = "3DZmg3sqJ6RKsm06VYzURXc3TVG_3PRerzUhuj9BiVuEohBit"
-        self.ngrok_token_var = ctk.StringVar(value=token_val)
-        
-        domain_val = self.config.get("ngrok_domain", "")
-        if not domain_val: domain_val = "crudely-feast-colt.ngrok-free.dev"
-        self.ngrok_domain_var = ctk.StringVar(value=domain_val)
-        self.ngrok_url_var = ctk.StringVar()
-        
-        self.is_server_var = ctk.BooleanVar(value=self.config.get("is_server", False))
         
         for day in DAYS:
             for class_name in TIMETABLE.keys():
@@ -1061,16 +202,8 @@ class AutoShutdownAppV2:
         title_lbl = ctk.CTkLabel(self.dash_frame, text=f"스마트 전원 관리자 (v{CURRENT_VERSION})", font=ctk.CTkFont(family=self.font_family, size=16, weight="bold"))
         title_lbl.pack(pady=(0, 5))
         
-        local_ip = get_local_ip()
-        remote_url = f"http://{local_ip}:{SERVER_PORT}"
-        
-        def open_url(e):
-            import webbrowser
-            webbrowser.open(remote_url)
-            
-        url_lbl = ctk.CTkLabel(self.dash_frame, text=f"🌐 원격 제어: {remote_url}", font=ctk.CTkFont(family=self.font_family, size=11, weight="bold"), text_color="#3498DB", cursor="hand2")
+        url_lbl = ctk.CTkLabel(self.dash_frame, text="🌐 Firebase 원격 제어 작동 중", font=ctk.CTkFont(family=self.font_family, size=11, weight="bold"), text_color="#2ECC71")
         url_lbl.pack(pady=(0, 10))
-        url_lbl.bind("<Button-1>", open_url)
         
         status_card = ctk.CTkFrame(self.dash_frame, fg_color=("gray95", "gray15"), corner_radius=15)
         status_card.pack(fill="x", pady=5, ipady=15)
@@ -1114,10 +247,7 @@ class AutoShutdownAppV2:
         self.pending_action = "시스템 종료"
         self.last_media_time = 0
         
-        self.is_leader = self.is_server_var.get()
-        self.auto_leader = False
-        self.last_leader_seen_ts = time.time()
-        self.last_ngrok_error = ""
+        # (ngrok / P2P leader variables removed)
         
         global app_instance
         app_instance = self
@@ -1130,15 +260,7 @@ class AutoShutdownAppV2:
         
         threading.Thread(target=self.monitor_time, daemon=True).start()
         threading.Thread(target=self.check_for_updates, daemon=True).start()
-        threading.Thread(target=self.p2p_listener_thread, daemon=True).start()
-        threading.Thread(target=self.p2p_broadcaster_thread, daemon=True).start()
-        threading.Thread(target=self.flask_server_thread, daemon=True).start()
         threading.Thread(target=self.http_poller_thread, daemon=True).start()
-        
-        if self.is_leader:
-            self.start_ngrok_background()
-        else:
-            self.stop_ngrok()
             
         today = datetime.today()
         monday_str = (today - timedelta(days=today.weekday())).strftime("%Y%m%d")
@@ -1156,116 +278,10 @@ class AutoShutdownAppV2:
         except:
             pass
 
-    def start_ngrok_background(self):
-        def _run():
-            import subprocess
-            try:
-                subprocess.run(['taskkill', '/f', '/im', 'ngrok.exe'], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
-            except: pass
-            
-            for attempt in range(3):
-                try:
-                    import subprocess
-                    original_popen = subprocess.Popen
-                    
-                    def patched_popen(*args, **kwargs):
-                        if 'startupinfo' not in kwargs:
-                            startupinfo = subprocess.STARTUPINFO()
-                            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                            startupinfo.wShowWindow = subprocess.SW_HIDE
-                            kwargs['startupinfo'] = startupinfo
-                        kwargs['creationflags'] = kwargs.get('creationflags', 0) | subprocess.CREATE_NO_WINDOW
-                        return original_popen(*args, **kwargs)
-                        
-                    subprocess.Popen = patched_popen
-                    
-                    from pyngrok import ngrok, conf
-                    if getattr(sys, 'frozen', False):
-                        # PyInstaller 환경일 경우 내장된 ngrok.exe 사용
-                        bundled_ngrok = os.path.join(sys._MEIPASS, "ngrok.exe")
-                        if os.path.exists(bundled_ngrok):
-                            conf.get_default().ngrok_path = bundled_ngrok
 
-                    token = self.ngrok_token_var.get().strip()
-                    domain = self.ngrok_domain_var.get().strip()
-                    if token:
-                        conf.get_default().auth_token = token
-                    kwargs = {}
-                    if domain:
-                        kwargs["domain"] = domain
-                    url = ngrok.connect(f"127.0.0.1:{SERVER_PORT}", **kwargs).public_url
-                    self.ngrok_url_var.set(url)
-                    self.last_ngrok_error = ""
-                    
-                    subprocess.Popen = original_popen
-                    self.root.after(0, self.update_status_info)
-                    
-                    self.root.after(0, lambda: self.add_system_alert("✅ Ngrok 터널이 정상적으로 열렸습니다!"))
-                    
-                    return
-                except Exception as e:
-                    try: subprocess.Popen = original_popen
-                    except: pass
-                    err_msg = str(e)
-                    self.last_ngrok_error = err_msg
-                    
-                    if "already online" in err_msg or "ERR_NGROK_334" in err_msg:
-                        human_err = "다른 기기(또는 이전 실행)에서 이미 동일한 Ngrok 도메인을 사용 중입니다.\n기존 연결이 종료되기를 기다리거나 다른 PC의 설정을 해제하세요."
-                        self.root.after(0, lambda m=f"Ngrok 연결 실패: {human_err}": self.add_system_alert(m))
-                    else:
-                        self.root.after(0, lambda m=f"Ngrok 연결 실패 ({attempt+1}/3): {err_msg}": self.add_system_alert(m))
-                    
-                    if attempt < 2:
-                        time.sleep(60)
-                        try:
-                            import subprocess
-                            subprocess.run(['taskkill', '/f', '/im', 'ngrok.exe'], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
-                        except: pass
-                    else:
-                        if getattr(self, 'auto_leader', False):
-                            self.demote_from_leader()
-
-        threading.Thread(target=_run, daemon=True).start()
-
-    def promote_to_leader(self):
-        self.auto_leader = True
-        self.last_leader_seen_ts = time.time()
-        self.start_ngrok_background()
-
-    def demote_from_leader(self):
-        if self.auto_leader:
-            self.auto_leader = False
-            self.stop_ngrok()
-            self.root.after(0, self.update_status_info)
-
-    def stop_ngrok(self):
-        try:
-            from pyngrok import ngrok
-            ngrok.kill()
-        except:
-            pass
-        try:
-            import subprocess
-            subprocess.run(['taskkill', '/f', '/im', 'ngrok.exe'], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
-        except:
-            pass
-        try:
-            self.ngrok_url_var.set("")
-        except:
-            pass
-
-    def toggle_server_mode(self):
-        self.is_leader = self.is_server_var.get()
-        self.save_config()
-        if self.is_leader:
-            self.auto_leader = False
-            self.start_ngrok_background()
-        else:
-            self.stop_ngrok()
-            self.root.after(0, self.update_status_info)
 
     def reload_config_from_web(self, data):
-        """Flask API에서 설정 변경 시 tkinter 변수 업데이트"""
+        """Firebase에서 원격 설정 변경 시 tkinter 변수 업데이트"""
         try:
             self._is_reloading = True
             
@@ -1350,159 +366,15 @@ class AutoShutdownAppV2:
             self._is_reloading = False
             self.save_config()
             self.update_status_info()
-            self.send_heartbeat_now()
+            # (send_heartbeat_now removed)
         except Exception as e:
             self._is_reloading = False
-            print(f"웹 설정 업데이트 오류: {e}")
-
-    # ── P2P 네트워크 (분산 서버 & 클라이언트) ──────────────────────────
-    def flask_server_thread(self):
-        try:
-            app.run(host='0.0.0.0', port=SERVER_PORT, debug=False, use_reloader=False)
-        except Exception as e:
-            print(f"Flask 서버 실행 실패: {e}")
-
-    def p2p_listener_thread(self):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        try:
-            sock.bind(('', BROADCAST_PORT))
-        except Exception:
-            return
-        sock.settimeout(2)
-        my_pc_id = socket.gethostname()
-        while self.is_running:
             try:
-                data, addr = sock.recvfrom(4096)
-                try:
-                    payload = json.loads(data.decode('utf-8'))
-                except Exception:
-                    continue
-                
-                msg_type = payload.get('type')
-                if msg_type == 'HEARTBEAT':
-                    pc_id = payload.get('pc_id')
-                    if pc_id:
-                        is_leader = payload.get('is_leader', False)
-                        real_leader = payload.get('real_leader', False)
-                        
-                        my_id = socket.gethostname()
-                        if is_leader and pc_id != my_id:
-                            self.last_leader_seen_ts = time.time()
-                            if getattr(self, 'auto_leader', False):
-                                if real_leader or pc_id < my_id:
-                                    self.demote_from_leader()
-                                    
-                        with data_lock:
-                            connected_pcs[pc_id] = {
-                                'ip': payload.get('ip', addr[0]),
-                                'hostname': payload.get('hostname', pc_id),
-                                'user': payload.get('user', ''),
-                                'version': payload.get('version', ''),
-                                'status': payload.get('status', 'online'),
-                                'next_event': payload.get('next_event', '-'),
-                                'last_seen': datetime.now().strftime('%H:%M:%S'),
-                                'last_seen_ts': time.time()
-                            }
-                elif msg_type == 'COMMAND':
-                    target = payload.get('target')
-                    action = payload.get('action')
-                    message = payload.get('message', '')
-                    
-                    if target == '__ALL__' or target == my_pc_id:
-                        if action == 'shutdown':
-                            os.system('shutdown /s /t 0')
-                        elif action == 'sleep':
-                            os.system('rundll32.exe powrprof.dll,SetSuspendState 0,1,0')
-                        elif action == 'restart':
-                            os.system('shutdown /r /t 0')
-                        elif action == 'update':
-                            threading.Thread(target=self.check_for_updates, kwargs={'silent': True}, daemon=True).start()
-                        elif action == 'setup_mode':
-                            threading.Thread(target=self.run_setup_mode, daemon=True).start()
-                        elif action == 'set_config' and isinstance(message, dict):
-                            try:
-                                current = {}
-                                if os.path.exists(CONFIG_FILE):
-                                    with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
-                                        current = json.load(f)
-                                for k, v in message.items():
-                                    if isinstance(v, dict) and k in current and isinstance(current[k], dict):
-                                        current[k].update(v)
-                                    else:
-                                        current[k] = v
-                                with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
-                                    json.dump(current, f, ensure_ascii=False, indent=4)
-                                global app_instance
-                                if app_instance:
-                                    app_instance.root.after(0, lambda d=message: app_instance.reload_config_from_web(d))
-                            except: pass
-                        elif action == 'message' and message:
-                            self.root.after(0, lambda m=message: messagebox.showinfo("관리자 메시지", m, parent=self.root))
-            except socket.timeout:
-                pass
-            except Exception:
-                time.sleep(1)
+                with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
+                    ef.write(f"[{datetime.now()}] reload_config_from_web FAILED: {e}\n")
+            except: pass
 
-    def send_heartbeat_now(self):
-        pc_id = socket.gethostname()
-        user = os.getlogin()
-        ip = get_local_ip()
-        next_time, next_action = self.get_next_event()
-        next_str = next_time.strftime('%H:%M') if next_time and next_time != "skip" else ("오늘 안 함" if next_time == "skip" else "없음")
-        
-        payload = json.dumps({
-            'type': 'HEARTBEAT',
-            'pc_id': pc_id,
-            'ip': ip,
-            'hostname': pc_id,
-            'user': user,
-            'version': CURRENT_VERSION,
-            'status': 'online',
-            'next_event': f"{next_str} [{next_action}]" if next_time and next_time != "skip" else next_str,
-            'is_leader': getattr(self, 'is_leader', False) or getattr(self, 'auto_leader', False),
-            'real_leader': getattr(self, 'is_leader', False)
-        })
-        
-        # 나 자신을 직접 등록 (UDP 루프백 실패 대비 및 로컬 IP 유지)
-        with data_lock:
-            connected_pcs[pc_id] = {
-                'ip': ip,
-                'hostname': pc_id,
-                'user': user,
-                'version': CURRENT_VERSION,
-                'status': 'online',
-                'next_event': f"{next_str} [{next_action}]" if next_time and next_time != "skip" else next_str,
-                'last_seen': datetime.now().strftime('%H:%M:%S'),
-                'last_seen_ts': time.time()
-            }
-            
-        send_udp_broadcast(payload)
-
-    def p2p_broadcaster_thread(self):
-        while self.is_running:
-            # 오래된 PC 상태 업데이트 (오프라인 처리)
-            now_ts = time.time()
-            with data_lock:
-                for p_id, info in connected_pcs.items():
-                    if now_ts - info.get('last_seen_ts', 0) > OFFLINE_THRESHOLD:
-                        info['status'] = 'offline'
-
-            # Leader Election
-            if not getattr(self, 'is_leader', False):
-                if now_ts - getattr(self, 'last_leader_seen_ts', now_ts) > 15:
-                    my_id = socket.gethostname()
-                    online_ids = [my_id]
-                    with data_lock:
-                        for pid, pinfo in connected_pcs.items():
-                            if pinfo.get('status') == 'online':
-                                online_ids.append(pid)
-                    online_ids.sort()
-                    if online_ids[0] == my_id and not getattr(self, 'auto_leader', False):
-                        self.promote_to_leader()
-
-            self.send_heartbeat_now()
-            time.sleep(2)
+    # (Legacy local Flask server and UDP P2P methods removed)
 
     def http_poller_thread(self):
         while self.is_running:
@@ -1562,26 +434,7 @@ class AutoShutdownAppV2:
                             ef.write(f"[{datetime.now()}] PUT error: {e}\n")
                     except: pass
                 
-                # 2. 다른 PC 목록 가져오기 (GET)
-                pcs_url = f"{central_url.rstrip('/')}/pcs.json"
-                pcs_req = urllib.request.Request(pcs_url, method='GET')
-                try:
-                    with urllib.request.urlopen(pcs_req, timeout=2, context=ssl_context) as res:
-                        pcs_data = json.loads(res.read().decode('utf-8')) or {}
-                        now_ts = time.time()
-                        with data_lock:
-                            for pid, pinfo in pcs_data.items():
-                                if pid != pc_id and isinstance(pinfo, dict):
-                                    ts = pinfo.get('last_seen_ts', now_ts)
-                                    if isinstance(ts, (int, float)) and ts > 1e11:
-                                        ts = ts / 1000.0
-                                    pinfo['last_seen_ts'] = ts
-                                    connected_pcs[pid] = pinfo
-                except Exception as e:
-                    try:
-                        with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
-                            ef.write(f"[{datetime.now()}] GET pcs error: {e}\n")
-                    except: pass
+                # 2. 다른 PC 목록 가져오기 (비활성화 - Firebase 직접 연동)
                 
                 # 3. 대기 중인 명령 확인 (GET)
                 cmd = None
@@ -1624,25 +477,29 @@ class AutoShutdownAppV2:
                     action = cmd.get("action")
                     message = cmd.get("message", "")
                     
-                    # 개별 명령 즉시 삭제
-                    if cmd_type == 'individual':
-                        del_url = f"{central_url.rstrip('/')}/commands/{pc_id}.json"
-                        del_req = urllib.request.Request(del_url, method='DELETE')
-                        try:
-                            with urllib.request.urlopen(del_req, timeout=2, context=ssl_context) as res:
-                                pass
-                        except Exception as e:
-                            try:
-                                with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
-                                    ef.write(f"[{datetime.now()}] DELETE cmd error: {e}\n")
-                            except: pass
+                    # 진단 로그: 명령 수신 기록
+                    try:
+                        with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
+                            ef.write(f"[{datetime.now()}] CMD RECEIVED: action={action}, type={cmd_type}, msg_type={type(message).__name__}, msg_keys={list(message.keys()) if isinstance(message, dict) else 'N/A'}\n")
+                    except: pass
                     
-                    # 명령 실행 액션
-                    if action == 'shutdown': os.system('shutdown /s /t 0')
-                    elif action == 'sleep': os.system('rundll32.exe powrprof.dll,SetSuspendState 0,1,0')
-                    elif action == 'restart': os.system('shutdown /r /t 0')
-                    elif action == 'update': threading.Thread(target=self.check_for_updates, kwargs={'silent': True}, daemon=True).start()
-                    elif action == 'setup_mode': threading.Thread(target=self.run_setup_mode, daemon=True).start()
+                    # 명령 실행 액션 (성공 후에 삭제)
+                    cmd_success = False
+                    if action == 'shutdown':
+                        os.system('shutdown /s /t 0')
+                        cmd_success = True
+                    elif action == 'sleep':
+                        os.system('rundll32.exe powrprof.dll,SetSuspendState 0,1,0')
+                        cmd_success = True
+                    elif action == 'restart':
+                        os.system('shutdown /r /t 0')
+                        cmd_success = True
+                    elif action == 'update':
+                        threading.Thread(target=self.check_for_updates, kwargs={'silent': True}, daemon=True).start()
+                        cmd_success = True
+                    elif action == 'setup_mode':
+                        threading.Thread(target=self.run_setup_mode, daemon=True).start()
+                        cmd_success = True
                     elif action == 'set_config' and isinstance(message, dict):
                         try:
                             current = {}
@@ -1674,13 +531,39 @@ class AutoShutdownAppV2:
                                 
                             if app_instance:
                                 app_instance.root.after(0, lambda d=message_clean: app_instance.reload_config_from_web(d))
+                            
+                            cmd_success = True
+                            
+                            # 진단 로그: 설정 적용 성공
+                            try:
+                                with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
+                                    ef.write(f"[{datetime.now()}] set_config SUCCESS: wrote {len(message)} keys to config, scheduled GUI reload\n")
+                            except: pass
+                            
+                            # 시스템 알림: 원격 설정 수신 알림
+                            if app_instance:
+                                app_instance.root.after(0, lambda: app_instance.add_system_alert("✅ 원격 설정 변경이 수신되어 적용되었습니다."))
                         except Exception as ex:
                             try:
                                 with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
-                                    ef.write(f"[{datetime.now()}] set_config error: {ex}\n")
+                                    ef.write(f"[{datetime.now()}] set_config FAILED: {ex}\n")
                             except: pass
                     elif action == 'message' and message:
                         self.root.after(0, lambda m=message: messagebox.showinfo("관리자 메시지", m, parent=self.root))
+                        cmd_success = True
+                    
+                    # 명령 처리 성공 후에만 Firebase에서 삭제 (실패 시 재시도 가능)
+                    if cmd_success and cmd_type == 'individual':
+                        del_url = f"{central_url.rstrip('/')}/commands/{pc_id}.json"
+                        del_req = urllib.request.Request(del_url, method='DELETE')
+                        try:
+                            with urllib.request.urlopen(del_req, timeout=2, context=ssl_context) as res:
+                                pass
+                        except Exception as e:
+                            try:
+                                with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
+                                    ef.write(f"[{datetime.now()}] DELETE cmd error: {e}\n")
+                            except: pass
             except Exception as ge:
                 try:
                     with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
@@ -2040,10 +923,6 @@ class AutoShutdownAppV2:
                 "autostart": self.autostart_var.get(),
                 "show_popup_alert": self.show_popup_var.get(),
                 "skip_date": datetime.now().strftime("%Y-%m-%d") if self.skip_today_var.get() else "",
-                "central_server_url": self.central_url_var.get().strip(),
-                "ngrok_token": self.ngrok_token_var.get().strip(),
-                "ngrok_domain": self.ngrok_domain_var.get().strip(),
-                "is_server": self.is_server_var.get(),
                 "school_info": getattr(self, 'school_info', {}),
                 "timetable_cache": getattr(self, 'timetable_cache', {}),
                 "meal_cache": getattr(self, 'meal_cache', {})
@@ -2108,7 +987,7 @@ class AutoShutdownAppV2:
             
         self.settings_win = ctk.CTkToplevel(self.root)
         self.settings_win.title("상세 설정")
-        self.settings_win.geometry("380x550")
+        self.settings_win.geometry("380x370")
         self.settings_win.resizable(False, False)
         self.settings_win.attributes('-topmost', True)
         self.settings_win.after(100, lambda: self.settings_win.attributes('-topmost', False))
@@ -2161,143 +1040,7 @@ class AutoShutdownAppV2:
             
         ctk.CTkButton(api_key_frame, text="키 적용", command=save_api_key, width=50, height=24, font=ctk.CTkFont(family=self.font_family, size=11)).pack(side="right", padx=5)
         
-        # 방화벽 설정 카드
-        firewall_card = ctk.CTkFrame(scroll, fg_color=("gray95", "gray15"), corner_radius=15)
-        firewall_card.pack(fill="x", pady=5, ipady=5)
-        ctk.CTkLabel(firewall_card, text="🛡️ 원격 제어 방화벽 설정", font=ctk.CTkFont(family=self.font_family, size=12, weight="bold")).pack(pady=(8, 2))
-        
-        status_lbl = ctk.CTkLabel(firewall_card, text="상태 확인 중...", font=ctk.CTkFont(family=self.font_family, size=11))
-        status_lbl.pack(pady=2)
 
-        def check_firewall_status():
-            try:
-                result = subprocess.run(
-                    ['netsh', 'advfirewall', 'firewall', 'show', 'rule', 'name=SmartPowerControl_TCP'],
-                    capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW
-                )
-                # returncode 0 = 규칙 존재(허용), 1 = 규칙 없음(차단)
-                if result.returncode == 0:
-                    status_lbl.configure(text="현재 상태: ✅ 허용됨 (스마트폰 등 접속 가능)", text_color="#2ECC71")
-                else:
-                    status_lbl.configure(text="현재 상태: ❌ 차단됨 (접속 불가 - 허용 필요)", text_color="#E74C3C")
-            except Exception as e:
-                status_lbl.configure(text=f"상태 확인 실패: {e}", text_color="gray")
-
-        def check_loop(count=0):
-            check_firewall_status()
-            if count < 5:
-                # 1초마다 다시 확인 (관리자 권한 승인하는 시간 고려)
-                if getattr(self, 'settings_win', None) and self.settings_win.winfo_exists():
-                    self.settings_win.after(1000, lambda: check_loop(count + 1))
-
-        def setup_firewall_and_test():
-            try:
-                commands = (
-                    "netsh advfirewall firewall add rule name=\"SmartPowerControl_TCP\" dir=in action=allow protocol=TCP localport=15555 & "
-                    "netsh advfirewall firewall add rule name=\"SmartPowerControl_UDP\" dir=in action=allow protocol=UDP localport=5555"
-                )
-                ctypes.windll.shell32.ShellExecuteW(None, "runas", "cmd.exe", f"/c {commands}", None, 0)
-                # 실행 후 상태 확인 루프 시작
-                if getattr(self, 'settings_win', None) and self.settings_win.winfo_exists():
-                    self.settings_win.after(1000, lambda: check_loop(0))
-            except Exception:
-                pass
-
-        btn_frame = ctk.CTkFrame(firewall_card, fg_color="transparent")
-        btn_frame.pack(pady=5)
-        
-        ctk.CTkButton(btn_frame, text="방화벽 허용 (관리자 권한)", command=setup_firewall_and_test, font=ctk.CTkFont(family=self.font_family, size=11, weight="bold"), fg_color="#34495E", hover_color="#2C3E50", height=28).pack(side="left", padx=5)
-        ctk.CTkButton(btn_frame, text="상태 새로고침", command=check_firewall_status, font=ctk.CTkFont(family=self.font_family, size=11), fg_color="gray", hover_color="#555", height=28).pack(side="left", padx=5)
-
-        # UI 렌더링 후 초기 상태 확인
-        self.settings_win.after(100, check_firewall_status)
-        
-        # Ngrok 및 HTTP 서버 카드
-        ngrok_card = ctk.CTkFrame(scroll, fg_color=("gray95", "gray15"), corner_radius=15)
-        ngrok_card.pack(fill="x", pady=5, ipady=5)
-        ctk.CTkLabel(ngrok_card, text="🌐 원격 중앙 제어 (방화벽 무시)", font=ctk.CTkFont(family=self.font_family, size=12, weight="bold")).pack(pady=(8, 2))
-        
-        mode_frame = ctk.CTkFrame(ngrok_card, fg_color="transparent")
-        mode_frame.pack(fill="x", padx=10, pady=(5,0))
-        ctk.CTkSwitch(mode_frame, text="이 PC를 고정 메인 서버로 지정 (강제 Ngrok 실행)", variable=self.is_server_var, font=ctk.CTkFont(family=self.font_family, size=11, weight="bold"), command=self.toggle_server_mode).pack(side="left", padx=5)
-        
-        ngrok_desc = "체크 해제 시 켜져 있는 PC 중 1대가 자동으로 서버 역할을 넘겨받습니다.\n고정 서버가 필요한 경우에만 1대의 PC에서 체크하세요."
-        ctk.CTkLabel(ngrok_card, text=ngrok_desc, font=ctk.CTkFont(family=self.font_family, size=10), text_color="gray").pack(pady=2)
-
-        ngrok_btn_frame = ctk.CTkFrame(ngrok_card, fg_color="transparent")
-        ngrok_btn_frame.pack(pady=5)
-        
-        ctk.CTkLabel(ngrok_btn_frame, text="현재 Ngrok 주소:", font=ctk.CTkFont(family=self.font_family, size=11, weight="bold")).pack(side="left", padx=5)
-        
-        url_lbl = ctk.CTkEntry(ngrok_btn_frame, textvariable=self.ngrok_url_var, state="readonly", width=180, font=ctk.CTkFont(family=self.font_family, size=11))
-        url_lbl.pack(side="left", padx=5)
-        
-        def run_server_diagnostics():
-            try:
-                import urllib.request
-                import json
-                
-                msgs = []
-                
-                # 1. 로컬 15555 포트 확인 (Flask)
-                try:
-                    req = urllib.request.Request(f"http://127.0.0.1:{SERVER_PORT}/api/pcs", method='GET')
-                    with urllib.request.urlopen(req, timeout=2) as res:
-                        if res.status == 200:
-                            msgs.append(f"✅ 로컬 서버({SERVER_PORT}포트) 정상 작동 중")
-                        else:
-                            msgs.append(f"❌ 로컬 서버 응답 오류: HTTP {res.status}")
-                except Exception as e:
-                    msgs.append(f"❌ 로컬 서버({SERVER_PORT}포트) 연결 실패\n  (포트 충돌로 서버가 닫혔을 수 있습니다: {e})")
-                    
-                # 2. Ngrok 터널 확인
-                if getattr(self, 'is_leader', False) or getattr(self, 'auto_leader', False):
-                    ngrok_url = self.ngrok_url_var.get().strip()
-                    if ngrok_url:
-                        try:
-                            nreq = urllib.request.Request(f"{ngrok_url.rstrip('/')}/api/pcs", method='GET', headers={'ngrok-skip-browser-warning': 'true'})
-                            with urllib.request.urlopen(nreq, timeout=3) as nres:
-                                if nres.status == 200:
-                                    msgs.append(f"✅ 외부 Ngrok 터널 정상 연결됨")
-                                else:
-                                    msgs.append(f"❌ Ngrok 터널 응답 오류: HTTP {nres.status}")
-                        except Exception as e:
-                            msgs.append(f"❌ Ngrok 외부망 연결 실패\n  ({e})")
-                    else:
-                        error_str = getattr(self, 'last_ngrok_error', '')
-                        if error_str:
-                            msgs.append(f"⚠️ Ngrok 주소가 발급되지 않았습니다.\n(최근 에러: {error_str})")
-                        else:
-                            msgs.append("⚠️ Ngrok 주소가 발급되지 않았습니다. (할당 중이거나 오류)")
-                else:
-                    msgs.append("ℹ️ 이 PC는 현재 클라이언트 모드입니다. (메인 서버가 꺼지면 자동으로 이어받음)")
-                    
-                messagebox.showinfo("서버 진단 결과", "\n\n".join(msgs), parent=self.settings_win)
-            except Exception as ex:
-                pass
-
-        ctk.CTkButton(ngrok_btn_frame, text="서버 진단", command=run_server_diagnostics, font=ctk.CTkFont(family=self.font_family, size=11, weight="bold"), width=70, height=24, fg_color="#E67E22", hover_color="#D35400").pack(side="left", padx=5)
-
-        
-        token_frame = ctk.CTkFrame(ngrok_card, fg_color="transparent")
-        token_frame.pack(fill="x", padx=10, pady=(5, 0))
-        ctk.CTkLabel(token_frame, text="Auth Token:", font=ctk.CTkFont(family=self.font_family, size=11)).pack(side="left", padx=5)
-        ctk.CTkEntry(token_frame, textvariable=self.ngrok_token_var, placeholder_text="(선택) Ngrok 홈페이지 발급 토큰", font=ctk.CTkFont(family=self.font_family, size=11)).pack(side="left", fill="x", expand=True, padx=5)
-        
-        domain_frame = ctk.CTkFrame(ngrok_card, fg_color="transparent")
-        domain_frame.pack(fill="x", padx=10, pady=(5, 5))
-        ctk.CTkLabel(domain_frame, text="고정 도메인:", font=ctk.CTkFont(family=self.font_family, size=11)).pack(side="left", padx=5)
-        ctk.CTkEntry(domain_frame, textvariable=self.ngrok_domain_var, placeholder_text="(선택) 예: lobster.ngrok-free.app", font=ctk.CTkFont(family=self.font_family, size=11)).pack(side="left", fill="x", expand=True, padx=5)
-        
-        self.ngrok_token_var.trace_add('write', self.save_config_callback)
-        self.ngrok_domain_var.trace_add('write', self.save_config_callback)
-
-        client_frame = ctk.CTkFrame(ngrok_card, fg_color="transparent")
-        client_frame.pack(fill="x", padx=10, pady=(5, 5))
-        ctk.CTkLabel(client_frame, text="중앙 서버 주소:", font=ctk.CTkFont(family=self.font_family, size=11)).pack(side="left", padx=5)
-        central_url_entry = ctk.CTkEntry(client_frame, textvariable=self.central_url_var, placeholder_text="예: https://xxx.ngrok.app", font=ctk.CTkFont(family=self.font_family, size=11))
-        central_url_entry.pack(side="left", fill="x", expand=True, padx=5)
-        self.central_url_var.trace_add('write', self.save_config_callback)
         
         schedule_card = ctk.CTkFrame(scroll, fg_color=("gray95", "gray15"), corner_radius=15)
         schedule_card.pack(fill="x", pady=5, ipady=5)
@@ -2462,52 +1205,23 @@ class AutoShutdownAppV2:
             pass
 
     def get_tray_server_status(self, item=None):
-        if getattr(self, 'is_leader', False):
-            return "✅ [고정 서버] 외부망(Ngrok) 연동 완료" if self.ngrok_url_var.get() else "🟡 [고정 서버] 외부망 연결 대기 중"
-        elif getattr(self, 'auto_leader', False):
-            return "✅ [자동 서버] 이 PC가 메인 서버로 작동 중" if self.ngrok_url_var.get() else "🟡 [자동 서버] 외부망 연결 대기 중"
-        else:
-            return "🔵 [클라이언트] 연결 대기 중 (자동 페일오버 지원)"
+        return "✅ Firebase 원격 제어 연동 완료"
 
     def cancel_shutdown(self, icon=None, item=None):
         self.pending_shutdown = False
         if self.icon: self.icon.notify("예약된 시스템 종료/절전이 취소되었습니다.", "종료 취소")
 
     def get_menu(self):
-        local_ip = get_local_ip()
-        remote_url = f"http://{local_ip}:{SERVER_PORT}"
-        
-        def open_remote():
-            import webbrowser
-            webbrowser.open(remote_url)
-            
-        if getattr(self, 'is_leader', False):
-            ngrok_url = self.ngrok_url_var.get()
-            status_text = "✅ [고정 메인 서버] 외부 터널 개방됨" if ngrok_url else "🟡 [고정 메인 서버] 연결 중..."
-        elif getattr(self, 'auto_leader', False):
-            ngrok_url = self.ngrok_url_var.get()
-            status_text = "✅ [자동 메인 서버] 외부 터널 개방됨" if ngrok_url else "🟡 [자동 메인 서버] 연결 중..."
-        else:
-            status_text = "🔵 [클라이언트 모드] 대기 중"
-            
         menu_items = [
             pystray.MenuItem(f"버전: v{CURRENT_VERSION}", lambda icon, item: None),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem(status_text, lambda icon, item: None),
+            pystray.MenuItem("✅ Firebase 원격 제어 연동 중", lambda icon, item: None),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem(f'🌐 원격 제어: {remote_url}', open_remote),
             pystray.MenuItem('오늘 하루 끄지 않기', self.toggle_skip_state, checked=self.get_skip_state),
             pystray.MenuItem('열기 (대시보드)', self.show_window),
             pystray.MenuItem('🔄 업데이트 확인', lambda icon, item: self.root.after(0, self.manual_update_check))
         ]
         menu_items.append(pystray.MenuItem('❌ 대기열에 있는 제어 강제 취소', self.cancel_shutdown, visible=lambda item: getattr(self, 'pending_shutdown', False)))
-        
-        ngrok_err = getattr(self, 'last_ngrok_error', '')
-        if ngrok_err:
-            short_err = ngrok_err.replace('\n', ' ')[:40]
-            menu_items.append(pystray.Menu.SEPARATOR)
-            menu_items.append(pystray.MenuItem(f"⚠️ 최근 에러: {short_err}...", lambda icon, item: None))
-            
         menu_items.append(pystray.Menu.SEPARATOR)
         menu_items.append(pystray.MenuItem('종료', self.quit_app))
         return tuple(menu_items)
@@ -2682,10 +1396,6 @@ class AutoShutdownAppV2:
                 self.root.destroy()
             except:
                 pass
-            try:
-                self.stop_ngrok()
-            except:
-                pass
             # 데몬 스레드들이 남아있을 수 있으므로 프로세스 강제 종료로 확실히 마무리
             os._exit(0)
             
@@ -2699,7 +1409,7 @@ class AutoShutdownAppV2:
             'system', 'idle', 'smss.exe', 'csrss.exe', 'wininit.exe',
             'winlogon.exe', 'services.exe', 'lsass.exe', 'svchost.exe',
             'dwm.exe', 'registry', 'memcompression', 'explorer.exe',
-            'auto_shutdown.exe', 'ngrok.exe', 'taskmgr.exe', 'conhost.exe',
+            'auto_shutdown.exe', 'taskmgr.exe', 'conhost.exe',
             'fontdrvhost.exe', 'spoolsv.exe', 'runtimebroker.exe',
             'sihost.exe', 'taskhostw.exe', 'ctfmon.exe', 'dllhost.exe',
             'audiodg.exe', 'python.exe', 'pythonw.exe', 'searchhost.exe',
