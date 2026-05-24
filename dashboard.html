@@ -619,6 +619,9 @@ body {
         grid-template-columns: 1fr;
     }
 }
+#confirm-modal {
+    z-index: 200 !important;
+}
 </style>
 </head>
 <body>
@@ -1192,8 +1195,6 @@ function updateScheduleAction(day, period, value) {
 
 function closeConfigModal() {
     document.getElementById("config-modal").classList.remove("show");
-    activeConfigTarget = null;
-    cfgActiveSchedule = {};
 }
 
 async function applyRemoteConfig() {
@@ -1244,11 +1245,11 @@ async function applyRemoteConfig() {
             closeModal();
             closeConfigModal();
             
-            const success = await writeCommandToDB(targetPc, "set_config", configPayload);
-            if (success) {
+            const result = await writeCommandToDB(targetPc, "set_config", configPayload);
+            if (result.success) {
                 alert("원격 설정 및 종료 스케줄 변경 명령이 성공적으로 전송되었습니다! PC가 수초 내에 이를 적용합니다.");
             } else {
-                alert("설정 전송 중 오류가 발생했습니다.");
+                alert("설정 전송 중 오류가 발생했습니다: " + result.error);
             }
             selectedPcs.clear();
             updateStatistics();
@@ -1292,10 +1293,13 @@ async function writeCommandToDB(target, action, message = "") {
             },
             body: JSON.stringify(bodyData)
         });
-        return response.ok;
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return { success: true };
     } catch(e) {
         console.error("전원 명령 쓰기 실패:", e);
-        return false;
+        return { success: false, error: e.message || String(e) };
     }
 }
 
@@ -1307,11 +1311,11 @@ function triggerCommandAll(action) {
         `현재 등록된 모든 PC로 즉시 [${labels[action]}] 명령을 전송하시겠습니까?`,
         async () => {
             closeModal();
-            const success = await writeCommandToDB("__ALL__", action);
-            if (success) {
+            const result = await writeCommandToDB("__ALL__", action);
+            if (result.success) {
                 alert("전체 명령이 성공적으로 전달되었습니다.");
             } else {
-                alert("명령 전달 중 오류가 발생했습니다.");
+                alert("명령 전달 중 오류가 발생했습니다: " + result.error);
             }
         }
     );
@@ -1324,15 +1328,17 @@ function triggerCommandSelected(action) {
         `선택된 ${selectedPcs.size}대의 PC로 즉시 [${labels[action]}] 명령을 전송하시겠습니까?`,
         async () => {
             closeModal();
-            let errs = 0;
+            let errs = [];
             for (const pcId of selectedPcs) {
-                const success = await writeCommandToDB(pcId, action);
-                if (!success) errs++;
+                const result = await writeCommandToDB(pcId, action);
+                if (!result.success) {
+                    errs.push(`${pcs[pcId]?.hostname || pcId}: ${result.error}`);
+                }
             }
-            if (errs === 0) {
+            if (errs.length === 0) {
                 alert(`선택된 ${selectedPcs.size}대의 PC로 명령을 전달했습니다.`);
             } else {
-                alert(`명령 전달 중 일부 오류 발생 (실패: ${errs}대)`);
+                alert(`명령 전달 중 일부 오류 발생:\n` + errs.join('\n'));
             }
             selectedPcs.clear();
             updateStatistics();
@@ -1349,15 +1355,17 @@ function triggerMessageSelected() {
         `선택된 ${selectedPcs.size}대의 PC로 메시지를 전송하시겠습니까?\n내용: "${msg}"`,
         async () => {
             closeModal();
-            let errs = 0;
+            let errs = [];
             for (const pcId of selectedPcs) {
-                const success = await writeCommandToDB(pcId, "message", msg);
-                if (!success) errs++;
+                const result = await writeCommandToDB(pcId, "message", msg);
+                if (!result.success) {
+                    errs.push(`${pcs[pcId]?.hostname || pcId}: ${result.error}`);
+                }
             }
-            if (errs === 0) {
+            if (errs.length === 0) {
                 alert("메시지가 정상 전송되었습니다.");
             } else {
-                alert("일부 메시지 전송 실패");
+                alert("일부 메시지 전송 실패:\n" + errs.join('\n'));
             }
             selectedPcs.clear();
             updateStatistics();
@@ -1399,12 +1407,17 @@ function showModal(title, msg, onOk) {
     pendingAction = onOk;
     
     document.getElementById("confirm-modal").classList.add("show");
-    document.getElementById("modal-ok-btn").onclick = pendingAction;
+    document.getElementById("modal-ok-btn").onclick = function() {
+        if (typeof pendingAction === "function") {
+            Promise.resolve(pendingAction()).catch(function(err) {
+                alert("처리 중 치명적인 에러 발생:\n" + (err.stack || err.message || String(err)));
+            });
+        }
+    };
 }
 
 function closeModal() {
     document.getElementById("confirm-modal").classList.remove("show");
-    pendingAction = null;
 }
 </script>
 </body>

@@ -1,5 +1,5 @@
 {
-    "minutes_before": 7,
+    "minutes_before": 5,
     "autostart": true,
     "show_popup_alert": false,
     "skip_date": "",
@@ -9,8 +9,8 @@
         "school_code": "7005001",
         "office_code": "S10",
         "school_kind": "고등학교",
-        "grade": "2",
-        "class_nm": "3"
+        "grade": "1",
+        "class_nm": "1"
     },
     "timetable_cache": {},
     "meal_cache": {},
@@ -20,11 +20,11 @@
             "action": "시스템 종료"
         },
         "2교시 (09:40)": {
-            "enabled": false,
+            "enabled": true,
             "action": "시스템 종료"
         },
         "3교시 (10:40)": {
-            "enabled": false,
+            "enabled": true,
             "action": "시스템 종료"
         },
         "4교시 (11:40)": {
@@ -32,11 +32,11 @@
             "action": "시스템 종료"
         },
         "점심시간 (12:40)": {
-            "enabled": true,
+            "enabled": false,
             "action": "시스템 종료"
         },
         "5교시 (13:30)": {
-            "enabled": true,
+            "enabled": false,
             "action": "시스템 종료"
         },
         "6교시 (14:30)": {
@@ -48,8 +48,8 @@
             "action": "시스템 종료"
         },
         "방과후/기타 (16:30)": {
-            "enabled": true,
-            "action": "절전 모드"
+            "enabled": false,
+            "action": "시스템 종료"
         }
     },
     "화": {
