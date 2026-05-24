@@ -496,6 +496,33 @@ body {
     cursor: not-allowed;
 }
 
+.card-settings-btn {
+    position: absolute;
+    bottom: 16px;
+    right: 16px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-light);
+    border-radius: 8px;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--text-main);
+    transition: var(--transition-smooth);
+    font-size: 14px;
+    z-index: 5;
+}
+
+.card-settings-btn:hover {
+    background: var(--accent-blue);
+    color: #000;
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 10px rgba(14, 165, 233, 0.4);
+    transform: scale(1.05);
+}
+
 /* ── 빈 상태 ── */
 .empty-state {
     text-align: center;
@@ -713,7 +740,6 @@ body {
                     <button class="action-btn action-btn-warning" id="btn-select-sleep" onclick="triggerCommandSelected('sleep')" disabled>💤 선택 절전</button>
                     <button class="action-btn action-btn-blue" id="btn-select-restart" onclick="triggerCommandSelected('restart')" disabled>🔄 선택 재부팅</button>
                     <button class="action-btn action-btn-secondary" id="btn-select-setup" onclick="triggerCommandSelected('setup_mode')" disabled>🚀 선택 초기설정</button>
-                    <button class="action-btn action-btn-secondary" id="btn-select-config" onclick="openConfigModal()" disabled>⚙️ 원격 설정</button>
                     <button class="action-btn action-btn-secondary" id="btn-select-update" onclick="triggerCommandSelected('update')" disabled>🔄 원격 업데이트</button>
                     <button class="action-btn action-btn-secondary" id="btn-select-msg" onclick="triggerMessageSelected()" disabled>💬 선택 메시지</button>
                 </div>
@@ -1030,6 +1056,7 @@ function renderPCGrid(serverNowMs) {
                 <div class="pc-meta">🖥️ IP: ${pc.ip || 'N/A'}</div>
                 <div class="pc-meta">⏳ 응답: ${timeStr} (${calibratedTimeStr})</div>
                 ${pc.next_event && pc.next_event !== '없음' ? `<div class="pc-event">⏰ 예정: ${pc.next_event}</div>` : ''}
+                <button class="card-settings-btn" onclick="event.stopPropagation(); openConfigModal('${pcId}')" title="원격 설정">⚙️</button>
             </div>`;
     });
     
@@ -1068,9 +1095,6 @@ function updateStatistics(serverNowMs) {
     elementsToToggle.forEach(id => {
         document.getElementById(id).disabled = selectCount === 0;
     });
-    
-    // 원격 설정 버튼은 정확히 1대 선택 시에만 활성화
-    document.getElementById("btn-select-config").disabled = selectCount !== 1;
 }
 
 function toggleSelectDevice(pcId) {
@@ -1101,10 +1125,12 @@ const PERIODS_LIST = [
     "점심시간 (12:40)", "5교시 (13:30)", "6교시 (14:30)", "7교시 (15:30)", "방과후/기타 (16:30)"
 ];
 
-function openConfigModal() {
-    if (selectedPcs.size !== 1) return;
+function openConfigModal(pcId) {
+    if (!pcId) {
+        if (selectedPcs.size !== 1) return;
+        pcId = Array.from(selectedPcs)[0];
+    }
     
-    const pcId = Array.from(selectedPcs)[0];
     const pc = pcs[pcId];
     if (!pc) return;
     
