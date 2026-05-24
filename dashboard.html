@@ -493,6 +493,7 @@ body {
 /* 카드 비활성화 (오프라인) 투명도 */
 .pc-card.offline {
     opacity: 0.6;
+    cursor: not-allowed;
 }
 
 /* ── 빈 상태 ── */
@@ -981,6 +982,9 @@ function renderPCGrid(serverNowMs) {
         
         // 15초 이상 통신이 없으면 강제로 오프라인으로 취급
         const isOnline = (pc.status === "online") && (diffSeconds < 15);
+        if (!isOnline && selectedPcs.has(pcId)) {
+            selectedPcs.delete(pcId);
+        }
         const isSelected = selectedPcs.has(pcId);
         
         // 마지막 응답 시간 텍스트 연산
@@ -1064,6 +1068,15 @@ function updateStatistics(serverNowMs) {
 }
 
 function toggleSelectDevice(pcId) {
+    const pc = pcs[pcId];
+    if (!pc) return;
+    
+    const serverNowMs = Date.now() + serverTimeOffset;
+    const diffSeconds = getPCDiffSeconds(pc, serverNowMs);
+    const isOnline = (pc.status === "online") && (diffSeconds < 15);
+    
+    if (!isOnline) return; // 꺼진 PC는 선택되지 않도록 처리
+    
     if (selectedPcs.has(pcId)) {
         selectedPcs.delete(pcId);
     } else {
