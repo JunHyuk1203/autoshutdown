@@ -11,7 +11,8 @@ import re
 from datetime import datetime, timedelta
 import ssl
 
-# (Flask & P2P imports removed)
+# 전역 앱 인스턴스 (http_poller_thread 등에서 참조)
+app_instance = None
 
 # PyInstaller 환경 변수 오염(init.tcl) 방지 패치
 # 업데이트 후 부모 프로세스의 환경변수가 상속되면 삭제된 임시 폴더를 참조하므로
@@ -34,7 +35,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.61"
+CURRENT_VERSION = "1.1.62"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -246,8 +247,10 @@ class AutoShutdownAppV2:
         self.pending_shutdown_target = None
         self.pending_action = "시스템 종료"
         self.last_media_time = 0
-        
-        # (ngrok / P2P leader variables removed)
+        self._is_reloading = False
+        self.api_key_error_shown = False
+        self.snooze_target = None
+        self.snooze_action = "시스템 종료"
         
         global app_instance
         app_instance = self
@@ -301,7 +304,7 @@ class AutoShutdownAppV2:
                                        old_info.get("office_code") != office):
                     def auto_resolve_school_code():
                         try:
-                            url = f"https://open.neis.go.kr/hub/schoolInfo?Type=json&pIndex=1&pSize=5&SCHUL_NM={urllib.parse.quote(name)}"
+                            url = f"https://open.neis.go.kr/hub/schoolInfo?Type=json&pIndex=1&pSize=5&ATPT_OFCDC_SC_CODE={office}&SCHUL_NM={urllib.parse.quote(name)}"
                             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
                             with urllib.request.urlopen(req, timeout=5) as res:
                                 res_data = json.loads(res.read().decode('utf-8'))
@@ -366,7 +369,7 @@ class AutoShutdownAppV2:
             self._is_reloading = False
             self.save_config()
             self.update_status_info()
-            # (send_heartbeat_now removed)
+
         except Exception as e:
             self._is_reloading = False
             try:
@@ -374,7 +377,7 @@ class AutoShutdownAppV2:
                     ef.write(f"[{datetime.now()}] reload_config_from_web FAILED: {e}\n")
             except: pass
 
-    # (Legacy local Flask server and UDP P2P methods removed)
+
 
     def http_poller_thread(self):
         while self.is_running:
@@ -797,7 +800,15 @@ class AutoShutdownAppV2:
 
     def _show_update_error(self, msg):
         """업데이트 실패 알림 (메인 스레드에서 실행)"""
-        pass
+        def _show():
+            try:
+                parent = getattr(self, 'settings_win', None)
+                if not parent or not parent.winfo_exists():
+                    parent = self.root
+                messagebox.showerror("업데이트 오류", msg, parent=parent)
+            except Exception:
+                pass
+        self.root.after(0, _show)
 
     def perform_auto_update(self, download_url, is_manual=False, silent=False):
         update_exe_path = os.path.join(application_path, "update_temp.exe")
@@ -944,7 +955,9 @@ class AutoShutdownAppV2:
         except Exception: pass
 
     def update_autostart_shortcut(self, enable):
-        startup_dir = os.path.join(os.getenv('APPDATA'), r'Microsoft\Windows\Start Menu\Programs\Startup')
+        appdata = os.getenv('APPDATA')
+        if not appdata: return
+        startup_dir = os.path.join(appdata, r'Microsoft\Windows\Start Menu\Programs\Startup')
         vbs_path = os.path.join(startup_dir, "AutoShutdownBG.vbs")
         if enable:
             if getattr(sys, 'frozen', False):
@@ -1302,7 +1315,7 @@ class AutoShutdownAppV2:
             self._is_prompting = False
             pwd_win.destroy()
         pwd_win.protocol("WM_DELETE_WINDOW", on_close)
-        pwd_win.bind("<Key>", lambda e: "break")
+        pwd_win.bind("<Key>", lambda e: "break" if e.keysym not in ('Alt_L', 'Alt_R', 'F4') else None)
         
         ctk.CTkLabel(pwd_win, text="비밀번호 입력", font=ctk.CTkFont(family=self.font_family, size=11)).pack(pady=(15, 5))
         display_var = ctk.StringVar(value="")
@@ -1583,7 +1596,10 @@ class AutoShutdownAppV2:
             except Exception: pass
             
         if self.icon:
-            self.icon.title = tooltip_text + f"\n{self.get_tray_server_status()}"
+            full_title = tooltip_text + f"\n{self.get_tray_server_status()}"
+            if len(full_title) >= 128:
+                full_title = full_title[:124] + "..."
+            self.icon.title = full_title
             try: self.icon.update_menu()
             except: pass
 
@@ -1604,6 +1620,20 @@ class AutoShutdownAppV2:
         self.toast.attributes('-topmost', True)
         self.toast.overrideredirect(True)
         
+        def on_cancel():
+            self.pending_shutdown = False
+            if self.toast and self.toast.winfo_exists(): self.toast.destroy()
+            if self.icon: self.icon.notify("사용자의 요청으로 제어가 취소되었습니다.", "취소 완료")
+                
+        def on_snooze():
+            self.pending_shutdown = False
+            if self.toast and self.toast.winfo_exists(): self.toast.destroy()
+            self.snooze_target = datetime.now() + timedelta(minutes=10)
+            self.snooze_action = action
+            if self.icon: self.icon.notify("10분 뒤에 다시 확인합니다.", "연기 완료")
+            
+        self.toast.protocol("WM_DELETE_WINDOW", on_cancel)
+        
         frame = ctk.CTkFrame(self.toast, fg_color=("white", "gray10"), corner_radius=15, border_width=2, border_color="#3498DB")
         frame.pack(fill="both", expand=True, padx=2, pady=2)
         
@@ -1619,18 +1649,6 @@ class AutoShutdownAppV2:
         
         btn_frame = ctk.CTkFrame(frame, fg_color="transparent")
         btn_frame.pack(pady=15)
-        
-        def on_cancel():
-            self.pending_shutdown = False
-            if self.toast and self.toast.winfo_exists(): self.toast.destroy()
-            if self.icon: self.icon.notify("사용자의 요청으로 제어가 취소되었습니다.", "취소 완료")
-                
-        def on_snooze():
-            self.pending_shutdown = False
-            if self.toast and self.toast.winfo_exists(): self.toast.destroy()
-            self.snooze_target = datetime.now() + timedelta(minutes=10)
-            self.snooze_action = action
-            if self.icon: self.icon.notify("10분 뒤에 다시 확인합니다.", "연기 완료")
         
         cancel_btn = ctk.CTkButton(btn_frame, text="종료 취소", fg_color="#E74C3C", hover_color="#C0392B", command=on_cancel, width=120, height=35, font=ctk.CTkFont(family=self.font_family, size=14, weight="bold"))
         cancel_btn.pack(side="left", padx=10)
