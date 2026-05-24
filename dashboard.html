@@ -692,7 +692,10 @@ body {
             <div class="sidebar-panel">
                 <h3 class="panel-title">전체 PC 제어</h3>
                 <div class="btn-group">
-                    <button class="action-btn action-btn-danger" onclick="triggerCommandAll('shutdown')">⏻ 전체 종료</button>
+                    <button class="action-btn action-btn-danger" onclick="triggerCommandAll('shutdown')">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle;"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
+                        전체 종료
+                    </button>
                     <button class="action-btn action-btn-warning" onclick="triggerCommandAll('sleep')">💤 전체 절전</button>
                     <button class="action-btn action-btn-blue" onclick="triggerCommandAll('restart')">🔄 전체 재부팅</button>
                     <button class="action-btn action-btn-secondary" onclick="triggerCommandAll('setup_mode')">🚀 전체 초기설정</button>
@@ -703,7 +706,10 @@ body {
             <div class="sidebar-panel">
                 <h3 class="panel-title">선택 제어 <span class="selected-badge" id="badge-selected-count">0</span></h3>
                 <div class="btn-group">
-                    <button class="action-btn action-btn-danger" id="btn-select-shutdown" onclick="triggerCommandSelected('shutdown')" disabled>⏻ 선택 종료</button>
+                    <button class="action-btn action-btn-danger" id="btn-select-shutdown" onclick="triggerCommandSelected('shutdown')" disabled>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle;"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
+                        선택 종료
+                    </button>
                     <button class="action-btn action-btn-warning" id="btn-select-sleep" onclick="triggerCommandSelected('sleep')" disabled>💤 선택 절전</button>
                     <button class="action-btn action-btn-blue" id="btn-select-restart" onclick="triggerCommandSelected('restart')" disabled>🔄 선택 재부팅</button>
                     <button class="action-btn action-btn-secondary" id="btn-select-setup" onclick="triggerCommandSelected('setup_mode')" disabled>🚀 선택 초기설정</button>
