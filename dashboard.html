@@ -397,7 +397,7 @@ body {
 
 .pc-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
     gap: 12px;
 }
 
@@ -408,45 +408,14 @@ body {
     border-radius: 10px;
     padding: 12px;
     position: relative;
-    cursor: pointer;
+    cursor: default;
     user-select: none;
     transition: var(--transition-smooth);
 }
 
 .pc-card:hover {
-    background: rgba(255, 255, 255, 0.06);
-    border-color: rgba(255, 255, 255, 0.15);
-    transform: translateY(-2px);
-    box-shadow: 0 6px 15px rgba(0, 0, 0, 0.4);
-}
-
-/* 선택 상태 */
-.pc-card.selected {
-    border-color: var(--accent-blue);
-    background: rgba(14, 165, 233, 0.06);
-    box-shadow: 0 0 12px rgba(14, 165, 233, 0.15);
-}
-
-.pc-check {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    width: 14px;
-    height: 14px;
-    border-radius: 50%;
-    border: 2px solid rgba(255, 255, 255, 0.15);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 8px;
-    font-weight: 800;
-    transition: var(--transition-smooth);
-}
-
-.pc-card.selected .pc-check {
-    background: var(--accent-blue);
-    border-color: var(--accent-blue);
-    color: #000;
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.1);
 }
 
 /* 상태 인디케이터 (맥박 애니메이션) */
@@ -532,32 +501,50 @@ body {
     cursor: not-allowed;
 }
 
-.card-settings-btn {
-    position: absolute;
-    bottom: 10px;
-    right: 10px;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid var(--border-light);
-    border-radius: 6px;
-    width: 22px;
-    height: 22px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    color: var(--text-main);
-    transition: var(--transition-smooth);
-    font-size: 11px;
-    z-index: 5;
+.card-actions {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
 }
 
-.card-settings-btn:hover {
-    background: var(--accent-blue);
-    color: #000;
-    border-color: var(--accent-blue);
-    box-shadow: 0 0 8px rgba(14, 165, 233, 0.4);
-    transform: scale(1.05);
+.card-action-btn {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-light);
+    border-radius: 4px;
+    padding: 4px 2px;
+    font-size: 9px;
+    font-weight: 700;
+    color: var(--text-main);
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    transition: var(--transition-smooth);
 }
+
+.card-action-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    transform: translateY(-1px);
+}
+
+.card-action-btn[disabled] {
+    opacity: 0.3;
+    cursor: not-allowed !important;
+    pointer-events: none;
+}
+
+.card-action-btn.btn-danger:hover { background: var(--danger); color: #fff; border-color: var(--danger); }
+.card-action-btn.btn-warning:hover { background: var(--warning); color: #000; border-color: var(--warning); }
+.card-action-btn.btn-blue:hover { background: var(--accent-blue); color: #000; border-color: var(--accent-blue); }
+.card-action-btn.btn-purple:hover { background: var(--accent-purple); color: #fff; border-color: var(--accent-purple); }
+.card-action-btn.btn-info:hover { background: #0ea5e9; color: #000; border-color: #0ea5e9; }
+.card-action-btn.btn-success:hover { background: var(--success); color: #fff; border-color: var(--success); }
+.card-action-btn.btn-secondary:hover { background: rgba(255,255,255,0.2); }
 
 /* ── 빈 상태 ── */
 .empty-state {
@@ -741,8 +728,8 @@ body {
             <button class="btn-clear-offline" onclick="clearOfflineDevices()">🗑 오프라인 PC 목록 삭제</button>
         </div>
 
-        <!-- 가로 제어 행 (전체 원격 제어 및 선택 제어) -->
-        <div class="control-row">
+        <!-- 가로 제어 행 (전체 원격 제어) -->
+        <div class="control-row" style="grid-template-columns: 1fr;">
             <!-- 전체 원격 제어 -->
             <div class="control-panel">
                 <h3 class="panel-title">⚡ 전체 PC 제어</h3>
@@ -754,22 +741,6 @@ body {
                     <button class="action-btn action-btn-warning" onclick="triggerCommandAll('sleep')">💤 전체 절전</button>
                     <button class="action-btn action-btn-blue" onclick="triggerCommandAll('restart')">🔄 전체 재부팅</button>
                     <button class="action-btn action-btn-secondary" onclick="triggerCommandAll('setup_mode')">🚀 전체 초기설정</button>
-                </div>
-            </div>
-
-            <!-- 선택 PC 제어 -->
-            <div class="control-panel">
-                <h3 class="panel-title">⚙️ 선택 제어 <span class="selected-badge" id="badge-selected-count">0</span></h3>
-                <div class="btn-row">
-                    <button class="action-btn action-btn-danger" id="btn-select-shutdown" onclick="triggerCommandSelected('shutdown')" disabled>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle;"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
-                        선택 종료
-                    </button>
-                    <button class="action-btn action-btn-warning" id="btn-select-sleep" onclick="triggerCommandSelected('sleep')" disabled>💤 선택 절전</button>
-                    <button class="action-btn action-btn-blue" id="btn-select-restart" onclick="triggerCommandSelected('restart')" disabled>🔄 선택 재부팅</button>
-                    <button class="action-btn action-btn-secondary" id="btn-select-setup" onclick="triggerCommandSelected('setup_mode')" disabled>🚀 선택 초기설정</button>
-                    <button class="action-btn action-btn-secondary" id="btn-select-update" onclick="triggerCommandSelected('update')" disabled>🔄 원격 업데이트</button>
-                    <button class="action-btn action-btn-secondary" id="btn-select-msg" onclick="triggerMessageSelected()" disabled>💬 선택 메시지</button>
                 </div>
             </div>
         </div>
@@ -1067,8 +1038,7 @@ function renderPCGrid(serverNowMs) {
         }
         
         html += `
-            <div class="pc-card ${isOnline ? 'online' : 'offline'} ${isSelected ? 'selected' : ''}" onclick="toggleSelectDevice('${pcId}')">
-                <div class="pc-check">${isSelected ? '✓' : ''}</div>
+            <div class="pc-card ${isOnline ? 'online' : 'offline'}">
                 <div class="status-indicator">
                     <span class="dot ${isOnline ? 'online' : 'offline'}"></span>
                     <span class="pc-status-txt ${isOnline ? 'online' : 'offline'}">${isOnline ? '온라인' : '꺼짐'}</span>
@@ -1078,7 +1048,19 @@ function renderPCGrid(serverNowMs) {
                 <div class="pc-meta">🖥️ IP: ${pc.ip || 'N/A'}</div>
                 <div class="pc-meta">⏳ 응답: ${timeStr} (${calibratedTimeStr})</div>
                 ${pc.next_event && pc.next_event !== '없음' ? `<div class="pc-event">⏰ 예정: ${pc.next_event}</div>` : ''}
-                <button class="card-settings-btn" onclick="event.stopPropagation(); openConfigModal('${pcId}')" title="원격 설정">⚙️</button>
+                
+                <div class="card-actions">
+                    <button class="card-action-btn btn-danger" onclick="event.stopPropagation(); triggerSingleCommand('${pcId}', 'shutdown')" ${isOnline ? '' : 'disabled'} title="원격 종료">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 2px;"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
+                        종료
+                    </button>
+                    <button class="card-action-btn btn-warning" onclick="event.stopPropagation(); triggerSingleCommand('${pcId}', 'sleep')" ${isOnline ? '' : 'disabled'} title="원격 절전">💤 절전</button>
+                    <button class="card-action-btn btn-blue" onclick="event.stopPropagation(); triggerSingleCommand('${pcId}', 'restart')" ${isOnline ? '' : 'disabled'} title="원격 재부팅">🔄 재부팅</button>
+                    <button class="card-action-btn btn-purple" onclick="event.stopPropagation(); triggerSingleCommand('${pcId}', 'setup_mode')" ${isOnline ? '' : 'disabled'} title="원격 초기설정">🚀 초기화</button>
+                    <button class="card-action-btn btn-info" onclick="event.stopPropagation(); openConfigModal('${pcId}')" title="원격 환경설정">⚙️ 설정</button>
+                    <button class="card-action-btn btn-success" onclick="event.stopPropagation(); triggerSingleCommand('${pcId}', 'update')" ${isOnline ? '' : 'disabled'} title="원격 업데이트">🔼 업뎃</button>
+                    <button class="card-action-btn btn-secondary" onclick="event.stopPropagation(); triggerSingleMessage('${pcId}')" ${isOnline ? '' : 'disabled'} title="메시지 전송">💬 메시지</button>
+                </div>
             </div>`;
     });
     
@@ -1100,43 +1082,9 @@ function updateStatistics(serverNowMs) {
     document.getElementById("stat-total").innerText = total;
     document.getElementById("stat-online").innerText = online;
     document.getElementById("stat-offline").innerText = offline;
-    
-    // 선택된 PC 개수 및 버튼 활성화 상태 업데이트
-    const selectCount = selectedPcs.size;
-    document.getElementById("badge-selected-count").innerText = selectCount;
-    
-    const elementsToToggle = [
-        "btn-select-shutdown",
-        "btn-select-sleep",
-        "btn-select-restart",
-        "btn-select-setup",
-        "btn-select-update",
-        "btn-select-msg"
-    ];
-    
-    elementsToToggle.forEach(id => {
-        document.getElementById(id).disabled = selectCount === 0;
-    });
 }
 
-function toggleSelectDevice(pcId) {
-    const pc = pcs[pcId];
-    if (!pc) return;
-    
-    const serverNowMs = Date.now() + serverTimeOffset;
-    const diffSeconds = getPCDiffSeconds(pc, serverNowMs);
-    const isOnline = (pc.status === "online") && (diffSeconds < 15);
-    
-    if (!isOnline) return; // 꺼진 PC는 선택되지 않도록 처리
-    
-    if (selectedPcs.has(pcId)) {
-        selectedPcs.delete(pcId);
-    } else {
-        selectedPcs.add(pcId);
-    }
-    renderPCGrid();
-    updateStatistics();
-}
+// 개별 PC 선택 기능은 카드 내 버튼 통합으로 인해 더 이상 사용하지 않음
 
 // ── 원격 환경설정 모달 제어 ──
 let activeConfigTarget = null;
@@ -1388,54 +1336,38 @@ function triggerCommandAll(action) {
     );
 }
 
-function triggerCommandSelected(action) {
-    const labels = { shutdown: "선택 종료", sleep: "선택 절전", restart: "선택 재부팅", setup_mode: "선택 초기설정", update: "원격 업데이트" };
+async function triggerSingleCommand(pcId, action) {
+    const labels = { shutdown: "종료", sleep: "절전", restart: "재부팅", setup_mode: "초기설정", update: "원격 업데이트" };
     showModal(
         `${labels[action]} 확인`,
-        `선택된 ${selectedPcs.size}대의 PC로 즉시 [${labels[action]}] 명령을 전송하시겠습니까?`,
+        `[${pcs[pcId]?.hostname || pcId}] PC로 즉시 [${labels[action]}] 명령을 전송하시겠습니까?`,
         async () => {
             closeModal();
-            let errs = [];
-            for (const pcId of selectedPcs) {
-                const result = await writeCommandToDB(pcId, action);
-                if (!result.success) {
-                    errs.push(`${pcs[pcId]?.hostname || pcId}: ${result.error}`);
-                }
-            }
-            if (errs.length === 0) {
-                alert(`선택된 ${selectedPcs.size}대의 PC로 명령을 전달했습니다.`);
+            const result = await writeCommandToDB(pcId, action);
+            if (result.success) {
+                alert("명령이 성공적으로 전달되었습니다.");
             } else {
-                alert(`명령 전달 중 일부 오류 발생:\n` + errs.join('\n'));
+                alert("명령 전달 중 오류가 발생했습니다: " + result.error);
             }
-            selectedPcs.clear();
-            updateStatistics();
         }
     );
 }
 
-function triggerMessageSelected() {
-    const msg = prompt("선택된 PC로 보낼 메시지를 입력하세요:");
+function triggerSingleMessage(pcId) {
+    const msg = prompt("PC로 보낼 메시지를 입력하세요:");
     if (!msg || !msg.trim()) return;
     
     showModal(
         "메시지 전송 확인",
-        `선택된 ${selectedPcs.size}대의 PC로 메시지를 전송하시겠습니까?\n내용: "${msg}"`,
+        `[${pcs[pcId]?.hostname || pcId}] PC로 메시지를 전송하시겠습니까?\n내용: "${msg}"`,
         async () => {
             closeModal();
-            let errs = [];
-            for (const pcId of selectedPcs) {
-                const result = await writeCommandToDB(pcId, "message", msg);
-                if (!result.success) {
-                    errs.push(`${pcs[pcId]?.hostname || pcId}: ${result.error}`);
-                }
-            }
-            if (errs.length === 0) {
+            const result = await writeCommandToDB(pcId, "message", msg);
+            if (result.success) {
                 alert("메시지가 정상 전송되었습니다.");
             } else {
-                alert("일부 메시지 전송 실패:\n" + errs.join('\n'));
+                alert("메시지 전송 실패: " + result.error);
             }
-            selectedPcs.clear();
-            updateStatistics();
         }
     );
 }
