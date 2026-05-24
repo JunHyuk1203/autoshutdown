@@ -847,6 +847,7 @@ let config = {
 let pcs = {};
 let selectedPcs = new Set();
 let pollerInterval = null;
+let serverTimeOffset = 0;
 
 // 모달 콜백
 let pendingAction = null;
@@ -934,6 +935,7 @@ async function fetchPCData() {
         // Firebase 서버 시간 획득 (Date 헤더 파싱)
         const serverDateStr = response.headers.get("Date");
         const serverNowMs = serverDateStr ? new Date(serverDateStr).getTime() : Date.now();
+        serverTimeOffset = serverNowMs - Date.now();
         
         const data = await response.json();
         pcs = data || {};
@@ -954,6 +956,7 @@ function getPCDiffSeconds(pc, serverNowMs) {
 }
 
 function renderPCGrid(serverNowMs) {
+    if (!serverNowMs) serverNowMs = Date.now() + serverTimeOffset;
     const gridArea = document.getElementById("pc-grid-area");
     const pcKeys = Object.keys(pcs);
     
@@ -1021,6 +1024,7 @@ function renderPCGrid(serverNowMs) {
 }
 
 function updateStatistics(serverNowMs) {
+    if (!serverNowMs) serverNowMs = Date.now() + serverTimeOffset;
     const pcKeys = Object.keys(pcs);
     const total = pcKeys.length;
     

@@ -1,16 +1,16 @@
 {
-    "minutes_before": 7,
+    "minutes_before": 3,
     "autostart": true,
-    "show_popup_alert": false,
+    "show_popup_alert": true,
     "skip_date": "",
     "school_info": {
         "api_key": "4f7314e020ab4adcad7f6aaf048f5944",
-        "name": "마산중앙고등학교",
-        "school_code": "7005001",
-        "office_code": "S10",
-        "school_kind": "고등학교",
+        "class_nm": "3",
         "grade": "2",
-        "class_nm": "3"
+        "name": "마산중앙고등학교",
+        "office_code": "S10",
+        "school_code": "7005001",
+        "school_kind": "고등학교"
     },
     "timetable_cache": {},
     "meal_cache": {},
@@ -32,11 +32,11 @@
             "action": "시스템 종료"
         },
         "점심시간 (12:40)": {
-            "enabled": true,
+            "enabled": false,
             "action": "시스템 종료"
         },
         "5교시 (13:30)": {
-            "enabled": true,
+            "enabled": false,
             "action": "시스템 종료"
         },
         "6교시 (14:30)": {
@@ -44,7 +44,7 @@
             "action": "시스템 종료"
         },
         "7교시 (15:30)": {
-            "enabled": true,
+            "enabled": false,
             "action": "시스템 종료"
         },
         "방과후/기타 (16:30)": {

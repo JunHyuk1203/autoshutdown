@@ -35,7 +35,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.62"
+CURRENT_VERSION = "1.1.63"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -536,6 +536,26 @@ class AutoShutdownAppV2:
                                 app_instance.root.after(0, lambda d=message_clean: app_instance.reload_config_from_web(d))
                             
                             cmd_success = True
+                            
+                            # ★ 핵심 수정: set_config 성공 직후 Firebase /pcs/{pc_id}/config를 즉시 갱신
+                            # 기존 로직은 다음 폴링 루프(2초 후)에서야 config를 올려 대시보드에 이전 값이 보이는 문제가 있었음
+                            try:
+                                updated_cfg = sanitize_rtdb_keys(current)
+                                cfg_patch_payload = json.dumps({'config': updated_cfg}).encode('utf-8')
+                                cfg_patch_url = f"{central_url.rstrip('/')}/pcs/{pc_id}.json"
+                                cfg_patch_req = urllib.request.Request(
+                                    cfg_patch_url,
+                                    data=cfg_patch_payload,
+                                    method='PATCH',
+                                    headers={'Content-Type': 'application/json'}
+                                )
+                                with urllib.request.urlopen(cfg_patch_req, timeout=5, context=ssl_context) as _:
+                                    pass
+                            except Exception as patch_ex:
+                                try:
+                                    with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
+                                        ef.write(f"[{datetime.now()}] set_config immediate PATCH failed: {patch_ex}\n")
+                                except: pass
                             
                             # 진단 로그: 설정 적용 성공
                             try:
@@ -1743,17 +1763,52 @@ class AutoShutdownAppV2:
             time.sleep(1)
 
 if __name__ == "__main__":
-
-    mutex_name = "Global\\AutoShutdownAppV2_Mutex"
-    mutex = ctypes.windll.kernel32.CreateMutexW(None, False, mutex_name)
-    if ctypes.windll.kernel32.GetLastError() == 183:
-        sys.exit(0)
-
-    root = ctk.CTk()
-    app = AutoShutdownAppV2(root)
+    import sys
+    import os
+    import traceback
     
-    # 전역 app_instance 연동 복원 패치 (전역 레벨이므로 global 제거)
-    app_instance = app
-    
-    root.after(0, app.hide_window)
-    root.mainloop()
+    try:
+        # console=False 인 상태로 PyInstaller로 빌드된 경우, print()로 인한 크래시 방지
+        if getattr(sys, 'frozen', False):
+            class NullWriter:
+                def write(self, text): pass
+                def flush(self): pass
+            sys.stdout = NullWriter()
+            sys.stderr = NullWriter()
+
+        # 세션 내 중복 실행 차단용 Local 뮤텍스
+        ctypes.windll.kernel32.SetLastError(0)
+        mutex_name_local = "Local\\AutoShutdownAppV2_Mutex"
+        mutex_local = ctypes.windll.kernel32.CreateMutexW(None, False, mutex_name_local)
+        if ctypes.windll.kernel32.GetLastError() == 183:
+            with open(os.path.join(application_path, "crash_debug.log"), "w", encoding="utf-8") as f:
+                f.write("EXIT CODE: Mutex Local duplication detected (183)\n")
+            sys.exit(0)
+
+        # 전역 중복 실행 차단용 Global 뮤텍스 (권한 거부 에러인 5도 중복 실행으로 취급)
+        ctypes.windll.kernel32.SetLastError(0)
+        mutex_name_global = "Global\\AutoShutdownAppV2_Mutex"
+        mutex_global = ctypes.windll.kernel32.CreateMutexW(None, False, mutex_name_global)
+        err = ctypes.windll.kernel32.GetLastError()
+        if err in (183, 5):
+            with open(os.path.join(application_path, "crash_debug.log"), "w", encoding="utf-8") as f:
+                f.write(f"EXIT CODE: Mutex Global duplication detected ({err})\n")
+            sys.exit(0)
+
+        root = ctk.CTk()
+        app = AutoShutdownAppV2(root)
+        
+        # 전역 app_instance 연동 복원 패치 (전역 레벨이므로 global 제거)
+        app_instance = app
+        
+        root.after(0, app.hide_window)
+        root.mainloop()
+    except BaseException as e:
+        # 조기 크래시 발생 시 (SystemExit 포함) 파일로 상세 에러 저장
+        try:
+            with open(os.path.join(application_path, "crash_debug.log"), "w", encoding="utf-8") as f:
+                f.write(f"CRASH OCCURRED: {type(e).__name__}: {e}\n")
+                traceback.print_exc(file=f)
+        except:
+            pass
+        sys.exit(1)
