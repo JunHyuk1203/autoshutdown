@@ -158,7 +158,7 @@ body {
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     border-bottom: 1px solid var(--border-light);
-    padding: 16px 32px;
+    padding: 10px 16px;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -168,16 +168,16 @@ body {
 }
 
 .logo-section h1 {
-    font-size: 20px;
+    font-size: 18px;
     font-weight: 800;
     letter-spacing: -0.5px;
 }
 
 .logo-section span {
-    font-size: 11px;
+    font-size: 10px;
     color: var(--text-muted);
     display: block;
-    margin-top: 2px;
+    margin-top: 1px;
     text-overflow: ellipsis;
     max-width: 300px;
     overflow: hidden;
@@ -186,15 +186,15 @@ body {
 
 .header-actions {
     display: flex;
-    gap: 12px;
+    gap: 8px;
 }
 
 .btn-icon {
     background: var(--bg-card);
     border: 1px solid var(--border-light);
-    border-radius: 10px;
-    width: 38px;
-    height: 38px;
+    border-radius: 8px;
+    width: 32px;
+    height: 32px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -211,11 +211,11 @@ body {
 /* ── 메인 콘텐츠 에어리어 ── */
 .main-content {
     flex: 1;
-    padding: 32px;
+    padding: 16px;
     display: grid;
-    grid-template-columns: 280px 1fr;
-    gap: 32px;
-    max-width: 1600px;
+    grid-template-columns: 240px 1fr;
+    gap: 16px;
+    max-width: 100%;
     width: 100%;
     margin: 0 auto;
 }
@@ -224,43 +224,43 @@ body {
 .sidebar {
     display: flex;
     flex-direction: column;
-    gap: 24px;
+    gap: 12px;
 }
 
 .sidebar-panel {
     background: var(--bg-card);
     border: 1px solid var(--border-light);
-    border-radius: 20px;
-    padding: 24px;
+    border-radius: 12px;
+    padding: 14px;
     backdrop-filter: blur(10px);
 }
 
 .panel-title {
-    font-size: 13px;
+    font-size: 11px;
     font-weight: 700;
     color: var(--text-muted);
     text-transform: uppercase;
-    letter-spacing: 1px;
-    margin-bottom: 16px;
+    letter-spacing: 0.5px;
+    margin-bottom: 10px;
 }
 
 /* 상태 현황판 */
 .stats-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 10px;
+    gap: 6px;
 }
 
 .stat-item {
     background: rgba(255, 255, 255, 0.02);
     border: 1px solid rgba(255, 255, 255, 0.04);
-    border-radius: 12px;
-    padding: 12px 8px;
+    border-radius: 8px;
+    padding: 8px 4px;
     text-align: center;
 }
 
 .stat-val {
-    font-size: 20px;
+    font-size: 16px;
     font-weight: 800;
 }
 
@@ -277,15 +277,15 @@ body {
 .btn-group {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 6px;
 }
 
 .action-btn {
     width: 100%;
-    padding: 12px;
+    padding: 8px 10px;
     border: none;
-    border-radius: 12px;
-    font-size: 13px;
+    border-radius: 8px;
+    font-size: 12px;
     font-weight: 700;
     color: #fff;
     cursor: pointer;
@@ -293,34 +293,34 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 6px;
 }
 
 .action-btn-danger {
     background: linear-gradient(135deg, #f43f5e, #be123c);
-    box-shadow: 0 4px 15px rgba(244, 63, 94, 0.2);
+    box-shadow: 0 3px 10px rgba(244, 63, 94, 0.15);
 }
 .action-btn-danger:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(244, 63, 94, 0.4);
+    transform: translateY(-1.5px);
+    box-shadow: 0 4px 12px rgba(244, 63, 94, 0.3);
 }
 
 .action-btn-warning {
     background: linear-gradient(135deg, #f59e0b, #d97706);
-    box-shadow: 0 4px 15px rgba(245, 158, 11, 0.2);
+    box-shadow: 0 3px 10px rgba(245, 158, 11, 0.15);
 }
 .action-btn-warning:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(245, 158, 11, 0.4);
+    transform: translateY(-1.5px);
+    box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
 }
 
 .action-btn-blue {
     background: linear-gradient(135deg, #0ea5e9, #0369a1);
-    box-shadow: 0 4px 15px rgba(14, 165, 233, 0.2);
+    box-shadow: 0 3px 10px rgba(14, 165, 233, 0.15);
 }
 .action-btn-blue:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(14, 165, 233, 0.4);
+    transform: translateY(-1.5px);
+    box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3);
 }
 
 .action-btn-secondary {
@@ -345,7 +345,7 @@ body {
 .grid-container {
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 12px;
 }
 
 .grid-header {
@@ -355,22 +355,22 @@ body {
 }
 
 .grid-title {
-    font-size: 18px;
+    font-size: 16px;
     font-weight: 700;
 }
 
 .pc-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: 16px;
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    gap: 12px;
 }
 
 /* ── PC 카드 (Futuristic Glass Card) ── */
 .pc-card {
     background: var(--bg-card);
     border: 1px solid var(--border-light);
-    border-radius: 16px;
-    padding: 20px;
+    border-radius: 10px;
+    padding: 12px;
     position: relative;
     cursor: pointer;
     user-select: none;
@@ -380,29 +380,29 @@ body {
 .pc-card:hover {
     background: rgba(255, 255, 255, 0.06);
     border-color: rgba(255, 255, 255, 0.15);
-    transform: translateY(-3px);
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 15px rgba(0, 0, 0, 0.4);
 }
 
 /* 선택 상태 */
 .pc-card.selected {
     border-color: var(--accent-blue);
     background: rgba(14, 165, 233, 0.06);
-    box-shadow: 0 0 20px rgba(14, 165, 233, 0.15);
+    box-shadow: 0 0 12px rgba(14, 165, 233, 0.15);
 }
 
 .pc-check {
     position: absolute;
-    top: 16px;
-    right: 16px;
-    width: 18px;
-    height: 18px;
+    top: 10px;
+    right: 10px;
+    width: 14px;
+    height: 14px;
     border-radius: 50%;
     border: 2px solid rgba(255, 255, 255, 0.15);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 10px;
+    font-size: 8px;
     font-weight: 800;
     transition: var(--transition-smooth);
 }
@@ -417,20 +417,20 @@ body {
 .status-indicator {
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin-bottom: 12px;
+    gap: 6px;
+    margin-bottom: 8px;
 }
 
 .dot {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
     position: relative;
 }
 
 .dot.online {
     background-color: var(--success);
-    box-shadow: 0 0 10px var(--success);
+    box-shadow: 0 0 8px var(--success);
 }
 .dot.online::after {
     content: '';
@@ -444,16 +444,16 @@ body {
 
 .dot.offline {
     background-color: var(--danger);
-    box-shadow: 0 0 6px var(--danger);
+    box-shadow: 0 0 4px var(--danger);
 }
 
 @keyframes pulse {
     0% { transform: scale(1); opacity: 1; }
-    100% { transform: scale(2.5); opacity: 0; }
+    100% { transform: scale(2.2); opacity: 0; }
 }
 
 .pc-status-txt {
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -463,9 +463,9 @@ body {
 
 /* 카드 본문 텍스트 */
 .pc-name {
-    font-size: 15px;
+    font-size: 13px;
     font-weight: 700;
-    margin-bottom: 6px;
+    margin-bottom: 4px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -473,19 +473,19 @@ body {
 }
 
 .pc-meta {
-    font-size: 11px;
+    font-size: 10px;
     color: var(--text-muted);
-    margin-top: 4px;
+    margin-top: 2px;
     display: flex;
     align-items: center;
     gap: 4px;
 }
 
 .pc-event {
-    margin-top: 12px;
-    padding-top: 8px;
+    margin-top: 8px;
+    padding-top: 4px;
     border-top: 1px solid rgba(255, 255, 255, 0.05);
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 600;
     color: var(--warning);
 }
@@ -498,20 +498,20 @@ body {
 
 .card-settings-btn {
     position: absolute;
-    bottom: 16px;
-    right: 16px;
+    bottom: 10px;
+    right: 10px;
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid var(--border-light);
-    border-radius: 8px;
-    width: 28px;
-    height: 28px;
+    border-radius: 6px;
+    width: 22px;
+    height: 22px;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
     color: var(--text-main);
     transition: var(--transition-smooth);
-    font-size: 14px;
+    font-size: 11px;
     z-index: 5;
 }
 
@@ -519,7 +519,7 @@ body {
     background: var(--accent-blue);
     color: #000;
     border-color: var(--accent-blue);
-    box-shadow: 0 0 10px rgba(14, 165, 233, 0.4);
+    box-shadow: 0 0 8px rgba(14, 165, 233, 0.4);
     transform: scale(1.05);
 }
 
