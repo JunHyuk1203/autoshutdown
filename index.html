@@ -397,7 +397,7 @@ body {
 
 .pc-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
     gap: 12px;
 }
 
@@ -506,7 +506,7 @@ body {
     padding-top: 8px;
     border-top: 1px solid rgba(255, 255, 255, 0.05);
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     gap: 4px;
 }
 
@@ -525,6 +525,9 @@ body {
     justify-content: center;
     gap: 2px;
     transition: var(--transition-smooth);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .card-action-btn:hover {
@@ -738,7 +741,6 @@ body {
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle;"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
                         전체 종료
                     </button>
-                    <button class="action-btn action-btn-warning" onclick="triggerCommandAll('sleep')">💤 전체 절전</button>
                     <button class="action-btn action-btn-blue" onclick="triggerCommandAll('restart')">🔄 전체 재부팅</button>
                     <button class="action-btn action-btn-secondary" onclick="triggerCommandAll('setup_mode')">🚀 전체 초기설정</button>
                 </div>
@@ -1054,7 +1056,6 @@ function renderPCGrid(serverNowMs) {
                         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 2px;"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
                         종료
                     </button>
-                    <button class="card-action-btn btn-warning" onclick="event.stopPropagation(); triggerSingleCommand('${pcId}', 'sleep')" ${isOnline ? '' : 'disabled'} title="원격 절전">💤 절전</button>
                     <button class="card-action-btn btn-blue" onclick="event.stopPropagation(); triggerSingleCommand('${pcId}', 'restart')" ${isOnline ? '' : 'disabled'} title="원격 재부팅">🔄 재부팅</button>
                     <button class="card-action-btn btn-purple" onclick="event.stopPropagation(); triggerSingleCommand('${pcId}', 'setup_mode')" ${isOnline ? '' : 'disabled'} title="원격 초기설정">🚀 초기화</button>
                     <button class="card-action-btn btn-info" onclick="event.stopPropagation(); openConfigModal('${pcId}')" title="원격 환경설정">⚙️ 설정</button>
