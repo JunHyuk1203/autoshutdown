@@ -533,10 +533,10 @@ body {
     color: var(--text-main);
     cursor: pointer;
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     align-items: center;
     justify-content: center;
-    gap: 2px;
+    gap: 3px;
     transition: var(--transition-smooth);
     white-space: nowrap;
     overflow: hidden;
@@ -1066,7 +1066,7 @@ function renderPCGrid(serverNowMs) {
                 
                 <div class="card-actions">
                     <button class="card-action-btn btn-danger" onclick="event.stopPropagation(); triggerSingleCommand('${pcId}', 'shutdown')" ${isOnline ? '' : 'disabled'} title="원격 종료">
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 2px;"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 2px; flex-shrink: 0;"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
                         종료
                     </button>
                     <button class="card-action-btn btn-blue" onclick="event.stopPropagation(); triggerSingleCommand('${pcId}', 'restart')" ${isOnline ? '' : 'disabled'} title="원격 재부팅">🔄 재부팅</button>
