@@ -35,7 +35,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.64"
+CURRENT_VERSION = "1.1.65"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -167,6 +167,7 @@ class AutoShutdownAppV2:
         
         self.show_popup_var = ctk.BooleanVar(value=self.config.get("show_popup_alert", True))
         self.autostart_var = ctk.BooleanVar(value=self.config.get("autostart", False))
+        self.last_applied_autostart = self.config.get("autostart", False)
         self.minutes_var = ctk.StringVar(value=str(self.config.get("minutes_before", 2)))
         self.skip_today_var = ctk.BooleanVar(value=(self.config.get("skip_date") == datetime.now().strftime("%Y-%m-%d")))
         
@@ -389,7 +390,14 @@ class AutoShutdownAppV2:
                     pc_id = pc_id.replace(char, "-")
                     
                 next_time, next_action = self.get_next_event()
-                next_str = next_time.strftime('%H:%M') if next_time and next_time != "skip" else ("오늘 안 함" if next_time == "skip" else "없음")
+                if next_time and next_time != "skip":
+                    date_diff = (next_time.date() - datetime.now().date()).days
+                    if date_diff == 0: day_prefix = "오늘 "
+                    elif date_diff == 1: day_prefix = "내일 "
+                    else: day_prefix = f"{DAYS[next_time.weekday()]}요일 "
+                    next_str = f"{day_prefix}{next_time.strftime('%H:%M')} [{next_action}]"
+                else:
+                    next_str = "오늘 안 함" if next_time == "skip" else "없음"
                 
                 try:
                     with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
@@ -399,14 +407,19 @@ class AutoShutdownAppV2:
                 ip = get_local_ip()
                 ssl_context = ssl._create_unverified_context()
                 
+                try:
+                    current_user = os.getlogin()
+                except Exception:
+                    current_user = os.environ.get('USERNAME') or 'SYSTEM'
+                
                 # 1. 내 PC 상태 보고 (PATCH)
                 status_payload = json.dumps({
                     'ip': ip,
                     'hostname': pc_id,
-                    'user': os.getlogin(),
+                    'user': current_user,
                     'version': CURRENT_VERSION,
                     'status': 'online',
-                    'next_event': f"{next_str} [{next_action}]" if next_time and next_time != "skip" else next_str,
+                    'next_event': next_str,
                     'last_seen': datetime.now().strftime('%H:%M:%S'),
                     'last_seen_ts': {'.sv': 'timestamp'},
                     'config': current_cfg
@@ -940,6 +953,52 @@ class AutoShutdownAppV2:
         except Exception: pass
         return {}
 
+    def update_autostart_shortcut(self, enable):
+        appdata = os.getenv('APPDATA')
+        if not appdata: return
+        startup_dir = os.path.join(appdata, r'Microsoft\Windows\Start Menu\Programs\Startup')
+        vbs_path = os.path.join(startup_dir, "AutoShutdownBG.vbs")
+        if enable:
+            if getattr(sys, 'frozen', False):
+                exe_path = os.path.join(application_path, "auto_shutdown.exe")
+                # 부팅 시 Explorer 쉘이 준비될 시간을 주기 위해 5초 대기 후 실행
+                script = f'WScript.Sleep 5000\nSet WshShell = CreateObject("WScript.Shell")\nWshShell.Run chr(34) & "{exe_path}" & Chr(34), 0\nSet WshShell = Nothing'
+            else:
+                bg_script = os.path.join(application_path, "auto_shutdown.py")
+                pythonw = sys.executable.replace("python.exe", "pythonw.exe")
+                script = f'WScript.Sleep 5000\nSet WshShell = CreateObject("WScript.Shell")\nWshShell.Run chr(34) & "{pythonw}" & Chr(34) & " " & chr(34) & "{bg_script}" & chr(34), 0\nSet WshShell = Nothing'
+            with open(vbs_path, 'w', encoding='utf-8') as f:
+                f.write(script)
+            
+            # 부팅 시(로그인 전) 백그라운드 실행을 위한 작업 스케줄러 자동 등록
+            if getattr(sys, 'frozen', False):
+                exe_path = os.path.join(application_path, "auto_shutdown.exe")
+                try:
+                    # 이미 등록되어 있는지 확인
+                    chk = subprocess.run(['powershell', '-Command', 'Get-ScheduledTask -TaskName "AutoShutdown_Headless"'],
+                                         capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                    if chk.returncode != 0:
+                        # 미등록 시 관리자 권한으로 등록 시도
+                        ps_cmds = (
+                            f"$action = New-ScheduledTaskAction -Execute '{exe_path}' -Argument '--headless'; "
+                            f"$trigger = New-ScheduledTaskTrigger -AtStartup; "
+                            f"$principal = New-ScheduledTaskPrincipal -UserId 'NT AUTHORITY\\\\SYSTEM' -LogonType ServiceAccount; "
+                            f"Register-ScheduledTask -TaskName 'AutoShutdown_Headless' -Action $action -Trigger $trigger -Principal $principal -Force"
+                        )
+                        run_cmd = f"Start-Process powershell -ArgumentList '-Command \"{ps_cmds}\"' -Verb RunAs -WindowStyle Hidden -Wait"
+                        subprocess.run(['powershell', '-Command', run_cmd],
+                                       creationflags=subprocess.CREATE_NO_WINDOW)
+                except Exception:
+                    pass
+        else:
+            if os.path.exists(vbs_path): os.remove(vbs_path)
+            # 작업 스케줄러 등록 해제
+            try:
+                subprocess.run(['powershell', '-Command', "Start-Process powershell -ArgumentList '-Command \"Unregister-ScheduledTask -TaskName ''AutoShutdown_Headless'' -Confirm:$false\"' -Verb RunAs -WindowStyle Hidden -Wait"],
+                               capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+            except Exception:
+                pass
+
     def save_config_callback(self, *args):
         if getattr(self, '_is_reloading', False): return
         self.save_config()
@@ -970,28 +1029,14 @@ class AutoShutdownAppV2:
             with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
                 json.dump(new_config, f, ensure_ascii=False, indent=4)
                 
-            self.update_autostart_shortcut(new_config["autostart"])
+            autostart_val = new_config.get("autostart", False)
+            if getattr(self, 'last_applied_autostart', None) != autostart_val:
+                self.last_applied_autostart = autostart_val
+                threading.Thread(target=self.update_autostart_shortcut, args=(autostart_val,), daemon=True).start()
+                
             self.update_status_info()
         except Exception: pass
 
-    def update_autostart_shortcut(self, enable):
-        appdata = os.getenv('APPDATA')
-        if not appdata: return
-        startup_dir = os.path.join(appdata, r'Microsoft\Windows\Start Menu\Programs\Startup')
-        vbs_path = os.path.join(startup_dir, "AutoShutdownBG.vbs")
-        if enable:
-            if getattr(sys, 'frozen', False):
-                exe_path = os.path.join(application_path, "auto_shutdown.exe")
-                # 부팅 시 Explorer 쉘이 준비될 시간을 주기 위해 5초 대기 후 실행
-                script = f'WScript.Sleep 5000\nSet WshShell = CreateObject("WScript.Shell")\nWshShell.Run chr(34) & "{exe_path}" & Chr(34), 0\nSet WshShell = Nothing'
-            else:
-                bg_script = os.path.join(application_path, "auto_shutdown.py")
-                pythonw = sys.executable.replace("python.exe", "pythonw.exe")
-                script = f'WScript.Sleep 5000\nSet WshShell = CreateObject("WScript.Shell")\nWshShell.Run chr(34) & "{pythonw}" & Chr(34) & " " & chr(34) & "{bg_script}" & chr(34), 0\nSet WshShell = Nothing'
-            with open(vbs_path, 'w', encoding='utf-8') as f:
-                f.write(script)
-        else:
-            if os.path.exists(vbs_path): os.remove(vbs_path)
 
     def toggle_skip_today_dashboard(self):
         self.save_config()
@@ -1599,10 +1644,15 @@ class AutoShutdownAppV2:
             if days > 0: time_left_str = f"{days}일 {hours:02d}:{minutes:02d}:{seconds:02d} 남음"
             else: time_left_str = f"{hours:02d}:{minutes:02d}:{seconds:02d} 남음"
                 
+            date_diff = (next_time.date() - now.date()).days
+            if date_diff == 0: day_prefix = "오늘 "
+            elif date_diff == 1: day_prefix = "내일 "
+            else: day_prefix = f"{DAYS[next_time.weekday()]}요일 "
 
-            status_text = f"다음: {next_time.strftime('%H:%M')} [{next_action}]"
+            status_text = f"다음: {day_prefix}{next_time.strftime('%H:%M')} [{next_action}]"
             detail_text = time_left_str
-            if days == 0: tooltip_text = f"스마트 전원 관리자\n다음: 오늘 {next_time.strftime('%H:%M')} [{next_action}]\n{time_left_str}"
+            if date_diff == 0: tooltip_text = f"스마트 전원 관리자\n다음: 오늘 {next_time.strftime('%H:%M')} [{next_action}]\n{time_left_str}"
+            elif date_diff == 1: tooltip_text = f"스마트 전원 관리자\n다음: 내일 {next_time.strftime('%H:%M')} [{next_action}]\n{time_left_str}"
             else: tooltip_text = f"스마트 전원 관리자\n다음: {DAYS[next_time.weekday()]}요일 {next_time.strftime('%H:%M')} [{next_action}]\n{time_left_str}"
         else:
             status_text = "예약된 일정이 없습니다."
@@ -1762,49 +1812,468 @@ class AutoShutdownAppV2:
                             break
             time.sleep(1)
 
+class HeadlessShutdownApp:
+    def __init__(self):
+        self.is_running = True
+        self.skipped_events = set()
+        self.last_triggered_time = None
+        self.config = self.load_config()
+        
+        # 백그라운드 스레드들 시작
+        threading.Thread(target=self.socket_listener, daemon=True).start()
+        threading.Thread(target=self.monitor_time, daemon=True).start()
+        threading.Thread(target=self.http_poller_thread, daemon=True).start()
+        threading.Thread(target=self.check_for_updates, daemon=True).start()
+        
+        # 메인 스레드 유지
+        while self.is_running:
+            time.sleep(1)
+            
+    def load_config(self):
+        try:
+            if os.path.exists(CONFIG_FILE):
+                with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+        except Exception: pass
+        return {}
+        
+    def save_config(self):
+        try:
+            with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+                json.dump(self.config, f, ensure_ascii=False, indent=4)
+        except Exception: pass
+
+    def get_next_event(self):
+        self.config = self.load_config()
+        
+        skip_date = self.config.get("skip_date", "")
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        if skip_date == today_str:
+            return "skip", None
+            
+        try: minutes_off = int(self.config.get("minutes_before", 2))
+        except: minutes_off = 0
+            
+        now = datetime.now()
+        next_time = None
+        next_action = "시스템 종료"
+        
+        for i in range(8):
+            check_date = now + timedelta(days=i)
+            day_str = DAYS[check_date.weekday()]
+            
+            day_schedule = self.config.get(day_str, {})
+            for class_name, schedule_time in TIMETABLE.items():
+                class_config = day_schedule.get(class_name, {})
+                
+                is_enabled = False
+                action_val = "시스템 종료"
+                if isinstance(class_config, bool):
+                    is_enabled = class_config
+                elif isinstance(class_config, dict):
+                    is_enabled = class_config.get("enabled", False)
+                    action_val = class_config.get("action", "시스템 종료")
+                    
+                if is_enabled:
+                    target_dt = datetime.strptime(schedule_time, "%H:%M")
+                    target_dt = target_dt - timedelta(minutes=minutes_off)
+                    target_datetime = datetime(check_date.year, check_date.month, check_date.day, target_dt.hour, target_dt.minute)
+                    
+                    if target_datetime > now:
+                        if target_datetime.strftime("%Y-%m-%d %H:%M") in self.skipped_events:
+                            continue
+                        if next_time is None or target_datetime < next_time:
+                            next_time = target_datetime
+                            next_action = action_val
+        return next_time, next_action
+
+    def monitor_time(self):
+        while self.is_running:
+            now = datetime.now()
+            current_hm = now.strftime("%H:%M")
+            
+            next_time, next_action = self.get_next_event()
+            if next_time and next_time != "skip":
+                if current_hm == next_time.strftime("%H:%M") and self.last_triggered_time != current_hm:
+                    self.last_triggered_time = current_hm
+                    if next_action == "시스템 종료":
+                        os.system('shutdown /s /t 0')
+                    elif next_action == "절전 모드":
+                        os.system('rundll32.exe powrprof.dll,SetSuspendState 0,1,0')
+            time.sleep(1)
+
+    def socket_listener(self):
+        import socket
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            s.bind(('127.0.0.1', 19985))
+            s.listen(1)
+        except Exception:
+            self.is_running = False
+            return
+            
+        while self.is_running:
+            try:
+                s.settimeout(1.0)
+                conn, addr = s.accept()
+            except socket.timeout:
+                continue
+            except Exception:
+                break
+                
+            try:
+                data = conn.recv(1024).decode('utf-8')
+                if data == "exit":
+                    conn.sendall(b"ok")
+                    conn.close()
+                    self.is_running = False
+                    break
+                conn.close()
+            except Exception:
+                pass
+        try:
+            s.close()
+        except:
+            pass
+        os._exit(0)
+
+    def http_poller_thread(self):
+        _log_path = os.path.join(application_path, 'headless_debug.log')
+        def _log(msg):
+            try:
+                with open(_log_path, 'a', encoding='utf-8') as f:
+                    f.write(f"[{datetime.now()}] {msg}\n")
+            except: pass
+
+        _log("headless http_poller_thread started")
+        _headers = {'User-Agent': 'Mozilla/5.0', 'Content-Type': 'application/json'}
+
+        while self.is_running:
+            central_url = "https://atss-a1f9e-default-rtdb.firebaseio.com/"
+            try:
+                pc_id = socket.gethostname()
+                for char in [".", "$", "#", "[", "]", "/"]:
+                    pc_id = pc_id.replace(char, "-")
+                    
+                next_time, next_action = self.get_next_event()
+                if next_time and next_time != "skip":
+                    date_diff = (next_time.date() - datetime.now().date()).days
+                    if date_diff == 0: day_prefix = "오늘 "
+                    elif date_diff == 1: day_prefix = "내일 "
+                    else: day_prefix = f"{DAYS[next_time.weekday()]}요일 "
+                    next_str = f"{day_prefix}{next_time.strftime('%H:%M')} [{next_action}]"
+                else:
+                    next_str = "오늘 안 함" if next_time == "skip" else "없음"
+                
+                try:
+                    with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                        current_cfg = sanitize_rtdb_keys(json.load(f))
+                except: current_cfg = {}
+                
+                ip = get_local_ip()
+                ssl_context = ssl._create_unverified_context()
+                
+                try:
+                    current_user = os.getlogin()
+                except Exception:
+                    current_user = os.environ.get('USERNAME') or 'SYSTEM'
+                
+                # 1. 상태 보고 (PUT)
+                status_payload = json.dumps({
+                    'ip': ip,
+                    'hostname': pc_id,
+                    'user': current_user,
+                    'version': CURRENT_VERSION,
+                    'status': 'online',
+                    'next_event': next_str,
+                    'last_seen': datetime.now().strftime('%H:%M:%S'),
+                    'last_seen_ts': {'.sv': 'timestamp'},
+                    'config': current_cfg
+                }).encode('utf-8')
+                
+                patch_url = f"{central_url.rstrip('/')}/pcs/{pc_id}.json"
+                patch_req = urllib.request.Request(
+                    patch_url, 
+                    data=status_payload, 
+                    method='PUT', 
+                    headers={
+                        'Content-Type': 'application/json',
+                        'Content-Length': str(len(status_payload)),
+                        'User-Agent': 'Mozilla/5.0'
+                    }
+                )
+                try:
+                    with urllib.request.urlopen(patch_req, timeout=10, context=ssl_context) as res:
+                        pass
+                except Exception as e:
+                    _log(f"PUT status error: {e}")
+                
+                # 2. 명령 수신 확인 (GET)
+                cmd = None
+                cmd_type = None
+                
+                cmd_url = f"{central_url.rstrip('/')}/commands/{pc_id}.json"
+                cmd_req = urllib.request.Request(cmd_url, method='GET', headers={'User-Agent': 'Mozilla/5.0'})
+                try:
+                    with urllib.request.urlopen(cmd_req, timeout=5, context=ssl_context) as res:
+                        cmd = json.loads(res.read().decode('utf-8'))
+                        if cmd:
+                            cmd_type = 'individual'
+                            _log(f"CMD found (individual): {cmd}")
+                except Exception as e:
+                    _log(f"GET cmd error: {e}")
+                        
+                if not cmd:
+                    all_cmd_url = f"{central_url.rstrip('/')}/commands/__ALL__.json"
+                    all_cmd_req = urllib.request.Request(all_cmd_url, method='GET', headers={'User-Agent': 'Mozilla/5.0'})
+                    try:
+                        with urllib.request.urlopen(all_cmd_req, timeout=5, context=ssl_context) as res:
+                            cmd = json.loads(res.read().decode('utf-8'))
+                            if cmd:
+                                cmd_type = 'all'
+                                cmd_ts = cmd.get('timestamp', 0)
+                                if time.time() - cmd_ts > 8.0:
+                                    cmd = None
+                                else:
+                                    _log(f"CMD found (all): {cmd}")
+                    except Exception as e:
+                        _log(f"GET all cmd error: {e}")
+                                
+                # 3. 명령 실행
+                if cmd and isinstance(cmd, dict):
+                    action = cmd.get("action")
+                    message = cmd.get("message", "")
+                    _log(f"Executing cmd: action={action}")
+                    
+                    cmd_success = False
+                    try:
+                        if action == 'shutdown':
+                            _log("Executing: shutdown /s /t 0")
+                            subprocess.run(['shutdown', '/s', '/t', '0'], creationflags=subprocess.CREATE_NO_WINDOW)
+                            cmd_success = True
+                        elif action == 'sleep':
+                            _log("Executing: sleep (SetSuspendState)")
+                            subprocess.run(['rundll32.exe', 'powrprof.dll,SetSuspendState', '0,1,0'], creationflags=subprocess.CREATE_NO_WINDOW)
+                            cmd_success = True
+                        elif action == 'restart':
+                            _log("Executing: shutdown /r /t 0")
+                            subprocess.run(['shutdown', '/r', '/t', '0'], creationflags=subprocess.CREATE_NO_WINDOW)
+                            cmd_success = True
+                        elif action == 'update':
+                            _log("Executing: update check")
+                            threading.Thread(target=self.check_for_updates, daemon=True).start()
+                            cmd_success = True
+                        elif action == 'setup_mode':
+                            # headless 모드에서는 setup_mode 지원 불가 → 명령만 소비(삭제)
+                            _log("setup_mode received in headless - acknowledging (no-op)")
+                            cmd_success = True
+                        elif action == 'message':
+                            # headless 모드에서는 팝업 표시 불가 → 명령만 소비(삭제)
+                            _log(f"message received in headless - acknowledging: {message}")
+                            cmd_success = True
+                        elif action == 'set_config' and isinstance(message, dict):
+                            _log(f"Executing: set_config with {len(message)} keys")
+                            current = self.load_config()
+                            for k, v in message.items():
+                                if k in DAYS and isinstance(v, dict):
+                                    if k not in current:
+                                        current[k] = {}
+                                    for period, p_data in v.items():
+                                        orig_period = period.replace("_", "/")
+                                        current[k][orig_period] = p_data
+                                else:
+                                    if isinstance(v, dict) and k in current and isinstance(current[k], dict):
+                                        current[k].update(v)
+                                    else:
+                                        current[k] = v
+                            self.config = current
+                            self.save_config()
+                            cmd_success = True
+                            
+                            try:
+                                updated_cfg = sanitize_rtdb_keys(current)
+                                cfg_patch_payload = json.dumps({'config': updated_cfg}).encode('utf-8')
+                                cfg_patch_url = f"{central_url.rstrip('/')}/pcs/{pc_id}.json"
+                                cfg_patch_req = urllib.request.Request(
+                                    cfg_patch_url,
+                                    data=cfg_patch_payload,
+                                    method='PATCH',
+                                    headers=_headers
+                                )
+                                with urllib.request.urlopen(cfg_patch_req, timeout=5, context=ssl_context) as _:
+                                    pass
+                                _log("set_config Firebase PATCH success")
+                            except Exception as pe:
+                                _log(f"set_config Firebase PATCH error: {pe}")
+                        else:
+                            # 알 수 없는 명령도 소비하여 큐에 쌓이지 않도록 함
+                            _log(f"Unknown action '{action}' - acknowledging to clear queue")
+                            cmd_success = True
+                    except Exception as exec_err:
+                        _log(f"CMD execution error: {exec_err}")
+                        cmd_success = True  # 실패해도 명령 삭제하여 무한 재시도 방지
+                    
+                    # 4. 명령 삭제 (개별 명령일 때만)
+                    if cmd_success and cmd_type == 'individual':
+                        del_url = f"{central_url.rstrip('/')}/commands/{pc_id}.json"
+                        del_req = urllib.request.Request(del_url, method='DELETE', headers={'User-Agent': 'Mozilla/5.0'})
+                        try:
+                            with urllib.request.urlopen(del_req, timeout=5, context=ssl_context) as res:
+                                pass
+                            _log("CMD deleted from Firebase")
+                        except Exception as de:
+                            _log(f"CMD delete error: {de}")
+            except Exception as ge:
+                _log(f"General poller error: {ge}")
+            time.sleep(2)
+
+    def check_for_updates(self):
+        try:
+            url = f"https://raw.githubusercontent.com/JunHyuk1203/autoshutdown/main/version.json?t={int(time.time())}"
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=10) as response:
+                data = json.loads(response.read().decode('utf-8'))
+                remote_version = data.get("version", CURRENT_VERSION)
+                download_url = data.get("download_url")
+                
+            if self._is_newer_version(remote_version, CURRENT_VERSION) and download_url:
+                self.perform_auto_update(download_url)
+        except Exception:
+            pass
+
+    def _is_newer_version(self, remote, current):
+        try:
+            r_parts = [int(x) for x in remote.split('.')]
+            c_parts = [int(x) for x in current.split('.')]
+            max_len = max(len(r_parts), len(c_parts))
+            r_parts.extend([0] * (max_len - len(r_parts)))
+            c_parts.extend([0] * (max_len - len(c_parts)))
+            return r_parts > c_parts
+        except Exception:
+            return False
+
+    def perform_auto_update(self, download_url):
+        update_exe_path = os.path.join(application_path, "update_temp.exe")
+        try:
+            if "?" in download_url:
+                no_cache_url = f"{download_url}&t={int(time.time())}"
+            else:
+                no_cache_url = f"{download_url}?t={int(time.time())}"
+                
+            req = urllib.request.Request(no_cache_url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=120) as response:
+                data = response.read()
+            
+            if len(data) < 1_000_000:
+                return
+            
+            with open(update_exe_path, 'wb') as out_file:
+                out_file.write(data)
+            
+            current_exe = sys.executable if getattr(sys, 'frozen', False) else None
+            if current_exe and current_exe.endswith('.exe'):
+                old_exe_path = current_exe + ".old"
+                if os.path.exists(old_exe_path):
+                    try: os.remove(old_exe_path)
+                    except: pass
+                
+                os.rename(current_exe, old_exe_path)
+                os.rename(update_exe_path, current_exe)
+                
+                clean_env = os.environ.copy()
+                keys_to_remove = [k for k in clean_env if 'MEI' in k or 'PYI' in k or 'TCL' in k or 'TK' in k]
+                for k in keys_to_remove:
+                    clean_env.pop(k, None)
+                
+                # 새 버전을 백그라운드로 즉시 실행
+                subprocess.Popen(
+                    [current_exe, "--headless"],
+                    env=clean_env,
+                    creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+                )
+                os._exit(0)
+        except Exception:
+            if os.path.exists(update_exe_path):
+                try: os.remove(update_exe_path)
+                except: pass
+
 if __name__ == "__main__":
     import sys
     import os
     import traceback
+    import socket
     
-    try:
-        # console=False 인 상태로 PyInstaller로 빌드된 경우, print()로 인한 크래시 방지
-        if getattr(sys, 'frozen', False):
-            class NullWriter:
-                def write(self, text): pass
-                def flush(self): pass
-            sys.stdout = NullWriter()
-            sys.stderr = NullWriter()
-
-        # 세션 내 중복 실행 차단용 Local 뮤텍스
+    # console=False 인 상태로 PyInstaller로 빌드된 경우, print()로 인한 크래시 방지
+    if getattr(sys, 'frozen', False):
+        class NullWriter:
+            def write(self, text): pass
+            def flush(self): pass
+        sys.stdout = NullWriter()
+        sys.stderr = NullWriter()
+    
+    # --headless 인자가 있으면 즉시 백그라운드 모드로 진입 (try/except 바깥)
+    if "--headless" in sys.argv:
+        # 전역 중복 방지 Mutex 체크
         ctypes.windll.kernel32.SetLastError(0)
-        mutex_name_local = "Local\\AutoShutdownAppV2_Mutex"
-        mutex_local = ctypes.windll.kernel32.CreateMutexW(None, False, mutex_name_local)
-        if ctypes.windll.kernel32.GetLastError() == 183:
-            with open(os.path.join(application_path, "crash_debug.log"), "w", encoding="utf-8") as f:
-                f.write("EXIT CODE: Mutex Local duplication detected (183)\n")
-            sys.exit(0)
-
-        # 전역 중복 실행 차단용 Global 뮤텍스 (권한 거부 에러인 5도 중복 실행으로 취급)
-        ctypes.windll.kernel32.SetLastError(0)
-        mutex_name_global = "Global\\AutoShutdownAppV2_Mutex"
-        mutex_global = ctypes.windll.kernel32.CreateMutexW(None, False, mutex_name_global)
+        mutex_global = ctypes.windll.kernel32.CreateMutexW(None, False, "Global\\AutoShutdownAppV2_Mutex")
         err = ctypes.windll.kernel32.GetLastError()
         if err in (183, 5):
-            with open(os.path.join(application_path, "crash_debug.log"), "w", encoding="utf-8") as f:
-                f.write(f"EXIT CODE: Mutex Global duplication detected ({err})\n")
+            os._exit(0)  # sys.exit 대신 os._exit 사용하여 BaseException 우회
+        HeadlessShutdownApp()
+        os._exit(0)
+        
+    try:
+        # 1. 세션 내 중복 실행 차단용 Local 뮤텍스부터 체크
+        ctypes.windll.kernel32.SetLastError(0)
+        mutex_local = ctypes.windll.kernel32.CreateMutexW(None, False, "Local\\AutoShutdownAppV2_Mutex")
+        if ctypes.windll.kernel32.GetLastError() == 183:
             sys.exit(0)
+
+        # 2. 전역 중복 실행 차단용 Global 뮤텍스 체크
+        ctypes.windll.kernel32.SetLastError(0)
+        mutex_global = ctypes.windll.kernel32.CreateMutexW(None, False, "Global\\AutoShutdownAppV2_Mutex")
+        err = ctypes.windll.kernel32.GetLastError()
+        
+        if err in (183, 5):
+            # 다른 인스턴스(예: --headless)가 이미 실행 중인 경우에만 소켓 연결 시도 (바통 터치)
+            # 이로써 평상시 무의미한 소켓 연결 시도로 인한 딜레이를 100% 원천 차단!
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.settimeout(0.3)
+                s.connect(('127.0.0.1', 19985))
+                s.sendall(b"exit")
+                s.recv(1024)
+                s.close()
+                
+                # 백그라운드 프로세스가 종료되고 Mutex를 해제할 때까지 최대 2초간 0.05초 간격으로 폴링
+                # 고정 대기 시간(0.5초) 대신 실시간 감지로 반응 속도를 극대화!
+                released = False
+                for _ in range(40):
+                    ctypes.windll.kernel32.SetLastError(0)
+                    test_mutex = ctypes.windll.kernel32.CreateMutexW(None, False, "Global\\AutoShutdownAppV2_Mutex")
+                    test_err = ctypes.windll.kernel32.GetLastError()
+                    if test_err not in (183, 5):
+                        mutex_global = test_mutex
+                        released = True
+                        break
+                    time.sleep(0.05)
+                
+                if not released:
+                    sys.exit(0)
+            except Exception:
+                # 소켓 연결이 불가능한 경우 (실제 다른 GUI가 켜진 상태 등) 중복 실행 차단
+                sys.exit(0)
 
         root = ctk.CTk()
         app = AutoShutdownAppV2(root)
-        
-        # 전역 app_instance 연동 복원 패치 (전역 레벨이므로 global 제거)
         app_instance = app
         
         root.after(0, app.hide_window)
         root.mainloop()
+    except SystemExit:
+        pass  # 정상 종료 — 크래시 로그 남기지 않음
     except BaseException as e:
-        # 조기 크래시 발생 시 (SystemExit 포함) 파일로 상세 에러 저장
         try:
             with open(os.path.join(application_path, "crash_debug.log"), "w", encoding="utf-8") as f:
                 f.write(f"CRASH OCCURRED: {type(e).__name__}: {e}\n")

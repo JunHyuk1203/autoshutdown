@@ -108,6 +108,23 @@ oLink.Save
             shortcut_path = os.path.join(start_menu, '스마트 전원 관리자.lnk')
             self.create_shortcut(target_exe, shortcut_path)
             
+            # 윈도우 시작 시 (잠금 해제 전) 백그라운드 실행을 위한 작업 스케줄러 등록
+            try:
+                self.status_lbl.configure(text="윈도우 부팅 스케줄러 등록 중...")
+                # 기존 등록된 작업이 있다면 삭제
+                subprocess.run(["powershell", "-Command", "Unregister-ScheduledTask -TaskName 'AutoShutdown_Headless' -Confirm:$false"], 
+                               capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                # 부팅 시 SYSTEM 권한으로 --headless 모드 실행되도록 작업 스케줄러에 등록 (현대적인 PowerShell Cmdlet 사용)
+                ps_cmd = (
+                    f"$action = New-ScheduledTaskAction -Execute '{target_exe}' -Argument '--headless'; "
+                    f"$trigger = New-ScheduledTaskTrigger -AtStartup; "
+                    f"$principal = New-ScheduledTaskPrincipal -UserId 'NT AUTHORITY\\SYSTEM' -LogonType ServiceAccount; "
+                    f"Register-ScheduledTask -TaskName 'AutoShutdown_Headless' -Action $action -Trigger $trigger -Principal $principal -Force"
+                )
+                subprocess.run(["powershell", "-Command", ps_cmd], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+            except Exception:
+                pass
+            
             self.status_lbl.configure(text="설치 완료 및 프로그램 실행 중...")
             self.progress.set(1.0)
             
