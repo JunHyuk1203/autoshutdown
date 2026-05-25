@@ -1071,7 +1071,7 @@ function renderPCGrid(serverNowMs) {
                     </button>
                     <button class="card-action-btn btn-blue" onclick="event.stopPropagation(); triggerSingleCommand('${pcId}', 'restart')" ${isOnline ? '' : 'disabled'} title="원격 재부팅">🔄 재부팅</button>
                     <button class="card-action-btn btn-purple" onclick="event.stopPropagation(); triggerSingleCommand('${pcId}', 'setup_mode')" ${isOnline ? '' : 'disabled'} title="원격 초기설정">🚀 초기화</button>
-                    <button class="card-action-btn btn-info" onclick="event.stopPropagation(); openConfigModal('${pcId}')" title="원격 환경설정">⚙️ 설정</button>
+                    <button class="card-action-btn btn-info" onclick="event.stopPropagation(); openConfigModal('${pcId}')" ${isOnline ? '' : 'disabled'} title="원격 환경설정">⚙️ 설정</button>
                     <button class="card-action-btn btn-success" onclick="event.stopPropagation(); triggerSingleCommand('${pcId}', 'update')" ${isOnline ? '' : 'disabled'} title="원격 업데이트">🔼 업뎃</button>
                     <button class="card-action-btn btn-secondary" onclick="event.stopPropagation(); triggerSingleMessage('${pcId}')" ${isOnline ? '' : 'disabled'} title="메시지 전송">💬 메시지</button>
                 </div>
