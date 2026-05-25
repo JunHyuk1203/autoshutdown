@@ -1062,6 +1062,7 @@ function renderPCGrid(serverNowMs) {
                 <div class="pc-meta">👤 ${pc.user || 'N/A'}</div>
                 <div class="pc-meta">🖥️ IP: ${pc.ip || 'N/A'}</div>
                 <div class="pc-meta">⏳ 응답: ${timeStr} (${calibratedTimeStr})</div>
+                <div class="pc-meta">🏷️ 버전: v${pc.version || 'N/A'}</div>
                 ${pc.next_event && pc.next_event !== '없음' ? `<div class="pc-event">⏰ 예정: ${pc.next_event}</div>` : ''}
                 
                 <div class="card-actions">
