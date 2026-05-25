@@ -223,6 +223,7 @@ body {
 /* ── 상단 연결 현황 바 ── */
 .top-status-bar {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     background: var(--bg-card);
@@ -230,10 +231,12 @@ body {
     border-radius: 10px;
     padding: 8px 16px;
     backdrop-filter: blur(10px);
+    gap: 12px;
 }
 
 .status-panel {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 12px;
 }
@@ -242,6 +245,7 @@ body {
     font-size: 12px;
     font-weight: 700;
     color: var(--text-muted);
+    white-space: nowrap;
 }
 
 .status-chip {
@@ -254,6 +258,7 @@ body {
     display: flex;
     align-items: center;
     gap: 6px;
+    white-space: nowrap;
 }
 
 .status-chip strong {
@@ -281,6 +286,7 @@ body {
     font-weight: 600;
     cursor: pointer;
     transition: var(--transition-smooth);
+    white-space: nowrap;
 }
 
 .btn-clear-offline:hover {
