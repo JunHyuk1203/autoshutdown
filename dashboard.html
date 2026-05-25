@@ -232,6 +232,7 @@ body {
     padding: 8px 16px;
     backdrop-filter: blur(10px);
     gap: 12px;
+    width: 100%;
 }
 
 .status-panel {
@@ -239,13 +240,15 @@ body {
     flex-wrap: wrap;
     align-items: center;
     gap: 12px;
+    flex-shrink: 0;
 }
 
 .status-title {
     font-size: 12px;
     font-weight: 700;
     color: var(--text-muted);
-    white-space: nowrap;
+    white-space: nowrap !important;
+    flex-shrink: 0;
 }
 
 .status-chip {
@@ -258,12 +261,15 @@ body {
     display: flex;
     align-items: center;
     gap: 6px;
-    white-space: nowrap;
+    white-space: nowrap !important;
+    flex-shrink: 0;
 }
 
 .status-chip strong {
     font-size: 13px;
     font-weight: 800;
+    white-space: nowrap !important;
+    flex-shrink: 0;
 }
 
 .status-chip.active {
@@ -286,7 +292,8 @@ body {
     font-weight: 600;
     cursor: pointer;
     transition: var(--transition-smooth);
-    white-space: nowrap;
+    white-space: nowrap !important;
+    flex-shrink: 0;
 }
 
 .btn-clear-offline:hover {
