@@ -93,7 +93,36 @@ oLink.Save
             
             self.status_lbl.configure(text="프로그램 파일 복사 중...")
             self.progress.set(0.6)
-            shutil.copy2(source_exe, target_exe)
+            
+            # 파일 복사 안정성 보강 (락 발생 시 대비 우회 로직)
+            copied = False
+            for attempt in range(3):
+                try:
+                    # 기존 .old 파일이 있으면 삭제 시도
+                    old_path = target_exe + ".old"
+                    if os.path.exists(old_path):
+                        try: os.remove(old_path)
+                        except: pass
+                        
+                    # 기존 exe가 아직 지워지지 않았으면 .old로 이름 변경하여 무력화 후 복사 진행
+                    if os.path.exists(target_exe):
+                        try:
+                            os.remove(target_exe)
+                        except Exception:
+                            try:
+                                os.rename(target_exe, old_path)
+                            except:
+                                pass
+                                
+                    shutil.copy2(source_exe, target_exe)
+                    copied = True
+                    break
+                except Exception:
+                    time.sleep(1)
+            
+            if not copied:
+                # 최종 시도 (오류가 있을 경우 전체 인스턴스 실패 예외를 띄워 사용자에게 노출)
+                shutil.copy2(source_exe, target_exe)
             
             self.status_lbl.configure(text="바로가기 생성 중...")
             self.progress.set(0.8)

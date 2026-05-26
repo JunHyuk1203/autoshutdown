@@ -35,7 +35,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.65"
+CURRENT_VERSION = "1.1.66"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -809,7 +809,11 @@ class AutoShutdownAppV2:
             # 캐시 방지를 위해 타임스탬프 추가
             url = f"https://raw.githubusercontent.com/JunHyuk1203/autoshutdown/main/version.json?t={int(time.time())}"
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req, timeout=10) as response:
+            try:
+                ssl_context = ssl._create_unverified_context()
+            except AttributeError:
+                ssl_context = None
+            with urllib.request.urlopen(req, timeout=10, context=ssl_context) as response:
                 data = json.loads(response.read().decode('utf-8'))
                 remote_version = data.get("version", CURRENT_VERSION)
                 download_url = data.get("download_url")
@@ -844,6 +848,14 @@ class AutoShutdownAppV2:
         self.root.after(0, _show)
 
     def perform_auto_update(self, download_url, is_manual=False, silent=False):
+        # 저사양 PC 및 네트워크 환경에서 GUI 스레드 블로킹("응답 없음")을 방지하기 위해 백그라운드 스레드로 다운로드 수행
+        threading.Thread(
+            target=self._async_download_and_install,
+            args=(download_url, is_manual, silent),
+            daemon=True
+        ).start()
+
+    def _async_download_and_install(self, download_url, is_manual=False, silent=False):
         update_exe_path = os.path.join(application_path, "update_temp.exe")
         try:
             # 1. 새 버전 다운로드
@@ -854,12 +866,35 @@ class AutoShutdownAppV2:
                 no_cache_url = f"{download_url}?t={int(time.time())}"
                 
             req = urllib.request.Request(no_cache_url, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req, timeout=120) as response:
-                data = response.read()
+            try:
+                ssl_context = ssl._create_unverified_context()
+            except AttributeError:
+                ssl_context = None
+                
+            if is_manual:
+                self.root.after(0, lambda: self._update_download_progress(0))
+
+            with urllib.request.urlopen(req, timeout=120, context=ssl_context) as response:
+                total_size = int(response.info().get('Content-Length', 0))
+                downloaded = 0
+                chunks = []
+                while True:
+                    # 64KB 청크 단위로 분할 다운로드하여 메모리 소모를 낮추고 진행률 업데이트
+                    chunk = response.read(1024 * 64)
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+                    downloaded += len(chunk)
+                    if total_size > 0 and is_manual:
+                        percent = int((downloaded / total_size) * 100)
+                        self.root.after(0, lambda p=percent: self._update_download_progress(p))
+                data = b"".join(chunks)
             
             # 2. 다운로드 무결성 검증 (최소 크기 체크 — 정상 exe는 수 MB 이상)
             if len(data) < 1_000_000:
                 if not silent: self._show_update_error(f"다운로드된 파일이 너무 작습니다 ({len(data)} bytes).\n네트워크 오류일 수 있습니다. 다시 시도해주세요.")
+                if is_manual:
+                    self.root.after(0, self._restore_update_btn)
                 return
             
             with open(update_exe_path, 'wb') as out_file:
@@ -868,7 +903,10 @@ class AutoShutdownAppV2:
             # 디스크에 기록된 파일 크기 재확인
             if os.path.getsize(update_exe_path) != len(data):
                 if not silent: self._show_update_error("다운로드 파일 저장 중 오류가 발생했습니다.\n디스크 공간을 확인해주세요.")
-                os.remove(update_exe_path)
+                try: os.remove(update_exe_path)
+                except: pass
+                if is_manual:
+                    self.root.after(0, self._restore_update_btn)
                 return
                 
             current_exe = sys.executable if getattr(sys, 'frozen', False) else None
@@ -897,13 +935,11 @@ class AutoShutdownAppV2:
                         try: os.remove(update_exe_path)
                         except: pass
                     if not silent: self._show_update_error(f"실행 파일 교체에 실패했습니다.\n프로그램이 다른 곳에서 사용 중일 수 있습니다.\n\n오류: {e}")
+                    if is_manual:
+                        self.root.after(0, self._restore_update_btn)
                     return  # 교체 실패 시 여기서 중단 (프로그램 종료하지 않음)
                 
                 # 5. 파일 교체 성공 → 새 프로세스 실행
-                # 매우 중요: PyInstaller 6+ 에서는 _PYI_APPLICATION_HOME_DIR 등 여러 환경변수를 사용합니다.
-                # 이 변수들이 새 프로세스로 넘어가면, 새 프로세스는 압축 풀기를 생략하고 
-                # 이전 프로세스(곧 종료되어 삭제될)의 _MEI 폴더를 참조하다가 DLL 로드 에러가 발생합니다.
-                # 따라서 현재 환경변수에서 PyInstaller 관련 변수를 모두 제거한 후 실행해야 합니다.
                 clean_env = os.environ.copy()
                 keys_to_remove = [k for k in clean_env if 'MEI' in k or 'PYI' in k or 'TCL' in k or 'TK' in k]
                 for k in keys_to_remove:
@@ -927,6 +963,8 @@ class AutoShutdownAppV2:
                 try: os.remove(update_exe_path)
                 except: pass
             if not silent: self._show_update_error(f"업데이트 중 오류가 발생했습니다.\n인터넷 연결을 확인해주세요.\n\n오류: {e}")
+            if is_manual:
+                self.root.after(0, self._restore_update_btn)
 
     def load_config(self):
         try:
@@ -1166,8 +1204,8 @@ class AutoShutdownAppV2:
         update_card = ctk.CTkFrame(scroll, fg_color=("gray95", "gray15"), corner_radius=15)
         update_card.pack(fill="x", pady=5, ipady=5)
         ctk.CTkLabel(update_card, text=f"ℹ️ 현재 버전: v{CURRENT_VERSION}", font=ctk.CTkFont(family=self.font_family, size=12, weight="bold")).pack(pady=(8, 2))
-        update_btn = ctk.CTkButton(update_card, text="🔄 수동 업데이트 확인", command=self.manual_update_check, width=150, height=28, font=ctk.CTkFont(family=self.font_family, size=11))
-        update_btn.pack(pady=(5, 8))
+        self.update_btn = ctk.CTkButton(update_card, text="🔄 수동 업데이트 확인", command=self.manual_update_check, width=150, height=28, font=ctk.CTkFont(family=self.font_family, size=11))
+        self.update_btn.pack(pady=(5, 8))
 
     def open_school_search(self):
         search_win = ctk.CTkToplevel(self.settings_win)
@@ -1262,24 +1300,63 @@ class AutoShutdownAppV2:
         btn.pack(pady=10)
 
     def manual_update_check(self):
+        # 저사양 PC에서 수동 확인 버튼을 누를 시 창이 굳는 현상 방지를 위해 UI를 비활성화하고 비동기로 체크
+        if hasattr(self, 'update_btn') and self.update_btn and self.update_btn.winfo_exists():
+            self.update_btn.configure(state="disabled", text="⏳ 업데이트 확인 중...")
+        threading.Thread(target=self._async_manual_update_check, daemon=True).start()
+
+    def _async_manual_update_check(self):
         try:
             # 캐시 방지를 위해 타임스탬프 추가
             url = f"https://raw.githubusercontent.com/JunHyuk1203/autoshutdown/main/version.json?t={int(time.time())}"
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req, timeout=5) as response:
+            try:
+                ssl_context = ssl._create_unverified_context()
+            except AttributeError:
+                ssl_context = None
+            with urllib.request.urlopen(req, timeout=5, context=ssl_context) as response:
                 data = json.loads(response.read().decode('utf-8'))
                 remote_version = data.get("version", CURRENT_VERSION)
                 download_url = data.get("download_url")
-                
-            if self._is_newer_version(remote_version, CURRENT_VERSION) and download_url:
-                if messagebox.askyesno("업데이트 알림", f"새로운 버전(v{remote_version})이 발견되었습니다!\n지금 바로 업데이트하시겠습니까?", parent=getattr(self, 'settings_win', self.root)):
-                    self.perform_auto_update(download_url, is_manual=True)
-            elif download_url:
-                if messagebox.askyesno("업데이트 확인", f"현재 최신 버전(v{CURRENT_VERSION})을 사용 중입니다.\n강제로 최신 버전을 다시 다운로드하여 재설치하시겠습니까?", parent=getattr(self, 'settings_win', self.root)):
-                    self.perform_auto_update(download_url, is_manual=True)
-            else:
-                pass
+            
+            # 성공 시 결과를 메인 스레드로 전달
+            self.root.after(0, lambda: self._handle_update_check_result(remote_version, download_url, None))
         except Exception as e:
+            # 실패 시 에러를 메인 스레드로 전달
+            self.root.after(0, lambda: self._handle_update_check_result(None, None, str(e)))
+
+    def _handle_update_check_result(self, remote_version, download_url, error_msg):
+        self._restore_update_btn()
+        
+        if error_msg:
+            messagebox.showerror("업데이트 오류", f"업데이트 확인 중 오류가 발생했습니다:\n{error_msg}", parent=getattr(self, 'settings_win', self.root))
+            return
+            
+        if self._is_newer_version(remote_version, CURRENT_VERSION) and download_url:
+            if messagebox.askyesno("업데이트 알림", f"새로운 버전(v{remote_version})이 발견되었습니다!\n지금 바로 업데이트하시겠습니까?", parent=getattr(self, 'settings_win', self.root)):
+                if hasattr(self, 'update_btn') and self.update_btn and self.update_btn.winfo_exists():
+                    self.update_btn.configure(state="disabled", text="📥 다운로드 준비 중...")
+                self.perform_auto_update(download_url, is_manual=True)
+        elif download_url:
+            if messagebox.askyesno("업데이트 확인", f"현재 최신 버전(v{CURRENT_VERSION})을 사용 중입니다.\n강제로 최신 버전을 다시 다운로드하여 재설치하시겠습니까?", parent=getattr(self, 'settings_win', self.root)):
+                if hasattr(self, 'update_btn') and self.update_btn and self.update_btn.winfo_exists():
+                    self.update_btn.configure(state="disabled", text="📥 다운로드 준비 중...")
+                self.perform_auto_update(download_url, is_manual=True)
+        else:
+            messagebox.showerror("업데이트 오류", "버전 정보를 불러오지 못했습니다.", parent=getattr(self, 'settings_win', self.root))
+
+    def _update_download_progress(self, percent):
+        try:
+            if hasattr(self, 'update_btn') and self.update_btn and self.update_btn.winfo_exists():
+                self.update_btn.configure(text=f"📥 다운로드 중 ({percent}%)...")
+        except Exception:
+            pass
+
+    def _restore_update_btn(self):
+        try:
+            if hasattr(self, 'update_btn') and self.update_btn and self.update_btn.winfo_exists():
+                self.update_btn.configure(state="normal", text="🔄 수동 업데이트 확인")
+        except Exception:
             pass
 
     def get_tray_server_status(self, item=None):
