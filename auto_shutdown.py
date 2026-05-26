@@ -35,7 +35,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.66"
+CURRENT_VERSION = "1.1.67"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -97,6 +97,27 @@ def get_local_ip():
     finally:
         s.close()
     return ip
+
+def get_pc_id():
+    try:
+        hostname = socket.gethostname()
+    except Exception:
+        hostname = "PC"
+    
+    # 영문, 숫자, 하이픈(-) 제외한 모든 문자(한글, 공백, 특수문자 등) 제거하여 URL 안전성 확보
+    import re
+    cleaned_hostname = re.sub(r'[^a-zA-Z0-9\-]', '', hostname)
+    if not cleaned_hostname or cleaned_hostname.strip('-') == '':
+        cleaned_hostname = "PC"
+    
+    # MAC 주소의 하위 6자리를 붙여 고유성 보장 (동일 호스트명 중복 방지)
+    try:
+        import uuid
+        mac = uuid.getnode()
+        mac_hex = f"{mac:012x}"[-6:]
+    except Exception:
+        mac_hex = "000000"
+    return f"{cleaned_hostname}_{mac_hex}"
 
 ctk.set_appearance_mode("System")
 ctk.set_default_color_theme("blue")
@@ -252,6 +273,7 @@ class AutoShutdownAppV2:
         self.api_key_error_shown = False
         self.snooze_target = None
         self.snooze_action = "시스템 종료"
+        self.last_all_cmd_ts = 0
         
         global app_instance
         app_instance = self
@@ -384,10 +406,7 @@ class AutoShutdownAppV2:
         while self.is_running:
             central_url = "https://atss-a1f9e-default-rtdb.firebaseio.com/"
             try:
-                pc_id = socket.gethostname()
-                # Firebase 키에 허용되지 않는 문자(., $, #, [, ], /) 제거 또는 대체
-                for char in [".", "$", "#", "[", "]", "/"]:
-                    pc_id = pc_id.replace(char, "-")
+                pc_id = get_pc_id()
                     
                 next_time, next_action = self.get_next_event()
                 if next_time and next_time != "skip":
@@ -415,7 +434,7 @@ class AutoShutdownAppV2:
                 # 1. 내 PC 상태 보고 (PATCH)
                 status_payload = json.dumps({
                     'ip': ip,
-                    'hostname': pc_id,
+                    'hostname': socket.gethostname(),
                     'user': current_user,
                     'version': CURRENT_VERSION,
                     'status': 'online',
@@ -460,7 +479,7 @@ class AutoShutdownAppV2:
                 cmd_url = f"{central_url.rstrip('/')}/commands/{pc_id}.json"
                 cmd_req = urllib.request.Request(cmd_url, method='GET')
                 try:
-                    with urllib.request.urlopen(cmd_req, timeout=2, context=ssl_context) as res:
+                    with urllib.request.urlopen(cmd_req, timeout=6, context=ssl_context) as res:
                         cmd = json.loads(res.read().decode('utf-8'))
                         if cmd:
                             cmd_type = 'individual'
@@ -475,13 +494,17 @@ class AutoShutdownAppV2:
                     all_cmd_url = f"{central_url.rstrip('/')}/commands/__ALL__.json"
                     all_cmd_req = urllib.request.Request(all_cmd_url, method='GET')
                     try:
-                        with urllib.request.urlopen(all_cmd_req, timeout=2, context=ssl_context) as res:
+                        with urllib.request.urlopen(all_cmd_req, timeout=6, context=ssl_context) as res:
                             cmd = json.loads(res.read().decode('utf-8'))
                             if cmd:
                                 cmd_type = 'all'
                                 cmd_ts = cmd.get('timestamp', 0)
-                                if time.time() - cmd_ts > 8.0:
+                                # 이미 처리한 전체 명령이거나 8초 이상 지난 오래된 명령이면 무시
+                                if cmd_ts == getattr(self, 'last_all_cmd_ts', 0) or time.time() - cmd_ts > 8.0:
                                     cmd = None
+                                else:
+                                    # 유효한 전체 명령이므로 중복 실행을 막기 위해 타임스탬프 기록
+                                    self.last_all_cmd_ts = cmd_ts
                     except Exception as e:
                         try:
                             with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
@@ -593,7 +616,7 @@ class AutoShutdownAppV2:
                         del_url = f"{central_url.rstrip('/')}/commands/{pc_id}.json"
                         del_req = urllib.request.Request(del_url, method='DELETE')
                         try:
-                            with urllib.request.urlopen(del_req, timeout=2, context=ssl_context) as res:
+                            with urllib.request.urlopen(del_req, timeout=6, context=ssl_context) as res:
                                 pass
                         except Exception as e:
                             try:
@@ -874,7 +897,7 @@ class AutoShutdownAppV2:
             if is_manual:
                 self.root.after(0, lambda: self._update_download_progress(0))
 
-            with urllib.request.urlopen(req, timeout=120, context=ssl_context) as response:
+            with urllib.request.urlopen(req, timeout=300, context=ssl_context) as response:
                 total_size = int(response.info().get('Content-Length', 0))
                 downloaded = 0
                 chunks = []
@@ -1204,6 +1227,7 @@ class AutoShutdownAppV2:
         update_card = ctk.CTkFrame(scroll, fg_color=("gray95", "gray15"), corner_radius=15)
         update_card.pack(fill="x", pady=5, ipady=5)
         ctk.CTkLabel(update_card, text=f"ℹ️ 현재 버전: v{CURRENT_VERSION}", font=ctk.CTkFont(family=self.font_family, size=12, weight="bold")).pack(pady=(8, 2))
+        ctk.CTkLabel(update_card, text=f"🔑 PC 고유 ID: {get_pc_id()}", font=ctk.CTkFont(family=self.font_family, size=11), text_color="gray").pack(pady=(2, 2))
         self.update_btn = ctk.CTkButton(update_card, text="🔄 수동 업데이트 확인", command=self.manual_update_check, width=150, height=28, font=ctk.CTkFont(family=self.font_family, size=11))
         self.update_btn.pack(pady=(5, 8))
 
@@ -1314,7 +1338,7 @@ class AutoShutdownAppV2:
                 ssl_context = ssl._create_unverified_context()
             except AttributeError:
                 ssl_context = None
-            with urllib.request.urlopen(req, timeout=5, context=ssl_context) as response:
+            with urllib.request.urlopen(req, timeout=25, context=ssl_context) as response:
                 data = json.loads(response.read().decode('utf-8'))
                 remote_version = data.get("version", CURRENT_VERSION)
                 download_url = data.get("download_url")
@@ -1512,9 +1536,7 @@ class AutoShutdownAppV2:
 
     def send_offline_status(self):
         try:
-            pc_id = socket.gethostname()
-            for char in [".", "$", "#", "[", "]", "/"]:
-                pc_id = pc_id.replace(char, "-")
+            pc_id = get_pc_id()
             central_url = "https://atss-a1f9e-default-rtdb.firebaseio.com/"
             ssl_context = ssl._create_unverified_context()
             
@@ -1895,6 +1917,7 @@ class HeadlessShutdownApp:
         self.skipped_events = set()
         self.last_triggered_time = None
         self.config = self.load_config()
+        self.last_all_cmd_ts = 0
         
         # 백그라운드 스레드들 시작
         threading.Thread(target=self.socket_listener, daemon=True).start()
@@ -2029,9 +2052,7 @@ class HeadlessShutdownApp:
         while self.is_running:
             central_url = "https://atss-a1f9e-default-rtdb.firebaseio.com/"
             try:
-                pc_id = socket.gethostname()
-                for char in [".", "$", "#", "[", "]", "/"]:
-                    pc_id = pc_id.replace(char, "-")
+                pc_id = get_pc_id()
                     
                 next_time, next_action = self.get_next_event()
                 if next_time and next_time != "skip":
@@ -2059,7 +2080,7 @@ class HeadlessShutdownApp:
                 # 1. 상태 보고 (PUT)
                 status_payload = json.dumps({
                     'ip': ip,
-                    'hostname': pc_id,
+                    'hostname': socket.gethostname(),
                     'user': current_user,
                     'version': CURRENT_VERSION,
                     'status': 'online',
@@ -2110,10 +2131,12 @@ class HeadlessShutdownApp:
                             if cmd:
                                 cmd_type = 'all'
                                 cmd_ts = cmd.get('timestamp', 0)
-                                if time.time() - cmd_ts > 8.0:
+                                if cmd_ts == getattr(self, 'last_all_cmd_ts', 0) or time.time() - cmd_ts > 8.0:
                                     cmd = None
                                 else:
                                     _log(f"CMD found (all): {cmd}")
+                                    # 유효한 전체 명령이므로 중복 실행을 막기 위해 타임스탬프 기록
+                                    self.last_all_cmd_ts = cmd_ts
                     except Exception as e:
                         _log(f"GET all cmd error: {e}")
                                 
