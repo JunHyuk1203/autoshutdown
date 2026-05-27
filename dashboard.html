@@ -689,6 +689,33 @@ body {
 #confirm-modal {
     z-index: 200 !important;
 }
+/* ── 연결 프로그램 프리셋 칩 버튼 ── */
+.app-preset-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 10px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border-light);
+    border-radius: 20px;
+    color: var(--text-main);
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: var(--transition-smooth);
+    white-space: nowrap;
+    font-family: inherit;
+}
+.app-preset-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    transform: translateY(-1px);
+}
+.app-preset-btn.active {
+    background: rgba(79, 70, 229, 0.25);
+    border-color: var(--primary);
+    color: #a5b4fc;
+    box-shadow: 0 0 8px rgba(79, 70, 229, 0.3);
+}
 </style>
 </head>
 <body>
@@ -756,6 +783,7 @@ body {
                     </button>
                     <button class="action-btn action-btn-blue" onclick="triggerCommandAll('restart')">🔄 전체 재부팅</button>
                     <button class="action-btn action-btn-secondary" onclick="triggerCommandAll('setup_mode')">🚀 전체 초기설정</button>
+                    <button class="action-btn action-btn-warning" onclick="openFileModal('__ALL__')">📂 전체 파일 열기</button>
                 </div>
             </div>
         </div>
@@ -875,6 +903,89 @@ body {
         <div class="modal-actions" style="margin-top: 30px;">
             <button class="modal-btn modal-btn-cancel" onclick="closeConfigModal()">취소</button>
             <button class="modal-btn modal-btn-confirm" style="background: var(--primary);" onclick="applyRemoteConfig()">설정 전송/적용</button>
+        </div>
+    </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────
+   원격 파일 열기 모달
+   ───────────────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="open-file-modal">
+    <div class="modal-card" style="max-width: 520px; width: 95%; max-height: 92vh; overflow-y: auto; text-align: left;">
+        <h3 class="modal-title" style="margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
+            <span>📂 원격 파일 열기</span>
+            <span style="font-size: 12px; color: var(--accent-blue);" id="open-file-target-label">-</span>
+        </h3>
+        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 16px;">지정한 파일을 대상 PC에서 원격으로 엽니다.</p>
+
+        <!-- 즐겨찾기 섹션 -->
+        <div style="margin-bottom: 16px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                <span style="font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">⭐ 즐겨찾기</span>
+                <button onclick="addFavoriteFromInputs()" style="
+                    background: rgba(79,70,229,0.15); border: 1px solid var(--primary);
+                    color: var(--text-main); padding: 4px 10px; border-radius: 6px;
+                    font-size: 11px; font-weight: 700; cursor: pointer; transition: var(--transition-smooth);">
+                    + 현재 입력 저장
+                </button>
+            </div>
+            <div id="fav-list" style="display: flex; flex-direction: column; gap: 6px; max-height: 160px; overflow-y: auto;"></div>
+            <div id="fav-empty" style="font-size: 12px; color: var(--text-muted); text-align: center; padding: 12px 0;">저장된 즐겨찾기가 없습니다.</div>
+        </div>
+
+        <div style="border-top: 1px solid var(--border-light); padding-top: 16px; display: flex; flex-direction: column; gap: 12px;">
+            <!-- 파일 경로 -->
+            <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label">파일 경로 <span style="color: var(--danger);">*</span></label>
+                <input class="form-input" id="of-file-path" type="text"
+                    placeholder="예: C:\Users\student\Desktop\slide.pptx">
+            </div>
+            <!-- 연결 프로그램 -->
+            <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label">연결 프로그램 <span style="font-weight: 400; color: var(--text-muted);">(비워두면 Windows 기본값)</span></label>
+                <!-- 프리셋 칩 버튼 -->
+                <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;">
+                    <button type="button" onclick="setAppPreset('chrome')" class="app-preset-btn" id="preset-chrome">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="21.17" y1="8" x2="12" y2="8"/><line x1="3.95" y1="6.06" x2="8.54" y2="14"/><line x1="10.88" y1="21.94" x2="15.46" y2="14"/></svg>
+                        Chrome
+                    </button>
+                    <button type="button" onclick="setAppPreset('edge')" class="app-preset-btn" id="preset-edge">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10"/><path d="M8 12c0-2.21 1.79-4 4-4s4 1.79 4 4-1.79 4-4 4"/><path d="M22 12c0 1.5-.4 2.9-1.1 4.1"/></svg>
+                        Edge
+                    </button>
+                    <button type="button" onclick="setAppPreset('powerpoint')" class="app-preset-btn" id="preset-powerpoint">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                        PowerPoint
+                    </button>
+                    <button type="button" onclick="setAppPreset('excel')" class="app-preset-btn" id="preset-excel">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                        Excel
+                    </button>
+                    <button type="button" onclick="setAppPreset('word')" class="app-preset-btn" id="preset-word">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                        Word
+                    </button>
+                    <button type="button" onclick="setAppPreset('notepad')" class="app-preset-btn" id="preset-notepad">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        메모장
+                    </button>
+                    <button type="button" onclick="setAppPreset('')" class="app-preset-btn" id="preset-default" style="border-color: rgba(255,255,255,0.12); color: var(--text-muted);">
+                        🔄 기본값
+                    </button>
+                </div>
+                <input class="form-input" id="of-app-path" type="text"
+                    placeholder="예: C:\Program Files\Microsoft Office\root\Office16\POWERPNT.EXE">
+            </div>
+            <!-- 즐겨찾기 이름 -->
+            <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label">즐겨찾기 이름 <span style="font-weight: 400; color: var(--text-muted);">(저장 시 사용)</span></label>
+                <input class="form-input" id="of-fav-name" type="text" placeholder="예: 수업 PPT, 출석부 등">
+            </div>
+        </div>
+
+        <div class="modal-actions" style="margin-top: 20px; flex-wrap: wrap; gap: 8px;">
+            <button class="modal-btn modal-btn-cancel" onclick="closeOpenFileModal()">취소</button>
+            <button class="modal-btn" style="background: var(--primary);" onclick="sendOpenFileCommand()">📂 파일 열기</button>
         </div>
     </div>
 </div>
@@ -1065,7 +1176,7 @@ function renderPCGrid(serverNowMs) {
                 <div class="pc-meta">🏷️ 버전: v${pc.version || 'N/A'}</div>
                 ${pc.next_event && pc.next_event !== '없음' ? `<div class="pc-event">⏰ 예정: ${pc.next_event}</div>` : ''}
                 
-                <div class="card-actions">
+                <div class="card-actions" style="grid-template-columns: repeat(3, 1fr);">
                     <button class="card-action-btn btn-danger" onclick="event.stopPropagation(); triggerSingleCommand('${pcId}', 'shutdown')" ${isOnline ? '' : 'disabled'} title="원격 종료">
                         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 2px; flex-shrink: 0;"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
                         종료
@@ -1075,6 +1186,7 @@ function renderPCGrid(serverNowMs) {
                     <button class="card-action-btn btn-info" onclick="event.stopPropagation(); openConfigModal('${pcId}')" ${isOnline ? '' : 'disabled'} title="원격 환경설정">⚙️ 설정</button>
                     <button class="card-action-btn btn-success" onclick="event.stopPropagation(); triggerSingleCommand('${pcId}', 'update')" ${isOnline ? '' : 'disabled'} title="원격 업데이트">🔼 업뎃</button>
                     <button class="card-action-btn btn-secondary" onclick="event.stopPropagation(); triggerSingleMessage('${pcId}')" ${isOnline ? '' : 'disabled'} title="메시지 전송">💬 메시지</button>
+                    <button class="card-action-btn btn-warning" onclick="event.stopPropagation(); openFileModal('${pcId}')" ${isOnline ? '' : 'disabled'} title="원격 파일 열기" style="grid-column: 1 / -1;">📂 파일 열기</button>
                 </div>
             </div>`;
     });
@@ -1432,6 +1544,269 @@ function showModal(title, msg, onOk) {
 
 function closeModal() {
     document.getElementById("confirm-modal").classList.remove("show");
+}
+
+// ── 연결 프로그램 프리셋 ─────────────────────────────────────────
+const APP_PRESETS = {
+    chrome: {
+        label: 'Chrome',
+        paths: [
+            'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+            'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'
+        ]
+    },
+    edge: {
+        label: 'Edge',
+        paths: [
+            'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+            'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe'
+        ]
+    },
+    powerpoint: {
+        label: 'PowerPoint',
+        paths: [
+            'C:\\Program Files\\Microsoft Office\\root\\Office16\\POWERPNT.EXE',
+            'C:\\Program Files (x86)\\Microsoft Office\\root\\Office16\\POWERPNT.EXE',
+            'C:\\Program Files\\Microsoft Office\\Office15\\POWERPNT.EXE',
+            'C:\\Program Files (x86)\\Microsoft Office\\Office15\\POWERPNT.EXE'
+        ]
+    },
+    excel: {
+        label: 'Excel',
+        paths: [
+            'C:\\Program Files\\Microsoft Office\\root\\Office16\\EXCEL.EXE',
+            'C:\\Program Files (x86)\\Microsoft Office\\root\\Office16\\EXCEL.EXE',
+            'C:\\Program Files\\Microsoft Office\\Office15\\EXCEL.EXE',
+            'C:\\Program Files (x86)\\Microsoft Office\\Office15\\EXCEL.EXE'
+        ]
+    },
+    word: {
+        label: 'Word',
+        paths: [
+            'C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE',
+            'C:\\Program Files (x86)\\Microsoft Office\\root\\Office16\\WINWORD.EXE',
+            'C:\\Program Files\\Microsoft Office\\Office15\\WINWORD.EXE',
+            'C:\\Program Files (x86)\\Microsoft Office\\Office15\\WINWORD.EXE'
+        ]
+    },
+    notepad: {
+        label: '메모장',
+        paths: ['C:\\Windows\\System32\\notepad.exe']
+    }
+};
+
+let activePreset = null;
+
+/** 프리셋 버튼 클릭 시 앱 경로 입력란 채우기 */
+function setAppPreset(key) {
+    const input = document.getElementById('of-app-path');
+
+    // 기본값 버튼: 입력란 비우기
+    if (!key) {
+        input.value = '';
+        activePreset = null;
+        refreshPresetHighlight();
+        return;
+    }
+
+    const preset = APP_PRESETS[key];
+    if (!preset) return;
+
+    // 첫 번째 경로를 기본으로 사용 (가장 흔한 설치 경로)
+    input.value = preset.paths[0];
+    activePreset = key;
+    refreshPresetHighlight();
+}
+
+/** 선택된 프리셋 버튼 강조 업데이트 */
+function refreshPresetHighlight() {
+    const keys = ['chrome', 'edge', 'powerpoint', 'excel', 'word', 'notepad', 'default'];
+    keys.forEach(k => {
+        const btn = document.getElementById('preset-' + k);
+        if (!btn) return;
+        if (k === activePreset) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+}
+
+// ── 원격 파일 열기 기능 ──────────────────────────────────────────
+
+const FAV_STORAGE_KEY = "sp_file_favorites";
+let openFileTarget = null; // '__ALL__' 또는 특정 pcId
+
+/** 즐겨찾기 배열 읽기 */
+function loadFavorites() {
+    try {
+        return JSON.parse(localStorage.getItem(FAV_STORAGE_KEY)) || [];
+    } catch(e) { return []; }
+}
+
+/** 즐겨찾기 배열 저장 */
+function saveFavorites(favs) {
+    localStorage.setItem(FAV_STORAGE_KEY, JSON.stringify(favs));
+}
+
+/** 즐겨찾기 목록 UI 렌더링 */
+function renderFavorites() {
+    const favs = loadFavorites();
+    const listEl = document.getElementById("fav-list");
+    const emptyEl = document.getElementById("fav-empty");
+
+    if (favs.length === 0) {
+        listEl.innerHTML = "";
+        emptyEl.style.display = "block";
+        return;
+    }
+    emptyEl.style.display = "none";
+
+    listEl.innerHTML = favs.map((fav, idx) => `
+        <div style="
+            display: flex; align-items: center; gap: 8px;
+            background: rgba(255,255,255,0.03); border: 1px solid var(--border-light);
+            border-radius: 8px; padding: 8px 10px;
+        ">
+            <span style="font-size: 16px;">📄</span>
+            <div style="flex: 1; min-width: 0;">
+                <div style="font-size: 12px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                    ${escHtml(fav.name || '이름 없음')}
+                </div>
+                <div style="font-size: 10px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escHtml(fav.file_path)}">
+                    ${escHtml(fav.file_path)}
+                </div>
+                ${fav.app_path ? `<div style="font-size: 10px; color: var(--accent-blue); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escHtml(fav.app_path)}">앱: ${escHtml(fav.app_path)}</div>` : ''}
+            </div>
+            <button onclick="loadFavorite(${idx})" style="
+                background: rgba(79,70,229,0.2); border: 1px solid var(--primary);
+                color: var(--text-main); padding: 4px 8px; border-radius: 6px;
+                font-size: 11px; font-weight: 700; cursor: pointer; white-space: nowrap;
+                transition: var(--transition-smooth);" title="이 즐겨찾기로 입력 채우기">불러오기</button>
+            <button onclick="deleteFavorite(${idx})" style="
+                background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3);
+                color: var(--danger); padding: 4px 8px; border-radius: 6px;
+                font-size: 11px; font-weight: 700; cursor: pointer;
+                transition: var(--transition-smooth);" title="즐겨찾기 삭제">🗑</button>
+        </div>
+    `).join("");
+}
+
+/** 즐겨찾기 항목 불러오기 (입력란에 채우기) */
+function loadFavorite(idx) {
+    const favs = loadFavorites();
+    if (!favs[idx]) return;
+    const fav = favs[idx];
+    document.getElementById("of-file-path").value = fav.file_path || "";
+    document.getElementById("of-app-path").value  = fav.app_path  || "";
+    document.getElementById("of-fav-name").value  = fav.name      || "";
+}
+
+/** 즐겨찾기 삭제 */
+function deleteFavorite(idx) {
+    const favs = loadFavorites();
+    favs.splice(idx, 1);
+    saveFavorites(favs);
+    renderFavorites();
+}
+
+/** 현재 입력값을 즐겨찾기에 저장 */
+function addFavoriteFromInputs() {
+    const name     = document.getElementById("of-fav-name").value.trim();
+    const filePath = document.getElementById("of-file-path").value.trim();
+    const appPath  = document.getElementById("of-app-path").value.trim();
+
+    if (!filePath) {
+        alert("파일 경로를 먼저 입력해 주세요.");
+        return;
+    }
+    if (!name) {
+        alert("즐겨찾기 이름을 입력해 주세요.");
+        return;
+    }
+    const favs = loadFavorites();
+    // 중복 파일 경로 + 앱 경로 조합이면 덮어쓰기
+    const existingIdx = favs.findIndex(f => f.file_path === filePath && f.app_path === appPath);
+    if (existingIdx !== -1) {
+        favs[existingIdx].name = name;
+    } else {
+        favs.push({ name, file_path: filePath, app_path: appPath });
+    }
+    saveFavorites(favs);
+    renderFavorites();
+    alert(`"${name}" 즐겨찾기에 저장되었습니다.`);
+}
+
+/** HTML 이스케이프 유틸 */
+function escHtml(str) {
+    return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+}
+
+/** 파일 열기 모달 열기 (개별 PC 또는 '__ALL__') */
+function openFileModal(pcId) {
+    openFileTarget = pcId;
+    const label = pcId === "__ALL__"
+        ? "전체 PC"
+        : (pcs[pcId] ? (pcs[pcId].hostname || pcId) : pcId);
+    document.getElementById("open-file-target-label").innerText = label;
+
+    // 입력란 초기화
+    document.getElementById("of-file-path").value = "";
+    document.getElementById("of-app-path").value  = "";
+    document.getElementById("of-fav-name").value  = "";
+    activePreset = null;
+    refreshPresetHighlight();
+
+    renderFavorites();
+    document.getElementById("open-file-modal").classList.add("show");
+}
+
+/** 파일 열기 모달 닫기 */
+function closeOpenFileModal() {
+    document.getElementById("open-file-modal").classList.remove("show");
+}
+
+/** 파일 열기 명령 전송 */
+async function sendOpenFileCommand() {
+    const filePath = document.getElementById("of-file-path").value.trim();
+    const appPath  = document.getElementById("of-app-path").value.trim();
+
+    if (!filePath) {
+        alert("파일 경로를 입력해 주세요.");
+        return;
+    }
+    if (!openFileTarget) return;
+
+    const targetLabel = openFileTarget === "__ALL__"
+        ? "전체 PC"
+        : (pcs[openFileTarget]?.hostname || openFileTarget);
+
+    const appDesc = appPath ? `\n연결 프로그램: ${appPath}` : "\n연결 프로그램: Windows 기본값";
+
+    showModal(
+        "파일 열기 확인",
+        `[${targetLabel}] 에서 아래 파일을 열겠습니까?\n파일: ${filePath}${appDesc}`,
+        async () => {
+            const target = openFileTarget;
+            closeModal();
+            closeOpenFileModal();
+
+            const result = await writeCommandToDB(target, "open_file", {
+                file_path: filePath,
+                app_path: appPath
+            });
+
+            if (result.success) {
+                alert("파일 열기 명령이 성공적으로 전송되었습니다!");
+            } else {
+                alert("명령 전송 실패: " + result.error);
+            }
+        }
+    );
 }
 </script>
 </body>

@@ -607,6 +607,23 @@ class AutoShutdownAppV2:
                                 with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
                                     ef.write(f"[{datetime.now()}] set_config FAILED: {ex}\n")
                             except: pass
+                    elif action == 'open_file' and isinstance(message, dict):
+                        file_path = message.get('file_path', '').strip()
+                        app_path  = message.get('app_path', '').strip()
+                        if file_path:
+                            try:
+                                if app_path:
+                                    subprocess.Popen([app_path, file_path])
+                                else:
+                                    os.startfile(file_path)
+                                cmd_success = True
+                                if app_instance:
+                                    app_instance.root.after(0, lambda fp=file_path: app_instance.add_system_alert(f"📂 원격 파일 열기 실행: {fp}"))
+                            except Exception as open_ex:
+                                try:
+                                    with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
+                                        ef.write(f"[{datetime.now()}] open_file FAILED: file={file_path!r} app={app_path!r} err={open_ex}\n")
+                                except: pass
                     elif action == 'message' and message:
                         self.root.after(0, lambda m=message: messagebox.showinfo("관리자 메시지", m, parent=self.root))
                         cmd_success = True
