@@ -18,12 +18,31 @@ app_instance = None
 # 업데이트 후 부모 프로세스의 환경변수가 상속되면 삭제된 임시 폴더를 참조하므로
 # 항상 현재 _MEIPASS 기준으로 강제 재설정
 if getattr(sys, 'frozen', False):
+    # console=False 일 때 sys.stdout/err가 None이 되어 발생하는 AttributeError 방지 및 로그 저장
+    class NullWriter:
+        def __init__(self):
+            self.encoding = 'utf-8'
+            self.errors = 'strict'
+        def write(self, text):
+            try:
+                # AppData 폴더 또는 실행 파일 위치에 stdout_stderr.log 기록
+                with open(os.path.join(os.path.dirname(sys.executable), 'stdout_stderr.log'), 'a', encoding='utf-8') as f:
+                    f.write(text)
+            except:
+                pass
+        def flush(self): pass
+        def isatty(self): return False
+        def fileno(self): return -1
+    sys.stdout = NullWriter()
+    sys.stderr = NullWriter()
+
     # _MEIPASS2가 남아있으면 PyInstaller 부트로더가 혼동할 수 있으므로 제거
     os.environ.pop('_MEIPASS2', None)
     # 항상 현재 _MEIPASS 기준으로 TCL/TK 경로를 강제 설정 (기존 값 무시)
     _meipass = sys._MEIPASS.replace('\\', '/')
     os.environ['TCL_LIBRARY'] = _meipass + '/_tcl_data'
     os.environ['TK_LIBRARY'] = _meipass + '/_tk_data'
+
 
 import tkinter as tk
 from tkinter import messagebox
@@ -35,7 +54,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.67"
+CURRENT_VERSION = "1.1.68"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -2321,11 +2340,21 @@ if __name__ == "__main__":
     import traceback
     import socket
     
-    # console=False 인 상태로 PyInstaller로 빌드된 경우, print()로 인한 크래시 방지
+    # console=False 인 상태로 PyInstaller로 빌드된 경우, print()로 인한 크래시 방지 및 로그 저장
     if getattr(sys, 'frozen', False):
         class NullWriter:
-            def write(self, text): pass
+            def __init__(self):
+                self.encoding = 'utf-8'
+                self.errors = 'strict'
+            def write(self, text):
+                try:
+                    with open(os.path.join(os.path.dirname(sys.executable), 'stdout_stderr.log'), 'a', encoding='utf-8') as f:
+                        f.write(text)
+                except:
+                    pass
             def flush(self): pass
+            def isatty(self): return False
+            def fileno(self): return -1
         sys.stdout = NullWriter()
         sys.stderr = NullWriter()
     
@@ -2335,7 +2364,7 @@ if __name__ == "__main__":
         ctypes.windll.kernel32.SetLastError(0)
         mutex_global = ctypes.windll.kernel32.CreateMutexW(None, False, "Global\\AutoShutdownAppV2_Mutex")
         err = ctypes.windll.kernel32.GetLastError()
-        if err in (183, 5):
+        if err == 183:
             os._exit(0)  # sys.exit 대신 os._exit 사용하여 BaseException 우회
         HeadlessShutdownApp()
         os._exit(0)
@@ -2352,7 +2381,7 @@ if __name__ == "__main__":
         mutex_global = ctypes.windll.kernel32.CreateMutexW(None, False, "Global\\AutoShutdownAppV2_Mutex")
         err = ctypes.windll.kernel32.GetLastError()
         
-        if err in (183, 5):
+        if err == 183:
             # 다른 인스턴스(예: --headless)가 이미 실행 중인 경우에만 소켓 연결 시도 (바통 터치)
             # 이로써 평상시 무의미한 소켓 연결 시도로 인한 딜레이를 100% 원천 차단!
             try:
@@ -2370,7 +2399,7 @@ if __name__ == "__main__":
                     ctypes.windll.kernel32.SetLastError(0)
                     test_mutex = ctypes.windll.kernel32.CreateMutexW(None, False, "Global\\AutoShutdownAppV2_Mutex")
                     test_err = ctypes.windll.kernel32.GetLastError()
-                    if test_err not in (183, 5):
+                    if test_err != 183:
                         mutex_global = test_mutex
                         released = True
                         break
