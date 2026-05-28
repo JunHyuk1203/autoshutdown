@@ -54,7 +54,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.68"
+CURRENT_VERSION = "1.1.69"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -1743,7 +1743,7 @@ class AutoShutdownAppV2:
                     target_dt = target_dt - timedelta(minutes=minutes_off)
                     target_datetime = datetime(check_date.year, check_date.month, check_date.day, target_dt.hour, target_dt.minute)
                     
-                    if target_datetime > now:
+                    if target_datetime.replace(second=0, microsecond=0) >= now.replace(second=0, microsecond=0):
                         if target_datetime.strftime("%Y-%m-%d %H:%M") in self.skipped_events: continue
                         if next_time is None or target_datetime < next_time:
                             next_time = target_datetime
@@ -2015,7 +2015,7 @@ class HeadlessShutdownApp:
                     target_dt = target_dt - timedelta(minutes=minutes_off)
                     target_datetime = datetime(check_date.year, check_date.month, check_date.day, target_dt.hour, target_dt.minute)
                     
-                    if target_datetime > now:
+                    if target_datetime.replace(second=0, microsecond=0) >= now.replace(second=0, microsecond=0):
                         if target_datetime.strftime("%Y-%m-%d %H:%M") in self.skipped_events:
                             continue
                         if next_time is None or target_datetime < next_time:
