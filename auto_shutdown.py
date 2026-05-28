@@ -4,6 +4,7 @@ import threading
 import time
 import json
 import socket
+socket.setdefaulttimeout(15.0)  # 스쿨넷 방화벽망 등에서 urllib 무한 락 방지용 소켓 전역 타임아웃 강제 설정
 import urllib.request
 import urllib.error
 import urllib.parse
@@ -54,7 +55,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.70"
+CURRENT_VERSION = "1.1.71"
 
 try:
     from pycaw.pycaw import AudioUtilities
