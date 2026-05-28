@@ -1172,6 +1172,7 @@ function renderPCGrid(serverNowMs) {
                 <div class="pc-name" title="${pcId}">${pc.hostname || pcId}</div>
                 <div class="pc-meta">👤 ${pc.user || 'N/A'}</div>
                 <div class="pc-meta">🖥️ IP: ${pc.ip || 'N/A'}</div>
+                <div class="pc-meta">💾 MAC: ${pc.mac || 'N/A'}</div>
                 <div class="pc-meta">⏳ 응답: ${timeStr} (${calibratedTimeStr})</div>
                 <div class="pc-meta">🏷️ 버전: v${pc.version || 'N/A'}</div>
                 ${pc.next_event && pc.next_event !== '없음' ? `<div class="pc-event">⏰ 예정: ${pc.next_event}</div>` : ''}
@@ -1186,7 +1187,10 @@ function renderPCGrid(serverNowMs) {
                     <button class="card-action-btn btn-info" onclick="event.stopPropagation(); openConfigModal('${pcId}')" ${isOnline ? '' : 'disabled'} title="원격 환경설정">⚙️ 설정</button>
                     <button class="card-action-btn btn-success" onclick="event.stopPropagation(); triggerSingleCommand('${pcId}', 'update')" ${isOnline ? '' : 'disabled'} title="원격 업데이트">🔼 업뎃</button>
                     <button class="card-action-btn btn-secondary" onclick="event.stopPropagation(); triggerSingleMessage('${pcId}')" ${isOnline ? '' : 'disabled'} title="메시지 전송">💬 메시지</button>
-                    <button class="card-action-btn btn-warning" onclick="event.stopPropagation(); openFileModal('${pcId}')" ${isOnline ? '' : 'disabled'} title="원격 파일 열기" style="grid-column: 1 / -1;">📂 파일 열기</button>
+                    ${isOnline 
+                        ? `<button class="card-action-btn btn-warning" onclick="event.stopPropagation(); openFileModal('${pcId}')" title="원격 파일 열기" style="grid-column: 1 / -1;">📂 파일 열기</button>`
+                        : `<button class="card-action-btn btn-success" onclick="event.stopPropagation(); triggerWOL('${pcId}', '${pc.mac || ''}')" title="원격 전원 켜기" style="grid-column: 1 / -1;">⚡ 전원 켜기 (WOL)</button>`
+                    }
                 </div>
             </div>`;
     });
@@ -1784,6 +1788,45 @@ function escHtml(str) {
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;");
+}
+
+/** 원격 PC 전원 켜기 (WOL) 명령 전송 */
+function triggerWOL(pcId, mac) {
+    if (!mac || mac === 'undefined') {
+        alert("해당 PC의 MAC 주소가 수집되지 않아 원격으로 켤 수 없습니다.\nPC 클라이언트를 최소 한 번 실행하여 온라인 상태로 연결해 주시면 MAC 주소가 자동으로 등록됩니다.");
+        return;
+    }
+
+    // 현재 켜져 있는(online) 헬퍼 PC가 있는지 조회
+    const onlinePCs = Object.keys(pcs).filter(k => {
+        const pc = pcs[k];
+        const diffSeconds = getPCDiffSeconds(pc, Date.now() + serverTimeOffset);
+        return (pc.status === "online") && (diffSeconds < 15) && (k !== pcId);
+    });
+
+    if (onlinePCs.length === 0) {
+        alert("동일 로컬 네트워크에 현재 켜져 있는(온라인) 다른 PC가 없습니다.\n원격 전원 켜기(WOL) 패킷을 브로드캐스트해 줄 수 있는 헬퍼 PC가 최소 1대 이상 켜져 있어야 합니다.");
+        return;
+    }
+
+    const targetLabel = pcs[pcId]?.hostname || pcId;
+    const helperLabels = onlinePCs.map(k => pcs[k]?.hostname || k).join(", ");
+
+    showModal(
+        "원격 전원 켜기 (WOL)",
+        `[${targetLabel}]의 전원을 원격으로 켜시겠습니까?\n(동일 대역에 켜져 있는 PC [${helperLabels}] 등을 통해 매직 패킷이 송출됩니다.)`,
+        async () => {
+            closeModal();
+            // 전체 켜져 있는 PC에 WOL 브로드캐스트 명령 전송
+            const result = await writeCommandToDB("__ALL__", "wol", { mac: mac });
+
+            if (result.success) {
+                alert(`[${targetLabel}] 전원 켜기 명령이 성공적으로 전송되었습니다!`);
+            } else {
+                alert("WOL 명령 전송 실패: " + result.error);
+            }
+        }
+    );
 }
 
 /** 파일 열기 모달 열기 (개별 PC 또는 '__ALL__') */
