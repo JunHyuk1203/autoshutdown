@@ -54,7 +54,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.69"
+CURRENT_VERSION = "1.1.70"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -870,9 +870,11 @@ class AutoShutdownAppV2:
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
             try:
                 ssl_context = ssl._create_unverified_context()
+                ssl_context.verify_mode = ssl.CERT_NONE
+                ssl_context.check_hostname = False
             except AttributeError:
                 ssl_context = None
-            with urllib.request.urlopen(req, timeout=10, context=ssl_context) as response:
+            with urllib.request.urlopen(req, timeout=8, context=ssl_context) as response:
                 data = json.loads(response.read().decode('utf-8'))
                 remote_version = data.get("version", CURRENT_VERSION)
                 download_url = data.get("download_url")
@@ -1372,9 +1374,11 @@ class AutoShutdownAppV2:
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
             try:
                 ssl_context = ssl._create_unverified_context()
+                ssl_context.verify_mode = ssl.CERT_NONE
+                ssl_context.check_hostname = False
             except AttributeError:
                 ssl_context = None
-            with urllib.request.urlopen(req, timeout=25, context=ssl_context) as response:
+            with urllib.request.urlopen(req, timeout=8, context=ssl_context) as response:
                 data = json.loads(response.read().decode('utf-8'))
                 remote_version = data.get("version", CURRENT_VERSION)
                 download_url = data.get("download_url")
@@ -2268,7 +2272,13 @@ class HeadlessShutdownApp:
         try:
             url = f"https://raw.githubusercontent.com/JunHyuk1203/autoshutdown/main/version.json?t={int(time.time())}"
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req, timeout=10) as response:
+            try:
+                ssl_context = ssl._create_unverified_context()
+                ssl_context.verify_mode = ssl.CERT_NONE
+                ssl_context.check_hostname = False
+            except AttributeError:
+                ssl_context = None
+            with urllib.request.urlopen(req, timeout=8, context=ssl_context) as response:
                 data = json.loads(response.read().decode('utf-8'))
                 remote_version = data.get("version", CURRENT_VERSION)
                 download_url = data.get("download_url")
