@@ -62,7 +62,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.79"
+CURRENT_VERSION = "1.1.80"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -976,7 +976,15 @@ class AutoShutdownAppV2:
         ).start()
 
     def _async_download_and_install(self, download_url, is_manual=False, silent=False):
+        _ulog_path = os.path.join(application_path, 'update_debug.log')
+        def _ulog(msg):
+            try:
+                with open(_ulog_path, 'a', encoding='utf-8') as f:
+                    f.write(f"[{datetime.now()}] {msg}\n")
+            except: pass
+
         update_exe_path = os.path.join(application_path, "update_temp.exe")
+        _ulog(f"[start] download_url={download_url}, is_manual={is_manual}")
         try:
             # 1. 새 버전 다운로드
             # 캐시 방지를 위해 다운로드 URL에도 타임스탬프 추가
@@ -984,13 +992,14 @@ class AutoShutdownAppV2:
                 no_cache_url = f"{download_url}&t={int(time.time())}"
             else:
                 no_cache_url = f"{download_url}?t={int(time.time())}"
-                
+
+            _ulog(f"[download] requesting {no_cache_url}")
             req = urllib.request.Request(no_cache_url, headers={'User-Agent': 'Mozilla/5.0'})
             try:
                 ssl_context = ssl._create_unverified_context()
             except AttributeError:
                 ssl_context = None
-                
+
             if is_manual:
                 self.root.after(0, lambda: self._update_download_progress(0))
 
@@ -1009,20 +1018,23 @@ class AutoShutdownAppV2:
                         percent = int((downloaded / total_size) * 100)
                         self.root.after(0, lambda p=percent: self._update_download_progress(p))
                 data = b"".join(chunks)
-            
+
+            _ulog(f"[download] done, size={len(data)} bytes")
             # 2. 다운로드 무결성 검증 (최소 크기 체크 — 정상 exe는 수 MB 이상)
             if len(data) < 1_000_000:
-                if not silent: self._show_update_error(f"다운로드된 파일이 너무 작습니다 ({len(data)} bytes).\n네트워크 오류일 수 있습니다. 다시 시도해주세요.")
+                _ulog(f"[error] file too small: {len(data)} bytes")
+                self._show_update_error(f"다운로드된 파일이 너무 작습니다 ({len(data)} bytes). 네트워크 오류일 수 있습니다.")
                 if is_manual:
                     self.root.after(0, self._restore_update_btn)
                 return
-            
+
             with open(update_exe_path, 'wb') as out_file:
                 out_file.write(data)
-            
+
             # 디스크에 기록된 파일 크기 재확인
             if os.path.getsize(update_exe_path) != len(data):
-                if not silent: self._show_update_error("다운로드 파일 저장 중 오류가 발생했습니다.\n디스크 공간을 확인해주세요.")
+                _ulog(f"[error] disk write mismatch")
+                self._show_update_error("다운로드 파일 저장 중 오류가 발생했습니다. 디스크 공간을 확인해주세요.")
                 try: os.remove(update_exe_path)
                 except: pass
                 if is_manual:
@@ -1041,14 +1053,17 @@ class AutoShutdownAppV2:
                 
                 # Use a unique timestamped name to prevent clash with locked files
                 old_exe_path = f"{current_exe}.{int(time.time())}.old"
-                
+
+                _ulog(f"[replace] current_exe={current_exe}")
                 # 4. 원자적 파일 교체 (실패 시 롤백)
                 renamed_current = False
                 try:
                     os.rename(current_exe, old_exe_path)
                     renamed_current = True
                     os.rename(update_exe_path, current_exe)
+                    _ulog("[replace] file swap success")
                 except Exception as e:
+                    _ulog(f"[replace] file swap failed: {e}")
                     # 롤백: 현재 exe가 이미 .old로 옮겨졌으면 원래대로 복구
                     if renamed_current and not os.path.exists(current_exe):
                         try:
@@ -1057,41 +1072,43 @@ class AutoShutdownAppV2:
                     if os.path.exists(update_exe_path):
                         try: os.remove(update_exe_path)
                         except: pass
-                    if not silent: self._show_update_error(f"실행 파일 교체에 실패했습니다.\n프로그램이 다른 곳에서 사용 중일 수 있습니다.\n\n오류: {e}")
+                    self._show_update_error(f"실행 파일 교체에 실패했습니다. 프로그램이 다른 곳에서 사용 중일 수 있습니다. 오류: {e}")
                     if is_manual:
                         self.root.after(0, self._restore_update_btn)
                     return  # 교체 실패 시 여기서 중단 (프로그램 종료하지 않음)
-                
+
                 # 5. 파일 교체 성공 → 새 프로세스 실행
                 clean_env = os.environ.copy()
                 keys_to_remove = [k for k in clean_env if 'MEI' in k or 'PYI' in k or 'TCL' in k or 'TK' in k]
                 for k in keys_to_remove:
                     clean_env.pop(k, None)
-                
+
                 # 완전히 독립된 새 프로세스로 실행 (창 없이, 새 그룹)
                 args = [current_exe]
                 if is_manual:
                     args.append("--just-updated")
-                
+
+                _ulog(f"[relaunch] spawning new process: {args}")
                 subprocess.Popen(
                     args,
                     env=clean_env,
                     creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
                 )
-                
+
+                _ulog("[done] quitting current process")
                 self.quit_app()
             else:
-                if not silent:
-                    self._show_update_error("개발 환경(파이썬 스크립트)에서는 자동 업데이트가 지원되지 않습니다.\n다운로드된 파일(update_temp.exe)을 확인해 주세요.")
+                _ulog("[skip] not a frozen exe, skipping update")
                 if is_manual:
                     self.root.after(0, self._restore_update_btn)
                 return
         except Exception as e:
+            _ulog(f"[exception] {e}")
             # 실패 시 임시 파일 정리
             if os.path.exists(update_exe_path):
                 try: os.remove(update_exe_path)
                 except: pass
-            if not silent: self._show_update_error(f"업데이트 중 오류가 발생했습니다.\n인터넷 연결을 확인해주세요.\n\n오류: {e}")
+            self._show_update_error(f"업데이트 중 오류가 발생했습니다. 인터넷 연결을 확인해주세요. 오류: {e}")
             if is_manual:
                 self.root.after(0, self._restore_update_btn)
 
