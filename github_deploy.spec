@@ -22,7 +22,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='github_deploy',
+    name='버전배포_및_자동업로드',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
