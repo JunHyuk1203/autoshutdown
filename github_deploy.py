@@ -5,6 +5,7 @@ import subprocess
 import time
 import sys
 import urllib.request
+import urllib.error
 import ssl
 
 # Windows CMD 인코딩 강제 설정
@@ -12,32 +13,82 @@ sys.stdout.reconfigure(encoding='utf-8') if hasattr(sys.stdout, 'reconfigure') e
 
 # exe로 실행될 때와 .py로 실행될 때 모두 올바른 기준 경로 사용
 if getattr(sys, 'frozen', False):
-    # PyInstaller exe 실행 시 → exe 파일이 있는 폴더를 기준으로
     BASE_DIR = os.path.dirname(sys.executable)
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+REPO_OWNER = "JunHyuk1203"
+REPO_NAME  = "autoshutdown"
 
 print("==================================================")
 print("[AutoShutdown] 배포 자동화 프로그램 시작")
 print(f"기준 경로: {BASE_DIR}")
 print("==================================================")
 
-app_path = os.path.join(BASE_DIR, "auto_shutdown.py")
-spec_path = os.path.join(BASE_DIR, "auto_shutdown.spec")
-version_path = os.path.join(BASE_DIR, "version.json")
-git_exe = r"C:\Program Files\Git\cmd\git.exe"
+app_path        = os.path.join(BASE_DIR, "auto_shutdown.py")
+spec_path       = os.path.join(BASE_DIR, "auto_shutdown.spec")
+installer_spec  = os.path.join(BASE_DIR, "스마트_전원_관리자_설치파일.spec")
+version_path    = os.path.join(BASE_DIR, "version.json")
+exe_path        = os.path.join(BASE_DIR, "dist", "auto_shutdown.exe")
+git_exe         = r"C:\Program Files\Git\cmd\git.exe"
 
-if not os.path.exists(app_path):
-    print(f"[Error] {app_path} 파일을 찾을 수 없습니다.")
-    print("배포 프로그램은 auto_shutdown.py 파일과 같은 폴더에 있어야 합니다.")
-    time.sleep(5)
-    exit(1)
+# ── SSL 컨텍스트 ─────────────────────────────────────────────────────────────
+try:
+    _ssl = ssl._create_unverified_context()
+except Exception:
+    _ssl = None
 
-if not os.path.exists(spec_path):
-    print(f"[Error] {spec_path} 파일을 찾을 수 없습니다.")
-    time.sleep(5)
-    exit(1)
+# ── GitHub 토큰: Windows Credential Manager에서 자동 추출 ──────────────────
+def _get_github_token():
+    try:
+        r = subprocess.run(
+            [git_exe, "credential", "fill"],
+            input="protocol=https\nhost=github.com\n\n",
+            capture_output=True, text=True
+        )
+        for line in r.stdout.splitlines():
+            if line.startswith("password="):
+                return line[len("password="):].strip()
+    except Exception as e:
+        print(f"[WARN] credential 읽기 실패: {e}")
+    return None
 
+# ── GitHub API 헬퍼 ──────────────────────────────────────────────────────────
+def _gh_api(method, path, data=None, token=None, extra_headers=None, raw_data=None, content_type="application/json"):
+    url = f"https://api.github.com{path}"
+    headers = {
+        "User-Agent": "AutoShutdown-Deploy",
+        "Accept":     "application/vnd.github+json",
+    }
+    if token:
+        headers["Authorization"] = f"token {token}"
+    if extra_headers:
+        headers.update(extra_headers)
+
+    body = None
+    if raw_data is not None:
+        body = raw_data
+        headers["Content-Type"] = content_type
+    elif data is not None:
+        body = json.dumps(data).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+
+    req = urllib.request.Request(url, data=body, method=method, headers=headers)
+    try:
+        with urllib.request.urlopen(req, context=_ssl, timeout=60) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        body_txt = e.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"GitHub API {method} {path} → {e.code}: {body_txt}")
+
+# ── 파일 존재 확인 ───────────────────────────────────────────────────────────
+for path, name in [(app_path, "auto_shutdown.py"), (spec_path, "auto_shutdown.spec")]:
+    if not os.path.exists(path):
+        print(f"[Error] {name} 파일을 찾을 수 없습니다. (경로: {path})")
+        time.sleep(5)
+        exit(1)
+
+# ── 버전 읽기 및 업그레이드 ──────────────────────────────────────────────────
 with open(app_path, "r", encoding="utf-8") as f:
     content = f.read()
 
@@ -49,96 +100,142 @@ if not version_match:
 
 major, minor, patch = int(version_match.group(1)), int(version_match.group(2)), int(version_match.group(3))
 current_v = f"{major}.{minor}.{patch}"
-new_v = f"{major}.{minor}.{patch+1}"
+new_v     = f"{major}.{minor}.{patch+1}"
 
 print(f"\n[1단계] 버전 업그레이드 ({current_v} -> {new_v})")
 content = content.replace(f'CURRENT_VERSION = "{current_v}"', f'CURRENT_VERSION = "{new_v}"')
 with open(app_path, "w", encoding="utf-8") as f:
     f.write(content)
 
+# ── 프로세스 종료 ─────────────────────────────────────────────────────────────
 print("\n[2단계] 기존 실행 중인 프로그램 강제 종료 중...")
 try:
-    subprocess.run(["taskkill", "/F", "/IM", "auto_shutdown.exe"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-except:
+    subprocess.run(["taskkill", "/F", "/IM", "auto_shutdown.exe"],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+except Exception:
     pass
 time.sleep(1)
 
+# ── auto_shutdown.exe 빌드 ───────────────────────────────────────────────────
 print("\n[3단계] auto_shutdown.exe PyInstaller 빌드 중... (시간이 걸릴 수 있습니다)")
 try:
-    subprocess.run(
-        ["pyinstaller", "--clean", "--noconfirm", spec_path],
-        check=True,
-        cwd=BASE_DIR
-    )
+    subprocess.run(["pyinstaller", "--clean", "--noconfirm", spec_path],
+                   check=True, cwd=BASE_DIR)
 except Exception as e:
     print(f"[Error] 빌드 실패: {e}")
-    # 원상 복구
     content = content.replace(f'CURRENT_VERSION = "{new_v}"', f'CURRENT_VERSION = "{current_v}"')
     with open(app_path, "w", encoding="utf-8") as f:
         f.write(content)
     time.sleep(5)
     exit(1)
 
+# ── 설치파일 빌드 ─────────────────────────────────────────────────────────────
 print("\n[3-2단계] 스마트_전원_관리자_설치파일.exe 빌드 중... (최신 auto_shutdown.exe 포함)")
-installer_spec = os.path.join(BASE_DIR, "스마트_전원_관리자_설치파일.spec")
 if os.path.exists(installer_spec):
     try:
-        subprocess.run(
-            ["pyinstaller", "--clean", "--noconfirm", installer_spec],
-            check=True,
-            cwd=BASE_DIR
-        )
+        subprocess.run(["pyinstaller", "--clean", "--noconfirm", installer_spec],
+                       check=True, cwd=BASE_DIR)
         print("[SUCCESS] 설치파일 빌드 완료")
     except Exception as e:
-        print(f"[WARN] 설치파일 빌드 실패 (배포는 계속 진행): {e}")
+        print(f"[WARN] 설치파일 빌드 실패 (배포는 계속): {e}")
 else:
     print("[WARN] 스마트_전원_관리자_설치파일.spec 없음 - 설치파일 빌드 건너뜀")
 
-print("\n[4단계] version.json 업데이트 및 Firebase 업로드 중...")
+# ── GitHub Releases API로 exe 업로드 ─────────────────────────────────────────
+print("\n[4단계] GitHub Release 생성 및 exe 업로드 중...")
+token = _get_github_token()
+if not token:
+    print("[WARN] GitHub 토큰을 읽지 못했습니다. Release 생성을 건너뜁니다.")
+    download_url = f"https://github.com/{REPO_OWNER}/{REPO_NAME}/releases/download/v{new_v}/auto_shutdown.exe"
+else:
+    tag = f"v{new_v}"
+    # 기존 릴리즈가 있으면 삭제
+    try:
+        existing = _gh_api("GET", f"/repos/{REPO_OWNER}/{REPO_NAME}/releases/tags/{tag}", token=token)
+        _gh_api("DELETE", f"/repos/{REPO_OWNER}/{REPO_NAME}/releases/{existing['id']}", token=token)
+        print(f"  기존 릴리즈 {tag} 삭제 완료")
+    except Exception:
+        pass
+    # 태그도 삭제 (push 전이라 로컬에만 있을 수도 있음)
+    try:
+        _gh_api("DELETE", f"/repos/{REPO_OWNER}/{REPO_NAME}/git/refs/tags/{tag}", token=token)
+    except Exception:
+        pass
+
+    # 릴리즈 생성
+    release = _gh_api("POST", f"/repos/{REPO_OWNER}/{REPO_NAME}/releases", token=token, data={
+        "tag_name":         tag,
+        "target_commitish": "main",
+        "name":             f"v{new_v}",
+        "body":             f"자동 배포: v{new_v}",
+        "draft":            False,
+        "prerelease":       False,
+    })
+    release_id   = release["id"]
+    upload_url_base = release["upload_url"].split("{")[0]  # 템플릿 부분 제거
+    print(f"  릴리즈 생성 완료 (id={release_id})")
+
+    # exe 업로드
+    if not os.path.exists(exe_path):
+        print(f"[Error] exe 파일 없음: {exe_path}")
+    else:
+        with open(exe_path, "rb") as ef:
+            exe_data = ef.read()
+        upload_url = f"{upload_url_base}?name=auto_shutdown.exe"
+        # uploads.github.com 은 api.github.com 과 다른 호스트이므로 직접 호출
+        up_req = urllib.request.Request(
+            upload_url,
+            data=exe_data,
+            method="POST",
+            headers={
+                "Authorization":  f"token {token}",
+                "Content-Type":   "application/octet-stream",
+                "User-Agent":     "AutoShutdown-Deploy",
+                "Accept":         "application/vnd.github+json",
+            }
+        )
+        with urllib.request.urlopen(up_req, context=_ssl, timeout=300) as resp:
+            asset = json.loads(resp.read().decode("utf-8"))
+        print(f"  exe 업로드 완료: {asset.get('browser_download_url')}")
+
+    download_url = f"https://github.com/{REPO_OWNER}/{REPO_NAME}/releases/download/{tag}/auto_shutdown.exe"
+
+# ── version.json 및 Firebase 업데이트 ────────────────────────────────────────
+print("\n[5단계] version.json 업데이트 및 Firebase 업로드 중...")
 version_data = {
-    "version": new_v,
-    "download_url": "https://cdn.jsdelivr.net/gh/JunHyuk1203/autoshutdown@main/dist/auto_shutdown.exe"
+    "version":      new_v,
+    "download_url": download_url,
 }
 with open(version_path, "w", encoding="utf-8") as f:
     json.dump(version_data, f, indent=4)
 
-# Firebase RTDB에 업데이트 정보 업로드
-firebase_url = "https://atss-a1f9e-default-rtdb.firebaseio.com/update_info.json"
-version_payload = json.dumps(version_data).encode('utf-8')
-req = urllib.request.Request(
-    firebase_url,
-    data=version_payload,
-    method='PUT',
-    headers={
-        'Content-Type': 'application/json',
-        'User-Agent': 'Mozilla/5.0'
-    }
+firebase_url     = "https://atss-a1f9e-default-rtdb.firebaseio.com/update_info.json"
+version_payload  = json.dumps(version_data).encode("utf-8")
+fb_req = urllib.request.Request(
+    firebase_url, data=version_payload, method="PUT",
+    headers={"Content-Type": "application/json", "User-Agent": "Mozilla/5.0"}
 )
 try:
-    ssl_context = ssl._create_unverified_context()
-except:
-    ssl_context = None
-try:
-    with urllib.request.urlopen(req, timeout=15, context=ssl_context) as res:
+    with urllib.request.urlopen(fb_req, timeout=15, context=_ssl) as res:
         print("[SUCCESS] Firebase update_info.json 업로드 완료")
+        print(f"  download_url = {download_url}")
 except Exception as fe:
     print(f"[FAIL] Firebase 업로드 실패: {fe}")
 
-print("\n[5단계] GitHub로 업로드 중...")
+# ── GitHub main 브랜치 push ───────────────────────────────────────────────────
+print("\n[6단계] GitHub main 브랜치로 소스 업로드 중...")
 try:
     subprocess.run([git_exe, "add", "."], check=True, cwd=BASE_DIR)
-    # commit이 실패해도(변경사항 없음) 에러를 무시하도록 처리
     subprocess.run([git_exe, "commit", "-m", f"Release v{new_v}"], check=False, cwd=BASE_DIR)
-    # push는 실패하면 에러를 띄움
-    result = subprocess.run([git_exe, "push", "origin", "main"], capture_output=True, text=True, cwd=BASE_DIR)
+    result = subprocess.run([git_exe, "push", "origin", "main"],
+                            capture_output=True, text=True, cwd=BASE_DIR)
     if result.returncode == 0:
         print(f"\n[성공] 배포 완료! GitHub에 버전 {new_v}이(가) 업로드되었습니다.")
     else:
-        print(f"\n[Error] GitHub 업로드 실패 (Push Error).")
-        print(result.stderr)
-        print("\n로그인이 필요하거나 권한이 없습니다. 바탕화면의 1_깃허브_최초로그인을 다시 실행해 보세요.")
+        print(f"\n[Error] GitHub push 실패:\n{result.stderr}")
+        print("바탕화면의 1_깃허브_최초로그인을 다시 실행해 보세요.")
 except Exception as e:
-    print(f"\n[Error] Git 실행 중 알 수 없는 오류 발생: {e}")
+    print(f"\n[Error] Git 오류: {e}")
 
 print("\n배포 프로세스가 완료되었습니다.")
 input("\n엔터를 누르면 창이 닫힙니다...")
