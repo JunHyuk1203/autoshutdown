@@ -12,6 +12,13 @@ import re
 from datetime import datetime, timedelta
 import ssl
 
+try:
+    _global_ssl_context = ssl._create_unverified_context()
+    _global_ssl_context.verify_mode = ssl.CERT_NONE
+    _global_ssl_context.check_hostname = False
+except AttributeError:
+    _global_ssl_context = None
+
 # 전역 앱 인스턴스 (http_poller_thread 등에서 참조)
 app_instance = None
 
@@ -55,7 +62,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.74"
+CURRENT_VERSION = "1.1.75"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -378,7 +385,7 @@ class AutoShutdownAppV2:
                         try:
                             url = f"https://open.neis.go.kr/hub/schoolInfo?Type=json&pIndex=1&pSize=5&ATPT_OFCDC_SC_CODE={office}&SCHUL_NM={urllib.parse.quote(name)}"
                             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-                            with urllib.request.urlopen(req, timeout=5) as res:
+                            with urllib.request.urlopen(req, timeout=5, context=_global_ssl_context) as res:
                                 res_data = json.loads(res.read().decode('utf-8'))
                                 if "schoolInfo" in res_data:
                                     row = res_data["schoolInfo"][1]["row"][0]
@@ -743,7 +750,7 @@ class AutoShutdownAppV2:
             url = f"https://open.neis.go.kr/hub/{endpoint}?KEY={api_key}&Type=json&pSize=100&ATPT_OFCDC_SC_CODE={office_code}&SD_SCHUL_CODE={school_code}&GRADE={grade}&CLASS_NM={class_nm}&TI_FROM_YMD={start_date}&TI_TO_YMD={end_date}"
             try:
                 req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-                with urllib.request.urlopen(req, timeout=5) as res:
+                with urllib.request.urlopen(req, timeout=5, context=_global_ssl_context) as res:
                     data = json.loads(res.read().decode('utf-8'))
                 if endpoint in data:
                     for row in data[endpoint][1]["row"]:
@@ -769,7 +776,7 @@ class AutoShutdownAppV2:
                 url = f"https://open.neis.go.kr/hub/{endpoint}?Type=json&pSize=5&ATPT_OFCDC_SC_CODE={office_code}&SD_SCHUL_CODE={school_code}&GRADE={grade}&CLASS_NM={class_nm}&TI_FROM_YMD={date_str}&TI_TO_YMD={date_str}"
                 try:
                     req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-                    with urllib.request.urlopen(req, timeout=3) as res:
+                    with urllib.request.urlopen(req, timeout=3, context=_global_ssl_context) as res:
                         data = json.loads(res.read().decode('utf-8'))
                     if endpoint in data:
                         for row in data[endpoint][1]["row"]:
@@ -802,7 +809,7 @@ class AutoShutdownAppV2:
             url = f"https://open.neis.go.kr/hub/mealServiceDietInfo?KEY={api_key}&Type=json&pSize=100&ATPT_OFCDC_SC_CODE={office_code}&SD_SCHUL_CODE={school_code}&MLSV_FROM_YMD={start_date}&MLSV_TO_YMD={end_date}"
             try:
                 req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-                with urllib.request.urlopen(req, timeout=5) as res:
+                with urllib.request.urlopen(req, timeout=5, context=_global_ssl_context) as res:
                     data = json.loads(res.read().decode('utf-8'))
                 if "mealServiceDietInfo" in data:
                     for row in data["mealServiceDietInfo"][1]["row"]:
@@ -823,7 +830,7 @@ class AutoShutdownAppV2:
                 url = f"https://open.neis.go.kr/hub/mealServiceDietInfo?Type=json&pSize=5&ATPT_OFCDC_SC_CODE={office_code}&SD_SCHUL_CODE={school_code}&MLSV_FROM_YMD={date_str}&MLSV_TO_YMD={date_str}"
                 try:
                     req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-                    with urllib.request.urlopen(req, timeout=3) as res:
+                    with urllib.request.urlopen(req, timeout=3, context=_global_ssl_context) as res:
                         data = json.loads(res.read().decode('utf-8'))
                     if "mealServiceDietInfo" in data:
                         for row in data["mealServiceDietInfo"][1]["row"]:
@@ -1025,12 +1032,15 @@ class AutoShutdownAppV2:
             current_exe = sys.executable if getattr(sys, 'frozen', False) else None
             
             if current_exe and current_exe.endswith('.exe'):
-                old_exe_path = current_exe + ".old"
-                
                 # 3. 이전 .old 파일 정리
-                if os.path.exists(old_exe_path):
-                    try: os.remove(old_exe_path)
-                    except: pass
+                app_dir = os.path.dirname(current_exe)
+                for file_name in os.listdir(app_dir):
+                    if file_name.endswith('.old') or '.old.' in file_name:
+                        try: os.remove(os.path.join(app_dir, file_name))
+                        except: pass
+                
+                # Use a unique timestamped name to prevent clash with locked files
+                old_exe_path = f"{current_exe}.{int(time.time())}.old"
                 
                 # 4. 원자적 파일 교체 (실패 시 롤백)
                 renamed_current = False
@@ -1344,7 +1354,7 @@ class AutoShutdownAppV2:
             url = f"https://open.neis.go.kr/hub/schoolInfo?Type=json&pIndex=1&pSize=20&SCHUL_NM={urllib.parse.quote(q)}"
             try:
                 req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-                with urllib.request.urlopen(req, timeout=5) as res:
+                with urllib.request.urlopen(req, timeout=5, context=_global_ssl_context) as res:
                     data = json.loads(res.read().decode('utf-8'))
                 
                 for widget in result_frame.winfo_children():
@@ -2298,7 +2308,7 @@ class HeadlessShutdownApp:
                 no_cache_url = f"{download_url}?t={int(time.time())}"
                 
             req = urllib.request.Request(no_cache_url, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req, timeout=120) as response:
+            with urllib.request.urlopen(req, timeout=120, context=_global_ssl_context) as response:
                 data = response.read()
             
             if len(data) < 1_000_000:
@@ -2309,10 +2319,15 @@ class HeadlessShutdownApp:
             
             current_exe = sys.executable if getattr(sys, 'frozen', False) else None
             if current_exe and current_exe.endswith('.exe'):
-                old_exe_path = current_exe + ".old"
-                if os.path.exists(old_exe_path):
-                    try: os.remove(old_exe_path)
-                    except: pass
+                # Clean up any existing unlocked .old files in the same folder first
+                app_dir = os.path.dirname(current_exe)
+                for file_name in os.listdir(app_dir):
+                    if file_name.endswith('.old') or '.old.' in file_name:
+                        try: os.remove(os.path.join(app_dir, file_name))
+                        except: pass
+                
+                # Use a unique timestamped name to prevent clash with locked files
+                old_exe_path = f"{current_exe}.{int(time.time())}.old"
                 
                 os.rename(current_exe, old_exe_path)
                 os.rename(update_exe_path, current_exe)
