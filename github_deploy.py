@@ -63,7 +63,7 @@ except:
     pass
 time.sleep(1)
 
-print("\n[3단계] PyInstaller 빌드 중... (시간이 걸릴 수 있습니다)")
+print("\n[3단계] auto_shutdown.exe PyInstaller 빌드 중... (시간이 걸릴 수 있습니다)")
 try:
     subprocess.run(
         ["pyinstaller", "--clean", "--noconfirm", spec_path],
@@ -78,6 +78,21 @@ except Exception as e:
         f.write(content)
     time.sleep(5)
     exit(1)
+
+print("\n[3-2단계] 스마트_전원_관리자_설치파일.exe 빌드 중... (최신 auto_shutdown.exe 포함)")
+installer_spec = os.path.join(BASE_DIR, "스마트_전원_관리자_설치파일.spec")
+if os.path.exists(installer_spec):
+    try:
+        subprocess.run(
+            ["pyinstaller", "--clean", "--noconfirm", installer_spec],
+            check=True,
+            cwd=BASE_DIR
+        )
+        print("[SUCCESS] 설치파일 빌드 완료")
+    except Exception as e:
+        print(f"[WARN] 설치파일 빌드 실패 (배포는 계속 진행): {e}")
+else:
+    print("[WARN] 스마트_전원_관리자_설치파일.spec 없음 - 설치파일 빌드 건너뜀")
 
 print("\n[4단계] version.json 업데이트 및 Firebase 업로드 중...")
 version_data = {
