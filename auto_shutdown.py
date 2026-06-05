@@ -62,7 +62,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.77"
+CURRENT_VERSION = "1.1.78"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -928,8 +928,8 @@ class AutoShutdownAppV2:
 
     def check_for_updates(self, silent=False):
         try:
-            # 캐시 방지를 위해 타임스탬프 추가
-            url = f"https://raw.githubusercontent.com/JunHyuk1203/autoshutdown/main/version.json?t={int(time.time())}"
+            # Firebase RTDB를 통해 업데이트 정보 조회
+            url = "https://atss-a1f9e-default-rtdb.firebaseio.com/update_info.json"
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
             try:
                 ssl_context = ssl._create_unverified_context()
@@ -1437,8 +1437,8 @@ class AutoShutdownAppV2:
 
     def _async_manual_update_check(self):
         try:
-            # 캐시 방지를 위해 타임스탬프 추가
-            url = f"https://raw.githubusercontent.com/JunHyuk1203/autoshutdown/main/version.json?t={int(time.time())}"
+            # Firebase RTDB를 통해 업데이트 정보 조회
+            url = "https://atss-a1f9e-default-rtdb.firebaseio.com/update_info.json"
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
             try:
                 ssl_context = ssl._create_unverified_context()
@@ -2284,7 +2284,7 @@ class HeadlessShutdownApp:
 
         _log("[update] Starting check_for_updates...")
         try:
-            url = f"https://raw.githubusercontent.com/JunHyuk1203/autoshutdown/main/version.json?t={int(time.time())}"
+            url = "https://atss-a1f9e-default-rtdb.firebaseio.com/update_info.json"
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
             try:
                 ssl_context = ssl._create_unverified_context()

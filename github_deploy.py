@@ -55,13 +55,37 @@ except Exception as e:
     time.sleep(3)
     exit(1)
 
-print("\n[4단계] version.json 업데이트 중...")
+print("\n[4단계] version.json 업데이트 및 Firebase 업로드 중...")
 version_data = {
     "version": new_v,
-    "download_url": "https://raw.githubusercontent.com/JunHyuk1203/autoshutdown/main/dist/auto_shutdown.exe"
+    "download_url": "https://cdn.jsdelivr.net/gh/JunHyuk1203/autoshutdown@main/dist/auto_shutdown.exe"
 }
 with open("version.json", "w", encoding="utf-8") as f:
     json.dump(version_data, f, indent=4)
+
+# Firebase RTDB에 업데이트 정보 업로드
+import urllib.request
+import ssl
+firebase_url = "https://atss-a1f9e-default-rtdb.firebaseio.com/update_info.json"
+version_payload = json.dumps(version_data).encode('utf-8')
+req = urllib.request.Request(
+    firebase_url, 
+    data=version_payload, 
+    method='PUT', 
+    headers={
+        'Content-Type': 'application/json',
+        'User-Agent': 'Mozilla/5.0'
+    }
+)
+try:
+    ssl_context = ssl._create_unverified_context()
+except:
+    ssl_context = None
+try:
+    with urllib.request.urlopen(req, timeout=15, context=ssl_context) as res:
+        print("[SUCCESS] Firebase update_info.json 업로드 완료")
+except Exception as fe:
+    print(f"[FAIL] Firebase 업로드 실패: {fe}")
 
 print("\n[5단계] GitHub로 업로드 중...")
 git_exe = r"C:\Program Files\Git\cmd\git.exe"
