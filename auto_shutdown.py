@@ -62,7 +62,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.81"
+CURRENT_VERSION = "1.1.82"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -1497,7 +1497,14 @@ class AutoShutdownAppV2:
     def _update_download_progress(self, percent):
         try:
             if hasattr(self, 'update_btn') and self.update_btn and self.update_btn.winfo_exists():
-                self.update_btn.configure(text=f"📥 다운로드 중 ({percent}%)...")
+                self.update_btn.configure(text=f"📥 {percent}% 다운로드 중...")
+        except Exception:
+            pass
+        # 트레이 메뉴 텍스트도 동기화
+        self._tray_update_label = f"📥 {percent}% 다운로드 중..."
+        try:
+            if self.icon:
+                self.icon.update_menu()
         except Exception:
             pass
 
@@ -1507,6 +1514,67 @@ class AutoShutdownAppV2:
                 self.update_btn.configure(state="normal", text="🔄 수동 업데이트 확인")
         except Exception:
             pass
+        self._tray_update_label = "🔄 업데이트 확인"
+        try:
+            if self.icon:
+                self.icon.update_menu()
+        except Exception:
+            pass
+
+    def _get_tray_update_label(self, item=None):
+        return getattr(self, '_tray_update_label', '🔄 업데이트 확인')
+
+    def tray_update_check(self, icon=None, item=None):
+        """트레이에서 호출 - 묻지 않고 바로 다운로드 시작"""
+        if getattr(self, '_update_in_progress', False):
+            return
+        self._update_in_progress = True
+        self._tray_update_label = "⏳ 버전 확인 중..."
+        try:
+            if self.icon: self.icon.update_menu()
+        except Exception:
+            pass
+        threading.Thread(target=self._tray_async_update_check, daemon=True).start()
+
+    def _tray_async_update_check(self):
+        try:
+            url = "https://atss-a1f9e-default-rtdb.firebaseio.com/update_info.json"
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            try:
+                ssl_context = ssl._create_unverified_context()
+                ssl_context.verify_mode = ssl.CERT_NONE
+                ssl_context.check_hostname = False
+            except AttributeError:
+                ssl_context = None
+            with urllib.request.urlopen(req, timeout=8, context=ssl_context) as response:
+                data = json.loads(response.read().decode('utf-8'))
+                remote_version = data.get("version", CURRENT_VERSION)
+                download_url = data.get("download_url")
+
+            if download_url and (self._is_newer_version(remote_version, CURRENT_VERSION) or True):
+                # 새 버전이든 같은 버전이든 바로 다운로드 (트레이는 무조건 실행)
+                self._tray_update_label = f"📥 v{remote_version} 다운로드 준비 중..."
+                try:
+                    if self.icon: self.icon.update_menu()
+                except Exception:
+                    pass
+                self.perform_auto_update(download_url, is_manual=True, silent=True)
+            else:
+                self._tray_update_label = "🔄 업데이트 확인"
+                self._update_in_progress = False
+                try:
+                    if self.icon: self.icon.update_menu()
+                except Exception:
+                    pass
+        except Exception as e:
+            self._tray_update_label = "🔄 업데이트 확인"
+            self._update_in_progress = False
+            try:
+                if self.icon: self.icon.update_menu()
+            except Exception:
+                pass
+            with open(os.path.join(application_path, 'update_debug.log'), 'a', encoding='utf-8') as f:
+                f.write(f"[{datetime.now()}] [tray_check] error: {e}\n")
 
     def get_tray_server_status(self, item=None):
         return "✅ Firebase 원격 제어 연동 완료"
@@ -1523,7 +1591,7 @@ class AutoShutdownAppV2:
             pystray.Menu.SEPARATOR,
             pystray.MenuItem('오늘 하루 끄지 않기', self.toggle_skip_state, checked=self.get_skip_state),
             pystray.MenuItem('열기 (대시보드)', self.show_window),
-            pystray.MenuItem('🔄 업데이트 확인', lambda icon, item: self.root.after(0, self.manual_update_check))
+            pystray.MenuItem(self._get_tray_update_label, self.tray_update_check)
         ]
         menu_items.append(pystray.MenuItem('❌ 대기열에 있는 제어 강제 취소', self.cancel_shutdown, visible=lambda item: getattr(self, 'pending_shutdown', False)))
         menu_items.append(pystray.Menu.SEPARATOR)
