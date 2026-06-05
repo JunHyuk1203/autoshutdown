@@ -372,6 +372,15 @@ body {
     box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3);
 }
 
+.action-btn-dark {
+    background: linear-gradient(135deg, #4b5563, #1f2937);
+    box-shadow: 0 3px 10px rgba(31, 41, 55, 0.15);
+}
+.action-btn-dark:hover {
+    transform: translateY(-1.5px);
+    box-shadow: 0 4px 12px rgba(31, 41, 55, 0.3);
+}
+
 .action-btn-secondary {
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid var(--border-light);
@@ -560,6 +569,7 @@ body {
 .card-action-btn.btn-purple:hover { background: var(--accent-purple); color: #fff; border-color: var(--accent-purple); }
 .card-action-btn.btn-info:hover { background: #0ea5e9; color: #000; border-color: #0ea5e9; }
 .card-action-btn.btn-success:hover { background: var(--success); color: #fff; border-color: var(--success); }
+.card-action-btn.btn-dark:hover { background: #374151; color: #fff; border-color: #374151; }
 .card-action-btn.btn-secondary:hover { background: rgba(255,255,255,0.2); }
 
 /* ── 빈 상태 ── */
@@ -784,6 +794,7 @@ body {
                     <button class="action-btn action-btn-blue" onclick="triggerCommandAll('restart')">🔄 전체 재부팅</button>
                     <button class="action-btn action-btn-secondary" onclick="triggerCommandAll('setup_mode')">🚀 전체 초기설정</button>
                     <button class="action-btn action-btn-warning" onclick="openFileModal('__ALL__')">📂 전체 파일 열기</button>
+                    <button class="action-btn action-btn-dark" onclick="triggerCommandAll('close_active_window')">❌ 전체 창 닫기</button>
                 </div>
             </div>
         </div>
@@ -1138,35 +1149,39 @@ function renderPCGrid(serverNowMs) {
         return;
     }
     
-    let html = "";
+    // Remove empty state if it exists
+    if (gridArea.querySelector(".empty-state")) {
+        gridArea.innerHTML = "";
+    }
     
+    // Remove any DOM elements for PCs that are no longer in the list
+    const currentCardIds = new Set(pcKeys.map(k => `pc-card-${k}`));
+    const existingCards = gridArea.querySelectorAll(".pc-card");
+    existingCards.forEach(card => {
+        if (!currentCardIds.has(card.id)) {
+            card.remove();
+        }
+    });
+    
+    // Sort and iterate through keys
     pcKeys.sort().forEach(pcId => {
         const pc = pcs[pcId];
         const diffSeconds = getPCDiffSeconds(pc, serverNowMs);
-        
-        // 15초 이상 통신이 없으면 강제로 오프라인으로 취급
         const isOnline = (pc.status === "online") && (diffSeconds < 15);
+        
         if (!isOnline && selectedPcs.has(pcId)) {
             selectedPcs.delete(pcId);
         }
-        const isSelected = selectedPcs.has(pcId);
         
-        // 마지막 응답 시간 텍스트 연산
+        // Calculate time strings
         let timeStr = "-";
-        let calibratedTimeStr = pc.last_seen || "-"; // 기본값 백업
-        
+        let calibratedTimeStr = pc.last_seen || "-";
         if (pc.last_seen_ts > 0) {
-            if (diffSeconds < 5) {
-                timeStr = "방금 전";
-            } else if (diffSeconds < 60) {
-                timeStr = `${Math.floor(diffSeconds)}초 전`;
-            } else if (diffSeconds < 3600) {
-                timeStr = `${Math.floor(diffSeconds / 60)}분 전`;
-            } else {
-                timeStr = `${Math.floor(diffSeconds / 3600)}시간 전`;
-            }
+            if (diffSeconds < 5) timeStr = "방금 전";
+            else if (diffSeconds < 60) timeStr = `${Math.floor(diffSeconds)}초 전`;
+            else if (diffSeconds < 3600) timeStr = `${Math.floor(diffSeconds / 60)}분 전`;
+            else timeStr = `${Math.floor(diffSeconds / 3600)}시간 전`;
             
-            // 수신 시각을 대시보드(폰)의 현재 시각 기준으로 보정 계산하여 매칭시킴 (시차 불일치 제거)
             try {
                 const calibratedDate = new Date(Date.now() - diffSeconds * 1000);
                 const hrs = String(calibratedDate.getHours()).padStart(2, '0');
@@ -1176,39 +1191,82 @@ function renderPCGrid(serverNowMs) {
             } catch(e) {}
         }
         
-        html += `
-            <div class="pc-card ${isOnline ? 'online' : 'offline'}">
+        let card = document.getElementById(`pc-card-${pcId}`);
+        const cardClass = isOnline ? "pc-card online" : "pc-card offline";
+        
+        if (!card) {
+            // Create card element from scratch
+            card = document.createElement("div");
+            card.id = `pc-card-${pcId}`;
+            card.className = cardClass;
+            gridArea.appendChild(card);
+        } else {
+            // Update card class if status changed
+            if (card.className !== cardClass) {
+                card.className = cardClass;
+            }
+        }
+        
+        let metaContainer = card.querySelector(".pc-meta-container");
+        if (!metaContainer) {
+            // Initial build of card contents
+            card.innerHTML = `
                 <div class="status-indicator">
                     <span class="dot ${isOnline ? 'online' : 'offline'}"></span>
                     <span class="pc-status-txt ${isOnline ? 'online' : 'offline'}">${isOnline ? '온라인' : '꺼짐'}</span>
                 </div>
                 <div class="pc-name" title="${pcId}">${pc.hostname || pcId}</div>
-                <div class="pc-meta">👤 ${pc.user || 'N/A'}</div>
-                <div class="pc-meta">🖥️ IP: ${pc.ip || 'N/A'}</div>
-                <div class="pc-meta">💾 MAC: ${pc.mac || 'N/A'}</div>
-                <div class="pc-meta">⏳ 응답: ${timeStr} (${calibratedTimeStr})</div>
-                <div class="pc-meta">🏷️ 버전: v${pc.version || 'N/A'}</div>
-                ${pc.next_event && pc.next_event !== '없음' ? `<div class="pc-event">⏰ 예정: ${pc.next_event}</div>` : ''}
-                
-                <div class="card-actions" style="grid-template-columns: repeat(3, 1fr);">
-                    <button class="card-action-btn btn-danger" onclick="event.stopPropagation(); triggerSingleCommand('${pcId}', 'shutdown')" ${isOnline ? '' : 'disabled'} title="원격 종료">
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 2px; flex-shrink: 0;"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
-                        종료
-                    </button>
-                    <button class="card-action-btn btn-blue" onclick="event.stopPropagation(); triggerSingleCommand('${pcId}', 'restart')" ${isOnline ? '' : 'disabled'} title="원격 재부팅">🔄 재부팅</button>
-                    <button class="card-action-btn btn-purple" onclick="event.stopPropagation(); triggerSingleCommand('${pcId}', 'setup_mode')" ${isOnline ? '' : 'disabled'} title="원격 초기설정">🚀 초기화</button>
-                    <button class="card-action-btn btn-info" onclick="event.stopPropagation(); openConfigModal('${pcId}')" ${isOnline ? '' : 'disabled'} title="원격 환경설정">⚙️ 설정</button>
-                    <button class="card-action-btn btn-success" onclick="event.stopPropagation(); triggerSingleCommand('${pcId}', 'update')" ${isOnline ? '' : 'disabled'} title="원격 업데이트">🔼 업뎃</button>
-                    <button class="card-action-btn btn-secondary" onclick="event.stopPropagation(); triggerSingleMessage('${pcId}')" ${isOnline ? '' : 'disabled'} title="메시지 전송">💬 메시지</button>
-                    ${isOnline 
-                        ? `<button class="card-action-btn btn-warning" onclick="event.stopPropagation(); openFileModal('${pcId}')" title="원격 파일 열기" style="grid-column: 1 / -1;">📂 파일 열기</button>`
-                        : `<button class="card-action-btn btn-success" onclick="event.stopPropagation(); triggerWOL('${pcId}', '${pc.mac || ''}')" title="원격 전원 켜기" style="grid-column: 1 / -1;">⚡ 전원 켜기 (WOL)</button>`
-                    }
+                <div class="pc-meta-container">
+                    <div class="pc-meta pc-user">👤 ${pc.user || 'N/A'}</div>
+                    <div class="pc-meta pc-ip">🖥️ IP: ${pc.ip || 'N/A'}</div>
+                    <div class="pc-meta pc-mac">💾 MAC: ${pc.mac || 'N/A'}</div>
+                    <div class="pc-meta pc-time">⏳ 응답: ${timeStr} (${calibratedTimeStr})</div>
+                    <div class="pc-meta pc-version">🏷️ 버전: v${pc.version || 'N/A'}</div>
+                    <div class="pc-event">${pc.next_event && pc.next_event !== '없음' ? `⏰ 예정: ${pc.next_event}` : ''}</div>
                 </div>
-            </div>`;
+                <div class="card-actions" style="grid-template-columns: repeat(3, 1fr);">
+                </div>
+            `;
+            metaContainer = card.querySelector(".pc-meta-container");
+        } else {
+            // In-place update of text
+            card.querySelector(".dot").className = `dot ${isOnline ? 'online' : 'offline'}`;
+            const statusTxt = card.querySelector(".pc-status-txt");
+            statusTxt.className = `pc-status-txt ${isOnline ? 'online' : 'offline'}`;
+            statusTxt.innerText = isOnline ? '온라인' : '꺼짐';
+            card.querySelector(".pc-name").innerText = pc.hostname || pcId;
+            card.querySelector(".pc-user").innerText = `👤 ${pc.user || 'N/A'}`;
+            card.querySelector(".pc-ip").innerText = `🖥️ IP: ${pc.ip || 'N/A'}`;
+            card.querySelector(".pc-mac").innerText = `💾 MAC: ${pc.mac || 'N/A'}`;
+            card.querySelector(".pc-time").innerText = `⏳ 응답: ${timeStr} (${calibratedTimeStr})`;
+            card.querySelector(".pc-version").innerText = `🏷️ 버전: v${pc.version || 'N/A'}`;
+            card.querySelector(".pc-event").innerText = pc.next_event && pc.next_event !== '없음' ? `⏰ 예정: ${pc.next_event}` : '';
+        }
+        
+        // Check if action buttons need to be redrawn
+        let actionArea = card.querySelector(".card-actions");
+        const lastOnlineState = card.getAttribute("data-online") === "true";
+        
+        if (actionArea.innerHTML === "" || lastOnlineState !== isOnline) {
+            card.setAttribute("data-online", isOnline ? "true" : "false");
+            actionArea.innerHTML = `
+                <button class="card-action-btn btn-danger" onclick="event.stopPropagation(); triggerSingleCommand('${pcId}', 'shutdown')" ${isOnline ? '' : 'disabled'} title="원격 종료">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 2px; flex-shrink: 0;"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
+                    종료
+                </button>
+                <button class="card-action-btn btn-blue" onclick="event.stopPropagation(); triggerSingleCommand('${pcId}', 'restart')" ${isOnline ? '' : 'disabled'} title="원격 재부팅">🔄 재부팅</button>
+                <button class="card-action-btn btn-purple" onclick="event.stopPropagation(); triggerSingleCommand('${pcId}', 'setup_mode')" ${isOnline ? '' : 'disabled'} title="원격 초기설정">🚀 초기화</button>
+                <button class="card-action-btn btn-info" onclick="event.stopPropagation(); openConfigModal('${pcId}')" ${isOnline ? '' : 'disabled'} title="원격 환경설정">⚙️ 설정</button>
+                <button class="card-action-btn btn-success" onclick="event.stopPropagation(); triggerSingleCommand('${pcId}', 'update')" ${isOnline ? '' : 'disabled'} title="원격 업데이트">🔼 업뎃</button>
+                <button class="card-action-btn btn-secondary" onclick="event.stopPropagation(); triggerSingleMessage('${pcId}')" ${isOnline ? '' : 'disabled'} title="메시지 전송">💬 메시지</button>
+                ${isOnline 
+                    ? `<button class="card-action-btn btn-warning" onclick="event.stopPropagation(); openFileModal('${pcId}')" title="원격 파일 열기" style="grid-column: 1 / 3;">📂 파일 열기</button>
+                       <button class="card-action-btn btn-dark" onclick="event.stopPropagation(); triggerSingleCommand('${pcId}', 'close_active_window')" title="가장 앞에 있는 창 닫기" style="grid-column: 3 / 4;">❌ 창 닫기</button>`
+                    : `<button class="card-action-btn btn-success" onclick="event.stopPropagation(); triggerWOL('${pcId}', '${pc.mac || ''}')" title="원격 전원 켜기" style="grid-column: 1 / -1;">⚡ 전원 켜기 (WOL)</button>`
+                }
+            `;
+        }
     });
-    
-    gridArea.innerHTML = html;
 }
 
 function updateStatistics(serverNowMs) {
@@ -1479,7 +1537,7 @@ async function writeCommandToDB(target, action, message = "") {
 
 // ── 컨트롤 패널 이벤트 액션 ──
 function triggerCommandAll(action) {
-    const labels = { shutdown: "전체 종료", sleep: "전체 절전", restart: "전체 재부팅", setup_mode: "전체 초기설정" };
+    const labels = { shutdown: "전체 종료", sleep: "전체 절전", restart: "전체 재부팅", setup_mode: "전체 초기설정", close_active_window: "전체 활성 창 종료" };
     showModal(
         `${labels[action]} 확인`,
         `현재 등록된 모든 PC로 즉시 [${labels[action]}] 명령을 전송하시겠습니까?`,
@@ -1496,7 +1554,7 @@ function triggerCommandAll(action) {
 }
 
 async function triggerSingleCommand(pcId, action) {
-    const labels = { shutdown: "종료", sleep: "절전", restart: "재부팅", setup_mode: "초기설정", update: "원격 업데이트" };
+    const labels = { shutdown: "종료", sleep: "절전", restart: "재부팅", setup_mode: "초기설정", update: "원격 업데이트", close_active_window: "활성 창 종료" };
     showModal(
         `${labels[action]} 확인`,
         `[${pcs[pcId]?.hostname || pcId}] PC로 즉시 [${labels[action]}] 명령을 전송하시겠습니까?`,

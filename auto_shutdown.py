@@ -55,7 +55,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.73"
+CURRENT_VERSION = "1.1.74"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -681,6 +681,24 @@ class AutoShutdownAppV2:
                                     with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
                                         ef.write(f"[{datetime.now()}] open_file FAILED: file={file_path!r} app={app_path!r} err={open_ex}\n")
                                 except: pass
+                    elif action == 'close_active_window':
+                        try:
+                            hwnd = ctypes.windll.user32.GetForegroundWindow()
+                            if hwnd:
+                                length = 256
+                                class_name = ctypes.create_unicode_buffer(length)
+                                ctypes.windll.user32.GetClassNameW(hwnd, class_name, length)
+                                if class_name.value not in ["Progman", "WorkerW", "Shell_TrayWnd"]:
+                                    ctypes.windll.user32.PostMessageW(hwnd, 0x0010, 0, 0)
+                            cmd_success = True
+                            if app_instance:
+                                app_instance.root.after(0, lambda: app_instance.add_system_alert("❌ 원격 활성 창 종료 실행"))
+                        except Exception as close_ex:
+                            try:
+                                with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
+                                    ef.write(f"[{datetime.now()}] close_active_window FAILED: err={close_ex}\n")
+                            except: pass
+                            cmd_success = True
                     elif action == 'message' and message:
                         self.root.after(0, lambda m=message: messagebox.showinfo("관리자 메시지", m, parent=self.root))
                         cmd_success = True
@@ -935,16 +953,12 @@ class AutoShutdownAppV2:
             return False
 
     def _show_update_error(self, msg):
-        """업데이트 실패 알림 (메인 스레드에서 실행)"""
-        def _show():
-            try:
-                parent = getattr(self, 'settings_win', None)
-                if not parent or not parent.winfo_exists():
-                    parent = self.root
-                messagebox.showerror("업데이트 오류", msg, parent=parent)
-            except Exception:
-                pass
-        self.root.after(0, _show)
+        """업데이트 실패 알림 - 팝업을 띄우지 않고 에러 로그에만 기록"""
+        try:
+            with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
+                ef.write(f"[{datetime.now()}] UPDATE ERROR: {msg}\n")
+        except:
+            pass
 
     def perform_auto_update(self, download_url, is_manual=False, silent=False):
         # 저사양 PC 및 네트워크 환경에서 GUI 스레드 블로킹("응답 없음")을 방지하기 위해 백그라운드 스레드로 다운로드 수행
@@ -1484,27 +1498,8 @@ class AutoShutdownAppV2:
         return tuple(menu_items)
 
     def _show_update_success_popup(self):
-        popup = ctk.CTkToplevel(self.root)
-        popup.title("업데이트 성공")
-        popup.geometry("300x150")
-        popup.attributes('-topmost', True)
-        popup.resizable(False, False)
-        
-        # 화면 중앙에 배치
-        screen_width = self.root.winfo_screenwidth()
-        screen_height = self.root.winfo_screenheight()
-        x = (screen_width - 300) // 2
-        y = (screen_height - 150) // 2
-        popup.geometry(f"+{x}+{y}")
-        
-        lbl = ctk.CTkLabel(popup, text="🎉 업데이트 완료!", font=ctk.CTkFont(family=self.font_family, size=16, weight="bold"), text_color="#2ECC71")
-        lbl.pack(pady=(20, 10))
-        
-        lbl2 = ctk.CTkLabel(popup, text=f"v{CURRENT_VERSION}으로 성공적으로 업데이트되었습니다.", font=ctk.CTkFont(family=self.font_family, size=12))
-        lbl2.pack(pady=(0, 20))
-        
-        btn = ctk.CTkButton(popup, text="확인", command=popup.destroy, width=100)
-        btn.pack()
+        """업데이트 성공 시에도 팝업이나 경고창을 전혀 띄우지 않음"""
+        pass
 
     def _is_shell_ready(self):
         """Explorer 쉘(시스템 트레이)이 준비되었는지 확인"""
@@ -1525,6 +1520,7 @@ class AutoShutdownAppV2:
             image = self.create_image(64, 64)
             menu = pystray.Menu(self.get_menu)
             self.icon = pystray.Icon("autoshutdown_v2", image, "스마트 전원 관리자 동작중", menu)
+            self.icon.notify = lambda *args, **kwargs: None
             self.icon.run_detached()
             
             # 업데이트 후 재시작이었다면 성공 팝업 띄우기
@@ -1863,75 +1859,8 @@ class AutoShutdownAppV2:
             except: pass
 
     def show_toast_popup(self, title, message, duration, action):
-        if hasattr(self, 'toast') and self.toast and self.toast.winfo_exists(): return
-            
-        self.toast = ctk.CTkToplevel(self.root)
-        self.toast.title(title)
-        
-        window_width = 400
-        window_height = 220
-        screen_width = self.root.winfo_screenwidth()
-        screen_height = self.root.winfo_screenheight()
-        x_cordinate = screen_width - window_width - 20
-        y_cordinate = screen_height - window_height - 60
-        
-        self.toast.geometry(f"{window_width}x{window_height}+{x_cordinate}+{y_cordinate}")
-        self.toast.attributes('-topmost', True)
-        self.toast.overrideredirect(True)
-        
-        def on_cancel():
-            self.pending_shutdown = False
-            if getattr(self, 'current_triggered_event_time', None):
-                self.skipped_events.add(self.current_triggered_event_time)
-            if self.toast and self.toast.winfo_exists(): self.toast.destroy()
-            if self.icon: self.icon.notify("사용자의 요청으로 제어가 취소되었습니다.", "취소 완료")
-                
-        def on_snooze():
-            self.pending_shutdown = False
-            if self.toast and self.toast.winfo_exists(): self.toast.destroy()
-            self.snooze_target = datetime.now() + timedelta(minutes=10)
-            self.snooze_action = action
-            if self.icon: self.icon.notify("10분 뒤에 다시 확인합니다.", "연기 완료")
-            
-        self.toast.protocol("WM_DELETE_WINDOW", on_cancel)
-        
-        frame = ctk.CTkFrame(self.toast, fg_color=("white", "gray10"), corner_radius=15, border_width=2, border_color="#3498DB")
-        frame.pack(fill="both", expand=True, padx=2, pady=2)
-        
-        lbl_title = ctk.CTkLabel(frame, text=title, font=ctk.CTkFont(family=self.font_family, size=18, weight="bold"), text_color="#3498DB")
-        lbl_title.pack(pady=(20, 5))
-        
-        lbl_msg = ctk.CTkLabel(frame, text=message, font=ctk.CTkFont(family=self.font_family, size=13), wraplength=360)
-        lbl_msg.pack(pady=(0, 15))
-        
-        self.toast_time_left = duration
-        lbl_time = ctk.CTkLabel(frame, text=f"{self.toast_time_left}초 후 {action} 실행", font=ctk.CTkFont(family=self.font_family, size=24, weight="bold"), text_color="#E74C3C")
-        lbl_time.pack()
-        
-        btn_frame = ctk.CTkFrame(frame, fg_color="transparent")
-        btn_frame.pack(pady=15)
-        
-        cancel_btn = ctk.CTkButton(btn_frame, text="종료 취소", fg_color="#E74C3C", hover_color="#C0392B", command=on_cancel, width=120, height=35, font=ctk.CTkFont(family=self.font_family, size=14, weight="bold"))
-        cancel_btn.pack(side="left", padx=10)
-        
-        snooze_btn = ctk.CTkButton(btn_frame, text="10분 연기 (Snooze)", command=on_snooze, width=150, height=35, font=ctk.CTkFont(family=self.font_family, size=14, weight="bold"))
-        snooze_btn.pack(side="left", padx=10)
-            
-        def update_timer():
-            if not self.toast or not self.toast.winfo_exists(): return
-                
-            if not getattr(self, 'pending_shutdown', False):
-                self.toast.destroy()
-                return
-                    
-            self.toast_time_left -= 1
-            if self.toast_time_left <= 0:
-                pass
-            else:
-                lbl_time.configure(text=f"{self.toast_time_left}초 후 {action} 실행")
-                self.toast.after(1000, update_timer)
-                
-        self.toast.after(1000, update_timer)
+        """팝업/경고창을 전혀 띄우지 않도록 비활성화"""
+        pass
 
     def monitor_time(self):
         last_tooltip_update = 0
@@ -1979,13 +1908,13 @@ class AutoShutdownAppV2:
                 target_min = next_time.replace(second=0, microsecond=0)
                 if now_min == target_min and getattr(self, 'last_triggered_time', None) != target_min:
                     self.last_triggered_time = target_min
-                    self.pending_shutdown = True
-                    self.pending_shutdown_target = now + timedelta(minutes=1)
-                    self.pending_action = next_action
                     self.current_triggered_event_time = next_time.strftime("%Y-%m-%d %H:%M")
-                    
-                    if self.show_popup_var.get():
-                        self.root.after(0, lambda a=next_action: self.show_toast_popup("스마트 스케줄 알림", "예약된 스마트 일정에 따라 잠시 후 제어가 시작됩니다.", 60, a))
+                    if next_action == "시스템 종료":
+                        os.system('shutdown /s /t 0')
+                    elif next_action == "절전 모드":
+                        os.system('rundll32.exe powrprof.dll,SetSuspendState 0,1,0')
+                    elif next_action in ["재부팅", "시스템 재시작"]:
+                        os.system('shutdown /r /t 0')
             
             time.sleep(1)
 
@@ -2256,6 +2185,19 @@ class HeadlessShutdownApp:
                             if mac_to_wake:
                                 send_wol_packet(mac_to_wake)
                                 cmd_success = True
+                        elif action == 'close_active_window':
+                            _log("Executing: close active window")
+                            try:
+                                hwnd = ctypes.windll.user32.GetForegroundWindow()
+                                if hwnd:
+                                    length = 256
+                                    class_name = ctypes.create_unicode_buffer(length)
+                                    ctypes.windll.user32.GetClassNameW(hwnd, class_name, length)
+                                    if class_name.value not in ["Progman", "WorkerW", "Shell_TrayWnd"]:
+                                        ctypes.windll.user32.PostMessageW(hwnd, 0x0010, 0, 0)
+                            except Exception as close_ex:
+                                _log(f"close_active_window error: {close_ex}")
+                            cmd_success = True
                         elif action == 'message':
                             # headless 모드에서는 팝업 표시 불가 → 명령만 소비(삭제)
                             _log(f"message received in headless - acknowledging: {message}")
