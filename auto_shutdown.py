@@ -62,7 +62,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.82"
+CURRENT_VERSION = "1.1.83"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -1754,108 +1754,135 @@ class AutoShutdownAppV2:
         self.root.after(100, force_exit)
 
     def run_setup_mode(self):
-        """필수 프로세스와 파일탐색기를 제외한 모든 프로세스를 강제 종료 후 on 폴더의 프로그램을 실행"""
-        self.root.after(0, lambda: self.add_system_alert("🚀 초기세팅 모드 시작 중..."))
-        
-        KEEP = {
-            'system', 'idle', 'smss.exe', 'csrss.exe', 'wininit.exe',
-            'winlogon.exe', 'services.exe', 'lsass.exe', 'svchost.exe',
-            'dwm.exe', 'registry', 'memcompression', 'explorer.exe',
-            'auto_shutdown.exe', 'taskmgr.exe', 'conhost.exe',
-            'fontdrvhost.exe', 'spoolsv.exe', 'runtimebroker.exe',
-            'sihost.exe', 'taskhostw.exe', 'ctfmon.exe', 'dllhost.exe',
-            'audiodg.exe', 'python.exe', 'pythonw.exe', 'searchhost.exe',
-            'startmenuexperiencehost.exe', 'shellexperiencehost.exe',
-            'textinputhost.exe', 'securityhealthservice.exe',
-        }
-        my_pid = os.getpid()
-        
-        try:
-            result = subprocess.run(
-                ['tasklist', '/fo', 'csv', '/nh'],
-                capture_output=True, text=True,
-                creationflags=subprocess.CREATE_NO_WINDOW
-            )
-            for line in result.stdout.strip().split('\n'):
-                try:
-                    line = line.strip()
-                    if not line: continue
-                    parts = line.strip('"').split('","')
-                    if len(parts) < 2: continue
-                    name = parts[0].strip('"').lower()
-                    pid = int(parts[1].strip('"'))
-                    if pid == my_pid: continue
-                    if name in KEEP: continue
-                    subprocess.run(
-                        ['taskkill', '/f', '/pid', str(pid)],
-                        capture_output=True,
-                        creationflags=subprocess.CREATE_NO_WINDOW
-                    )
-                except: pass
-        except Exception as e:
-            self.root.after(0, lambda m=str(e): self.add_system_alert(f"⚠️ 프로세스 종료 오류: {m}"))
-        
-        time.sleep(1)
-        
-        on_folder = os.path.join(application_path, 'on')
-        os.makedirs(on_folder, exist_ok=True)
-        
-        launched = 0
-        RUNNABLE_EXTS = ('.exe', '.lnk', '.bat', '.cmd', '.vbs')
-        # 우선순위: exe > lnk > bat > cmd > vbs (같은 stem이면 1개만 실행)
-        EXT_PRIORITY = {'.exe': 0, '.lnk': 1, '.bat': 2, '.cmd': 3, '.vbs': 4}
-        
-        try:
-            # 이미 실행 중인 프로세스 목록 수집
-            running_procs = set()
+        """필수 프로세스를 제외한 모든 프로세스를 강제 종료,
+        파일탐색기(explorer.exe)는 프로세스를 죽이지 않고 열린 창만 부드럽게 닫음.
+        이후 on 폴더의 프로그램을 실행."""
+        if getattr(self, '_setup_in_progress', False):
+            self.root.after(0, lambda: self.add_system_alert("⏳ 이미 초기세팅이 진행 중입니다."))
+            return
+        self._setup_in_progress = True
+
+        def _task():
             try:
-                tl = subprocess.run(
-                    ['tasklist', '/fo', 'csv', '/nh'],
-                    capture_output=True, text=True,
-                    creationflags=subprocess.CREATE_NO_WINDOW
-                )
-                for line in tl.stdout.strip().split('\n'):
-                    line = line.strip()
-                    if not line: continue
-                    parts = line.strip('"').split('","')
-                    if parts:
-                        running_procs.add(parts[0].strip('"').lower())
-            except Exception:
-                pass
-            
-            # on 폴더 파일 목록을 stem 기준으로 중복 제거 (우선순위 높은 것만 실행)
-            stem_map = {}  # stem(소문자) -> (priority, filename)
-            for f in os.listdir(on_folder):
-                ext = os.path.splitext(f)[1].lower()
-                stem = os.path.splitext(f)[0].lower()
-                if ext not in EXT_PRIORITY:
-                    continue
-                pri = EXT_PRIORITY[ext]
-                if stem not in stem_map or pri < stem_map[stem][0]:
-                    stem_map[stem] = (pri, f)
-            
-            for stem, (pri, f) in stem_map.items():
-                ext = os.path.splitext(f)[1].lower()
-                # .exe의 경우 이미 실행 중이면 건너뜀
-                if ext == '.exe' and f.lower() in running_procs:
-                    self.root.after(0, lambda m=f: self.add_system_alert(f"⏭️ 이미 실행 중 (건너뜀): {m}"))
-                    continue
+                self.root.after(0, lambda: self.add_system_alert("🚀 초기세팅 모드 시작 중..."))
+                
+                KEEP = {
+                    'system', 'idle', 'smss.exe', 'csrss.exe', 'wininit.exe',
+                    'winlogon.exe', 'services.exe', 'lsass.exe', 'svchost.exe',
+                    'dwm.exe', 'registry', 'memcompression',
+                    'auto_shutdown.exe', 'taskmgr.exe', 'conhost.exe',
+                    'fontdrvhost.exe', 'spoolsv.exe', 'runtimebroker.exe',
+                    'sihost.exe', 'taskhostw.exe', 'ctfmon.exe', 'dllhost.exe',
+                    'audiodg.exe', 'python.exe', 'pythonw.exe', 'searchhost.exe',
+                    'startmenuexperiencehost.exe', 'shellexperiencehost.exe',
+                    'textinputhost.exe', 'securityhealthservice.exe', 'explorer.exe'
+                }
+                my_pid = os.getpid()
+
+                # ── 1단계: 파일탐색기(explorer.exe) 창만 부드럽게 닫기 ──
                 try:
-                    full_path = os.path.join(on_folder, f)
-                    subprocess.Popen(
-                        full_path,
-                        cwd=on_folder,
-                        shell=True,
+                    # PowerShell의 Shell.Application COM 객체를 이용해 안전하게 폴더 창만 닫기
+                    ps_cmd = "$shell = New-Object -ComObject Shell.Application; $shell.Windows() | ForEach-Object { $_.Quit() }"
+                    subprocess.Popen(['powershell', '-Command', ps_cmd], creationflags=subprocess.CREATE_NO_WINDOW)
+                    self.root.after(0, lambda: self.add_system_alert("📂 파일탐색기 창 닫기 완료 (프로세스 유지)"))
+                except Exception as e:
+                    self.root.after(0, lambda m=str(e): self.add_system_alert(f"⚠️ 파일탐색기 창 닫기 오류: {m}"))
+
+                # ── 2단계: 불필요 프로세스 강제 종료 (일괄 종료로 속도 개선) ──
+                try:
+                    result = subprocess.run(
+                        ['tasklist', '/fo', 'csv', '/nh'],
+                        capture_output=True, text=True,
                         creationflags=subprocess.CREATE_NO_WINDOW
                     )
-                    launched += 1
-                    time.sleep(0.3)  # 연속 실행 방지용 짧은 딜레이
+                    pids_to_kill = []
+                    for line in result.stdout.strip().split('\n'):
+                        try:
+                            line = line.strip()
+                            if not line: continue
+                            parts = line.strip('"').split('","')
+                            if len(parts) < 2: continue
+                            name = parts[0].strip('"').lower()
+                            pid = int(parts[1].strip('"'))
+                            if pid == my_pid: continue
+                            if name in KEEP: continue
+                            pids_to_kill.append(str(pid))
+                        except: pass
+                        
+                    if pids_to_kill:
+                        # 30개씩 분할하여 taskkill 실행 (명령어 길이 제한 대비 및 비동기 처리)
+                        chunk_size = 30
+                        for i in range(0, len(pids_to_kill), chunk_size):
+                            chunk = pids_to_kill[i:i+chunk_size]
+                            args = ['taskkill', '/f']
+                            for p in chunk:
+                                args.extend(['/pid', p])
+                            subprocess.Popen(args, creationflags=subprocess.CREATE_NO_WINDOW)
                 except Exception as e:
-                    self.root.after(0, lambda m=f"{f}: {e}": self.add_system_alert(f"⚠️ 실행 실패 - {m}"))
-        except Exception as e:
-            self.root.after(0, lambda m=str(e): self.add_system_alert(f"⚠️ on 폴더 오류: {m}"))
-        
-        self.root.after(0, lambda: self.add_system_alert(f"✅ 초기세팅 완료: 창 정리 후 {launched}개 프로그램 실행됨"))
+                    self.root.after(0, lambda m=str(e): self.add_system_alert(f"⚠️ 프로세스 종료 오류: {m}"))
+                
+                time.sleep(0.5)
+
+                # ── 3단계: on 폴더의 프로그램 실행 ──
+                on_folder = os.path.join(application_path, 'on')
+                os.makedirs(on_folder, exist_ok=True)
+                
+                launched = 0
+                RUNNABLE_EXTS = ('.exe', '.lnk', '.bat', '.cmd', '.vbs')
+                EXT_PRIORITY = {'.exe': 0, '.lnk': 1, '.bat': 2, '.cmd': 3, '.vbs': 4}
+                
+                try:
+                    running_procs = set()
+                    try:
+                        tl = subprocess.run(
+                            ['tasklist', '/fo', 'csv', '/nh'],
+                            capture_output=True, text=True,
+                            creationflags=subprocess.CREATE_NO_WINDOW
+                        )
+                        for line in tl.stdout.strip().split('\n'):
+                            line = line.strip()
+                            if not line: continue
+                            parts = line.strip('"').split('","')
+                            if parts:
+                                running_procs.add(parts[0].strip('"').lower())
+                    except Exception:
+                        pass
+                    
+                    stem_map = {}
+                    for f in os.listdir(on_folder):
+                        ext = os.path.splitext(f)[1].lower()
+                        stem = os.path.splitext(f)[0].lower()
+                        if ext not in EXT_PRIORITY:
+                            continue
+                        pri = EXT_PRIORITY[ext]
+                        if stem not in stem_map or pri < stem_map[stem][0]:
+                            stem_map[stem] = (pri, f)
+                    
+                    for stem, (pri, f) in stem_map.items():
+                        ext = os.path.splitext(f)[1].lower()
+                        if ext == '.exe' and f.lower() in running_procs:
+                            self.root.after(0, lambda m=f: self.add_system_alert(f"⏭️ 이미 실행 중 (건너뜀): {m}"))
+                            continue
+                        try:
+                            full_path = os.path.join(on_folder, f)
+                            subprocess.Popen(
+                                full_path,
+                                cwd=on_folder,
+                                shell=True,
+                                creationflags=subprocess.CREATE_NO_WINDOW
+                            )
+                            launched += 1
+                            time.sleep(0.1)
+                        except Exception as e:
+                            self.root.after(0, lambda m=f"{f}: {e}": self.add_system_alert(f"⚠️ 실행 실패 - {m}"))
+                except Exception as e:
+                    self.root.after(0, lambda m=str(e): self.add_system_alert(f"⚠️ on 폴더 오류: {m}"))
+                
+                self.root.after(0, lambda: self.add_system_alert(f"✅ 초기세팅 완료: 창 정리 후 {launched}개 프로그램 실행됨"))
+            finally:
+                self._setup_in_progress = False
+
+        threading.Thread(target=_task, daemon=True).start()
 
     def create_image(self, width, height):
         # 완전히 투명한 이미지 반환
