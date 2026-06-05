@@ -62,7 +62,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.75"
+CURRENT_VERSION = "1.1.76"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -1080,6 +1080,12 @@ class AutoShutdownAppV2:
                 )
                 
                 self.quit_app()
+            else:
+                if not silent:
+                    self._show_update_error("개발 환경(파이썬 스크립트)에서는 자동 업데이트가 지원되지 않습니다.\n다운로드된 파일(update_temp.exe)을 확인해 주세요.")
+                if is_manual:
+                    self.root.after(0, self._restore_update_btn)
+                return
         except Exception as e:
             # 실패 시 임시 파일 정리
             if os.path.exists(update_exe_path):
@@ -2269,6 +2275,14 @@ class HeadlessShutdownApp:
             time.sleep(2)
 
     def check_for_updates(self):
+        _log_path = os.path.join(application_path, 'headless_debug.log')
+        def _log(msg):
+            try:
+                with open(_log_path, 'a', encoding='utf-8') as f:
+                    f.write(f"[{datetime.now()}] {msg}\n")
+            except: pass
+
+        _log("[update] Starting check_for_updates...")
         try:
             url = f"https://raw.githubusercontent.com/JunHyuk1203/autoshutdown/main/version.json?t={int(time.time())}"
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
@@ -2283,10 +2297,14 @@ class HeadlessShutdownApp:
                 remote_version = data.get("version", CURRENT_VERSION)
                 download_url = data.get("download_url")
                 
+            _log(f"[update] Current: {CURRENT_VERSION}, Remote: {remote_version}, URL: {download_url}")
             if self._is_newer_version(remote_version, CURRENT_VERSION) and download_url:
+                _log("[update] Newer version found! Calling perform_auto_update...")
                 self.perform_auto_update(download_url)
-        except Exception:
-            pass
+            else:
+                _log("[update] No newer version or download URL missing.")
+        except Exception as e:
+            _log(f"[update] check_for_updates failed: {e}")
 
     def _is_newer_version(self, remote, current):
         try:
@@ -2300,6 +2318,14 @@ class HeadlessShutdownApp:
             return False
 
     def perform_auto_update(self, download_url):
+        _log_path = os.path.join(application_path, 'headless_debug.log')
+        def _log(msg):
+            try:
+                with open(_log_path, 'a', encoding='utf-8') as f:
+                    f.write(f"[{datetime.now()}] {msg}\n")
+            except: pass
+
+        _log(f"[update] perform_auto_update started with URL: {download_url}")
         update_exe_path = os.path.join(application_path, "update_temp.exe")
         try:
             if "?" in download_url:
@@ -2308,10 +2334,13 @@ class HeadlessShutdownApp:
                 no_cache_url = f"{download_url}?t={int(time.time())}"
                 
             req = urllib.request.Request(no_cache_url, headers={'User-Agent': 'Mozilla/5.0'})
+            _log("[update] Downloading update file...")
             with urllib.request.urlopen(req, timeout=120, context=_global_ssl_context) as response:
                 data = response.read()
             
+            _log(f"[update] Download completed. Size: {len(data)} bytes")
             if len(data) < 1_000_000:
+                _log("[update] Downloaded file too small. Aborting.")
                 return
             
             with open(update_exe_path, 'wb') as out_file:
@@ -2319,6 +2348,7 @@ class HeadlessShutdownApp:
             
             current_exe = sys.executable if getattr(sys, 'frozen', False) else None
             if current_exe and current_exe.endswith('.exe'):
+                _log(f"[update] Replacing current executable: {current_exe}")
                 # Clean up any existing unlocked .old files in the same folder first
                 app_dir = os.path.dirname(current_exe)
                 for file_name in os.listdir(app_dir):
@@ -2329,7 +2359,9 @@ class HeadlessShutdownApp:
                 # Use a unique timestamped name to prevent clash with locked files
                 old_exe_path = f"{current_exe}.{int(time.time())}.old"
                 
+                _log(f"[update] Renaming {current_exe} to {old_exe_path}")
                 os.rename(current_exe, old_exe_path)
+                _log(f"[update] Renaming {update_exe_path} to {current_exe}")
                 os.rename(update_exe_path, current_exe)
                 
                 clean_env = os.environ.copy()
@@ -2337,14 +2369,18 @@ class HeadlessShutdownApp:
                 for k in keys_to_remove:
                     clean_env.pop(k, None)
                 
-                # 새 버전을 백그라운드로 즉시 실행
+                _log("[update] Spawning new process...")
                 subprocess.Popen(
                     [current_exe, "--headless"],
                     env=clean_env,
                     creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
                 )
+                _log("[update] Exiting current process.")
                 os._exit(0)
-        except Exception:
+            else:
+                _log("[update] Current process is not frozen or not an .exe.")
+        except Exception as e:
+            _log(f"[update] perform_auto_update failed: {e}")
             if os.path.exists(update_exe_path):
                 try: os.remove(update_exe_path)
                 except: pass
