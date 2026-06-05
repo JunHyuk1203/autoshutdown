@@ -55,7 +55,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.72"
+CURRENT_VERSION = "1.1.73"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -321,6 +321,8 @@ class AutoShutdownAppV2:
         self.snooze_target = None
         self.snooze_action = "시스템 종료"
         self.last_all_cmd_ts = 0
+        self.triggered_custom_schedules = set()
+        self.custom_schedules = {}
         
         global app_instance
         app_instance = self
@@ -1763,13 +1765,16 @@ class AutoShutdownAppV2:
         return Image.new('RGBA', (width, height), (0, 0, 0, 0))
 
     def get_next_event(self):
-        if self.skip_today_var.get(): return "skip", None
+        config = self.load_config()
+        skip_date = config.get("skip_date", "")
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        if skip_date == today_str:
+            return "skip", None
             
-        try: minutes_off = int(self.minutes_var.get())
+        try: minutes_off = int(config.get("minutes_before", 2))
         except: minutes_off = 0
             
         now = datetime.now()
-        current_date = now.strftime("%Y-%m-%d")
         next_time = None
         next_action = "시스템 종료"
         
@@ -1777,19 +1782,28 @@ class AutoShutdownAppV2:
             check_date = now + timedelta(days=i)
             day_str = DAYS[check_date.weekday()]
             
+            day_schedule = config.get(day_str, {})
             for class_name, schedule_time in TIMETABLE.items():
-                if class_name in self.vars[day_str] and self.vars[day_str][class_name]["enabled"].get():
+                class_config = day_schedule.get(class_name, {})
+                is_enabled = False
+                action_val = "시스템 종료"
+                if isinstance(class_config, bool):
+                    is_enabled = class_config
+                elif isinstance(class_config, dict):
+                    is_enabled = class_config.get("enabled", False)
+                    action_val = class_config.get("action", "시스템 종료")
+                    
+                if is_enabled:
                     target_dt = datetime.strptime(schedule_time, "%H:%M")
                     target_dt = target_dt - timedelta(minutes=minutes_off)
                     target_datetime = datetime(check_date.year, check_date.month, check_date.day, target_dt.hour, target_dt.minute)
                     
                     if target_datetime.replace(second=0, microsecond=0) >= now.replace(second=0, microsecond=0):
-                        if target_datetime.strftime("%Y-%m-%d %H:%M") in self.skipped_events: continue
+                        if target_datetime.strftime("%Y-%m-%d %H:%M") in self.skipped_events:
+                            continue
                         if next_time is None or target_datetime < next_time:
                             next_time = target_datetime
-                            next_action = self.vars[day_str][class_name]["action"].get()
-                            
-
+                            next_action = action_val
         return next_time, next_action
 
     def update_status_info(self):
@@ -1867,6 +1881,8 @@ class AutoShutdownAppV2:
         
         def on_cancel():
             self.pending_shutdown = False
+            if getattr(self, 'current_triggered_event_time', None):
+                self.skipped_events.add(self.current_triggered_event_time)
             if self.toast and self.toast.winfo_exists(): self.toast.destroy()
             if self.icon: self.icon.notify("사용자의 요청으로 제어가 취소되었습니다.", "취소 완료")
                 
@@ -1927,8 +1943,7 @@ class AutoShutdownAppV2:
         
         while self.is_running:
             now = datetime.now()
-            current_hm = now.strftime("%H:%M")
-            current_date = now.strftime("%Y-%m-%d")
+            now_min = now.replace(second=0, microsecond=0)
             
             if time.time() - last_tooltip_update > 1:
                 self.update_status_info()
@@ -1952,39 +1967,26 @@ class AutoShutdownAppV2:
                 if self.show_popup_var.get():
                     self.root.after(0, lambda a=action: self.show_toast_popup("연기된 스마트 알림", "연기했던 일정에 따라 잠시 후 제어가 시작됩니다.", 60, a))
             
-            if self.skip_today_var.get():
+            config = self.load_config()
+            skip_date = config.get("skip_date", "")
+            today_str = now.strftime("%Y-%m-%d")
+            if skip_date == today_str:
                 time.sleep(5)
                 continue
                 
-            day_index = now.weekday()
-            current_day_str = DAYS[day_index]
+            next_time, next_action = self.get_next_event()
+            if next_time and next_time != "skip":
+                target_min = next_time.replace(second=0, microsecond=0)
+                if now_min == target_min and getattr(self, 'last_triggered_time', None) != target_min:
+                    self.last_triggered_time = target_min
+                    self.pending_shutdown = True
+                    self.pending_shutdown_target = now + timedelta(minutes=1)
+                    self.pending_action = next_action
+                    self.current_triggered_event_time = next_time.strftime("%Y-%m-%d %H:%M")
+                    
+                    if self.show_popup_var.get():
+                        self.root.after(0, lambda a=next_action: self.show_toast_popup("스마트 스케줄 알림", "예약된 스마트 일정에 따라 잠시 후 제어가 시작됩니다.", 60, a))
             
-
-            try: minutes_off = int(self.minutes_var.get())
-            except ValueError: minutes_off = 0
-                
-            if self.last_triggered_time != current_hm:
-                for class_name, schedule_time in TIMETABLE.items():
-                    if class_name in self.vars[current_day_str] and self.vars[current_day_str][class_name]["enabled"].get():
-                        target_dt = datetime.strptime(schedule_time, "%H:%M")
-                        target_dt = target_dt - timedelta(minutes=minutes_off)
-                        target_hm = target_dt.strftime("%H:%M")
-                        
-                        if current_hm == target_hm and not getattr(self, 'pending_shutdown', False):
-                            actual_dt = datetime(now.year, now.month, now.day, target_dt.hour, target_dt.minute)
-                            if actual_dt.strftime("%Y-%m-%d %H:%M") in self.skipped_events:
-                                continue
-                                
-                            self.last_triggered_time = current_hm
-                            action = self.vars[current_day_str][class_name]["action"].get()
-                            self.pending_shutdown = True
-                            self.pending_shutdown_target = now + timedelta(minutes=1)
-                            self.pending_action = action
-                            
-                            if self.show_popup_var.get():
-                                self.root.after(0, lambda a=action: self.show_toast_popup("스마트 스케줄 알림", "예약된 스마트 일정에 따라 잠시 후 제어가 시작됩니다.", 60, a))
-                            
-                            break
             time.sleep(1)
 
 class HeadlessShutdownApp:
@@ -1992,8 +1994,10 @@ class HeadlessShutdownApp:
         self.is_running = True
         self.skipped_events = set()
         self.last_triggered_time = None
-        self.config = self.load_config()
         self.last_all_cmd_ts = 0
+        self.config = self.load_config()
+        self.triggered_custom_schedules = set()
+        self.custom_schedules = {}
         
         # 백그라운드 스레드들 시작
         threading.Thread(target=self.socket_listener, daemon=True).start()
@@ -2066,12 +2070,13 @@ class HeadlessShutdownApp:
     def monitor_time(self):
         while self.is_running:
             now = datetime.now()
-            current_hm = now.strftime("%H:%M")
+            now_min = now.replace(second=0, microsecond=0)
             
             next_time, next_action = self.get_next_event()
             if next_time and next_time != "skip":
-                if current_hm == next_time.strftime("%H:%M") and self.last_triggered_time != current_hm:
-                    self.last_triggered_time = current_hm
+                target_min = next_time.replace(second=0, microsecond=0)
+                if now_min == target_min and getattr(self, 'last_triggered_time', None) != target_min:
+                    self.last_triggered_time = target_min
                     if next_action == "시스템 종료":
                         os.system('shutdown /s /t 0')
                     elif next_action == "절전 모드":

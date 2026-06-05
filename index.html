@@ -1277,7 +1277,11 @@ function openConfigModal(pcId) {
         const daySchedule = cfg[day] || {};
         
         PERIODS_LIST.forEach(period => {
-            const periodData = daySchedule[period] || {};
+            let sanitizedPeriod = period;
+            [".", "$", "#", "[", "]", "/"].forEach(char => {
+                sanitizedPeriod = sanitizedPeriod.replaceAll(char, "_");
+            });
+            const periodData = daySchedule[period] || daySchedule[sanitizedPeriod] || {};
             cfgActiveSchedule[day][period] = {
                 enabled: periodData.enabled !== undefined ? periodData.enabled : false,
                 action: periodData.action || "시스템 종료"
