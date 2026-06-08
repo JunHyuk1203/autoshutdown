@@ -62,7 +62,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.83"
+CURRENT_VERSION = "1.1.84"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -556,8 +556,8 @@ class AutoShutdownAppV2:
                             if cmd:
                                 cmd_type = 'all'
                                 cmd_ts = cmd.get('timestamp', 0)
-                                # 이미 처리한 전체 명령이거나 8초 이상 지난 오래된 명령이면 무시
-                                if cmd_ts == getattr(self, 'last_all_cmd_ts', 0) or time.time() - cmd_ts > 8.0:
+                                # 이미 처리한 전체 명령이거나 5분 이상 지난 오래된 명령이면 무시
+                                if cmd_ts == getattr(self, 'last_all_cmd_ts', 0) or time.time() - cmd_ts > 300.0:
                                     cmd = None
                                 else:
                                     # 유효한 전체 명령이므로 중복 실행을 막기 위해 타임스탬프 기록
@@ -2270,7 +2270,7 @@ class HeadlessShutdownApp:
                             if cmd:
                                 cmd_type = 'all'
                                 cmd_ts = cmd.get('timestamp', 0)
-                                if cmd_ts == getattr(self, 'last_all_cmd_ts', 0) or time.time() - cmd_ts > 8.0:
+                                if cmd_ts == getattr(self, 'last_all_cmd_ts', 0) or time.time() - cmd_ts > 300.0:
                                     cmd = None
                                 else:
                                     _log(f"CMD found (all): {cmd}")
