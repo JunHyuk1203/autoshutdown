@@ -62,7 +62,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.85"
+CURRENT_VERSION = "1.1.86"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -152,26 +152,68 @@ def get_local_ip():
         s.close()
     return ip
 
+_cached_pc_id = None
+
 def get_pc_id():
+    global _cached_pc_id
+    if _cached_pc_id:
+        return _cached_pc_id
+
+    # 1. 설정 파일에서 기존 pc_id 확인 및 호스트명 일치 검증
     try:
+        import socket, re, json, os
+        hostname = socket.gethostname()
+        cleaned_hostname = re.sub(r'[^a-zA-Z0-9\-]', '', hostname)
+        if not cleaned_hostname or cleaned_hostname.strip('-') == '':
+            cleaned_hostname = "PC"
+            
+        if os.path.exists(CONFIG_FILE):
+            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                cfg = json.load(f)
+                if "pc_id" in cfg:
+                    saved_id = cfg["pc_id"]
+                    if saved_id.startswith(cleaned_hostname + "_"):
+                        _cached_pc_id = saved_id
+                        return saved_id
+    except Exception:
+        pass
+
+    # 2. 호스트명 기반으로 새로운 ID 생성
+    try:
+        import socket
         hostname = socket.gethostname()
     except Exception:
         hostname = "PC"
     
-    # 영문, 숫자, 하이픈(-) 제외한 모든 문자(한글, 공백, 특수문자 등) 제거하여 URL 안전성 확보
     import re
     cleaned_hostname = re.sub(r'[^a-zA-Z0-9\-]', '', hostname)
     if not cleaned_hostname or cleaned_hostname.strip('-') == '':
         cleaned_hostname = "PC"
     
-    # MAC 주소의 하위 6자리를 붙여 고유성 보장 (동일 호스트명 중복 방지)
     try:
         import uuid
         mac = uuid.getnode()
         mac_hex = f"{mac:012x}"[-6:]
     except Exception:
         mac_hex = "000000"
-    return f"{cleaned_hostname}_{mac_hex}"
+        
+    new_pc_id = f"{cleaned_hostname}_{mac_hex}"
+    
+    # 3. 설정 파일에 저장하여 향후 영구 사용 (네트워크 변경으로 인한 분리 현상 방지)
+    try:
+        import json, os
+        cfg = {}
+        if os.path.exists(CONFIG_FILE):
+            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                cfg = json.load(f)
+        cfg["pc_id"] = new_pc_id
+        with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+            json.dump(cfg, f, ensure_ascii=False, indent=4)
+    except Exception:
+        pass
+        
+    _cached_pc_id = new_pc_id
+    return new_pc_id
 
 ctk.set_appearance_mode("System")
 ctk.set_default_color_theme("blue")
