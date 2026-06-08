@@ -62,7 +62,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.84"
+CURRENT_VERSION = "1.1.85"
 
 try:
     from pycaw.pycaw import AudioUtilities
