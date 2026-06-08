@@ -11,3 +11,9 @@ test_update/
 
 # 기타
 *.log
+
+AndroidApp/
+AndroidWearApp/
+*.apk
+build_apk.py
+build_wear_apk.py

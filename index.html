@@ -778,7 +778,10 @@ body {
                 <span class="status-chip active">온라인 <strong id="stat-online">0</strong></span>
                 <span class="status-chip inactive">오프라인 <strong id="stat-offline">0</strong></span>
             </div>
-            <button class="btn-clear-offline" onclick="clearOfflineDevices()">🗑 오프라인 PC 목록 삭제</button>
+            <div style="display: flex; gap: 8px;">
+                <button class="btn-clear-offline" onclick="clearSelectedDevices()">🗑 선택된 PC 삭제</button>
+                <button class="btn-clear-offline" onclick="clearOfflineDevices()">🗑 오프라인 일괄 삭제</button>
+            </div>
         </div>
 
         <!-- 가로 제어 행 (전체 원격 제어) -->
@@ -1169,9 +1172,7 @@ function renderPCGrid(serverNowMs) {
         const diffSeconds = getPCDiffSeconds(pc, serverNowMs);
         const isOnline = (pc.status === "online") && (diffSeconds < 15);
         
-        if (!isOnline && selectedPcs.has(pcId)) {
-            selectedPcs.delete(pcId);
-        }
+        // Offline deselect logic removed to allow offline selection
         
         // Calculate time strings
         let timeStr = "-";
@@ -1211,9 +1212,12 @@ function renderPCGrid(serverNowMs) {
         if (!metaContainer) {
             // Initial build of card contents
             card.innerHTML = `
-                <div class="status-indicator">
-                    <span class="dot ${isOnline ? 'online' : 'offline'}"></span>
-                    <span class="pc-status-txt ${isOnline ? 'online' : 'offline'}">${isOnline ? '온라인' : '꺼짐'}</span>
+                <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                    <div class="status-indicator">
+                        <span class="dot ${isOnline ? 'online' : 'offline'}"></span>
+                        <span class="pc-status-txt ${isOnline ? 'online' : 'offline'}">${isOnline ? '온라인' : '꺼짐'}</span>
+                    </div>
+                    <input type="checkbox" onchange="togglePCSelection('${pcId}', this.checked)" ${selectedPcs.has(pcId) ? 'checked' : ''} style="cursor: pointer; accent-color: var(--danger); width: 14px; height: 14px; margin-top: 2px;">
                 </div>
                 <div class="pc-name" title="${pcId}">${pc.hostname || pcId}</div>
                 <div class="pc-meta-container">
@@ -1234,6 +1238,8 @@ function renderPCGrid(serverNowMs) {
             const statusTxt = card.querySelector(".pc-status-txt");
             statusTxt.className = `pc-status-txt ${isOnline ? 'online' : 'offline'}`;
             statusTxt.innerText = isOnline ? '온라인' : '꺼짐';
+            const cb = card.querySelector("input[type='checkbox']");
+            if (cb) cb.checked = selectedPcs.has(pcId);
             card.querySelector(".pc-name").innerText = pc.hostname || pcId;
             card.querySelector(".pc-user").innerText = `👤 ${pc.user || 'N/A'}`;
             card.querySelector(".pc-ip").innerText = `🖥️ IP: ${pc.ip || 'N/A'}`;
@@ -1587,6 +1593,37 @@ function triggerSingleMessage(pcId) {
             }
         }
     );
+}
+
+function togglePCSelection(pcId, isChecked) {
+    if (isChecked) selectedPcs.add(pcId);
+    else selectedPcs.delete(pcId);
+}
+
+async function clearSelectedDevices() {
+    if (selectedPcs.size === 0) {
+        alert("선택된 기기가 없습니다. 기기 카드의 우측 상단 체크박스를 선택해주세요.");
+        return;
+    }
+    if (!confirm(`정말 선택된 ${selectedPcs.size}대의 기기를 목록에서 완전히 삭제하시겠습니까?`)) return;
+    
+    let toDelete = Array.from(selectedPcs);
+    let errs = 0;
+    for (const pcId of toDelete) {
+        let url = `${config.databaseURL}/pcs/${pcId}.json`;
+        if (config.authKey) {
+            url += `?auth=${config.authKey}`;
+        }
+        try {
+            await fetch(url, { method: "DELETE" });
+        } catch(e) {
+            errs++;
+        }
+    }
+    
+    alert(`선택된 기기 정리가 완료되었습니다. (성공: ${toDelete.length - errs}대)`);
+    selectedPcs.clear();
+    fetchPCData();
 }
 
 // 오프라인 기기 정리
