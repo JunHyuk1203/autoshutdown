@@ -62,7 +62,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.86"
+CURRENT_VERSION = "1.1.87"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -1825,7 +1825,7 @@ class AutoShutdownAppV2:
                 try:
                     # PowerShell의 Shell.Application COM 객체를 이용해 안전하게 폴더 창만 닫기
                     ps_cmd = "$shell = New-Object -ComObject Shell.Application; $shell.Windows() | ForEach-Object { $_.Quit() }"
-                    subprocess.Popen(['powershell', '-Command', ps_cmd], creationflags=subprocess.CREATE_NO_WINDOW)
+                    subprocess.run(['powershell', '-Command', ps_cmd], creationflags=subprocess.CREATE_NO_WINDOW)
                     self.root.after(0, lambda: self.add_system_alert("📂 파일탐색기 창 닫기 완료 (프로세스 유지)"))
                 except Exception as e:
                     self.root.after(0, lambda m=str(e): self.add_system_alert(f"⚠️ 파일탐색기 창 닫기 오류: {m}"))
@@ -1852,18 +1852,18 @@ class AutoShutdownAppV2:
                         except: pass
                         
                     if pids_to_kill:
-                        # 30개씩 분할하여 taskkill 실행 (명령어 길이 제한 대비 및 비동기 처리)
+                        # 30개씩 분할하여 taskkill 실행 (명령어 길이 제한 대비 및 비동기 처리 방지)
                         chunk_size = 30
                         for i in range(0, len(pids_to_kill), chunk_size):
                             chunk = pids_to_kill[i:i+chunk_size]
                             args = ['taskkill', '/f']
                             for p in chunk:
                                 args.extend(['/pid', p])
-                            subprocess.Popen(args, creationflags=subprocess.CREATE_NO_WINDOW)
+                            subprocess.run(args, creationflags=subprocess.CREATE_NO_WINDOW)
                 except Exception as e:
                     self.root.after(0, lambda m=str(e): self.add_system_alert(f"⚠️ 프로세스 종료 오류: {m}"))
                 
-                time.sleep(0.5)
+                time.sleep(1.0) # 창이 닫히고 정리될 시간을 충분히 줌
 
                 # ── 3단계: on 폴더의 프로그램 실행 ──
                 on_folder = os.path.join(application_path, 'on')
@@ -1907,6 +1907,13 @@ class AutoShutdownAppV2:
                             continue
                         try:
                             full_path = os.path.join(on_folder, f)
+                            
+                            # 포커스 강제 가져오기 트릭 (Alt 키 시뮬레이션)
+                            try:
+                                ctypes.windll.user32.keybd_event(0x12, 0, 0, 0) # Alt 누름
+                                ctypes.windll.user32.keybd_event(0x12, 0, 2, 0) # Alt 뗌
+                            except: pass
+
                             subprocess.Popen(
                                 full_path,
                                 cwd=on_folder,
@@ -1914,7 +1921,7 @@ class AutoShutdownAppV2:
                                 creationflags=subprocess.CREATE_NO_WINDOW
                             )
                             launched += 1
-                            time.sleep(0.1)
+                            time.sleep(0.2)
                         except Exception as e:
                             self.root.after(0, lambda m=f"{f}: {e}": self.add_system_alert(f"⚠️ 실행 실패 - {m}"))
                 except Exception as e:
