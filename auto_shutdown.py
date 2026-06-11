@@ -62,7 +62,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.88"
+CURRENT_VERSION = "1.1.89"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -1837,7 +1837,7 @@ class AutoShutdownAppV2:
                 try:
                     # PowerShell의 Shell.Application COM 객체를 이용해 안전하게 폴더 창만 닫기
                     ps_cmd = "$shell = New-Object -ComObject Shell.Application; $shell.Windows() | ForEach-Object { $_.Quit() }"
-                    subprocess.run(['powershell', '-Command', ps_cmd], creationflags=subprocess.CREATE_NO_WINDOW, timeout=10)
+                    subprocess.run(['powershell', '-Command', ps_cmd], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW, timeout=10)
                     self.root.after(0, lambda: self.add_system_alert("📂 파일탐색기 창 닫기 완료 (프로세스 유지)"))
                 except Exception as e:
                     self.root.after(0, lambda m=str(e): self.add_system_alert(f"⚠️ 파일탐색기 창 닫기 오류: {m}"))
@@ -1872,7 +1872,7 @@ class AutoShutdownAppV2:
                             args = ['taskkill', '/f']
                             for p in chunk:
                                 args.extend(['/pid', p])
-                            subprocess.run(args, creationflags=subprocess.CREATE_NO_WINDOW, timeout=5)
+                            subprocess.run(args, capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW, timeout=10)
                 except Exception as e:
                     self.root.after(0, lambda m=str(e): self.add_system_alert(f"⚠️ 프로세스 종료 오류: {m}"))
                 
@@ -1930,7 +1930,9 @@ class AutoShutdownAppV2:
                             # OS Shell을 직접 호출하여 사용자가 더블클릭한 것과 동일하게 실행 (포커스 획득 보장)
                             try:
                                 # SW_SHOWNORMAL = 1
-                                ctypes.windll.shell32.ShellExecuteW(None, "open", full_path, None, on_folder, 1)
+                                res = ctypes.windll.shell32.ShellExecuteW(None, "open", full_path, None, on_folder, 1)
+                                if res <= 32:
+                                    raise Exception(f"ShellExecuteW failed with code {res}")
                             except Exception:
                                 # 실패 시 fallback
                                 subprocess.Popen(
@@ -2135,6 +2137,67 @@ class HeadlessShutdownApp:
         while self.is_running:
             time.sleep(1)
             
+    def run_setup_mode(self):
+        """헤드리스 모드용 초기세팅: 불필요 프로세스 강제 종료만 수행"""
+        if getattr(self, '_setup_in_progress', False):
+            _log("Setup mode already in progress")
+            return
+        self._setup_in_progress = True
+
+        def _task():
+            try:
+                _log("Headless setup mode started...")
+                KEEP = {
+                    'system', 'idle', 'smss.exe', 'csrss.exe', 'wininit.exe',
+                    'winlogon.exe', 'services.exe', 'lsass.exe', 'svchost.exe',
+                    'dwm.exe', 'registry', 'memcompression',
+                    'auto_shutdown.exe', 'taskmgr.exe', 'conhost.exe',
+                    'fontdrvhost.exe', 'spoolsv.exe', 'runtimebroker.exe',
+                    'sihost.exe', 'taskhostw.exe', 'ctfmon.exe', 'dllhost.exe',
+                    'audiodg.exe', 'python.exe', 'pythonw.exe', 'searchhost.exe',
+                    'startmenuexperiencehost.exe', 'shellexperiencehost.exe',
+                    'textinputhost.exe', 'securityhealthservice.exe', 'explorer.exe'
+                }
+                my_pid = os.getpid()
+
+                try:
+                    result = subprocess.run(
+                        ['tasklist', '/fo', 'csv', '/nh'],
+                        capture_output=True, text=True,
+                        creationflags=subprocess.CREATE_NO_WINDOW,
+                        timeout=10
+                    )
+                    pids_to_kill = []
+                    for line in result.stdout.strip().split('\n'):
+                        try:
+                            line = line.strip()
+                            if not line: continue
+                            parts = line.strip('"').split('","')
+                            if len(parts) < 2: continue
+                            name = parts[0].strip('"').lower()
+                            pid = int(parts[1].strip('"'))
+                            if pid == my_pid: continue
+                            if name in KEEP: continue
+                            pids_to_kill.append(str(pid))
+                        except: pass
+                        
+                    if pids_to_kill:
+                        chunk_size = 30
+                        for i in range(0, len(pids_to_kill), chunk_size):
+                            chunk = pids_to_kill[i:i+chunk_size]
+                            args = ['taskkill', '/f']
+                            for p in chunk:
+                                args.extend(['/pid', p])
+                            subprocess.run(args, capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW, timeout=10)
+                except Exception as e:
+                    _log(f"Headless setup taskkill error: {e}")
+                
+                _log("Headless setup mode finished")
+            finally:
+                self._setup_in_progress = False
+
+        threading.Thread(target=_task, daemon=True).start()
+
     def load_config(self):
         try:
             if os.path.exists(CONFIG_FILE):
@@ -2382,8 +2445,8 @@ class HeadlessShutdownApp:
                                 threading.Thread(target=self.check_for_updates, daemon=True).start()
                                 cmd_success = True
                             elif action == 'setup_mode':
-                                # headless 모드에서는 setup_mode 지원 불가 → 명령만 소비(삭제)
-                                _log("setup_mode received in headless - acknowledging (no-op)")
+                                _log("Executing: headless setup_mode (taskkill only)")
+                                threading.Thread(target=self.run_setup_mode, daemon=True).start()
                                 cmd_success = True
                             elif action == 'wol' and isinstance(message, dict):
                                 _log("Executing: wol packet broadcast")
