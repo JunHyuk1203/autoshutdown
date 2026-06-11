@@ -1503,7 +1503,7 @@ async function writeCommandToDB(target, action, message = "") {
     let bodyData = {};
     
     if (target === "__ALL__") {
-        // 전체 방송용 노드 쓰기
+        // 전체 방송용 노드 쓰기 (동일하게 유지)
         url = `${config.databaseURL}/commands/__ALL__.json`;
         bodyData = {
             action: action,
@@ -1511,8 +1511,9 @@ async function writeCommandToDB(target, action, message = "") {
             timestamp: Date.now() / 1000.0
         };
     } else {
-        // 개별 PC 노드 쓰기
+        // 개별 PC 노드 쓰기 (명령이 씹히지 않도록 큐(Queue) 형태로 쌓기 위해 POST 사용)
         url = `${config.databaseURL}/commands/${target}.json`;
+        method = "POST";
         bodyData = {
             action: action,
             message: message

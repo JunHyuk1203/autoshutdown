@@ -119,7 +119,7 @@ time.sleep(1)
 # ── auto_shutdown.exe 빌드 ───────────────────────────────────────────────────
 print("\n[3단계] auto_shutdown.exe PyInstaller 빌드 중... (시간이 걸릴 수 있습니다)")
 try:
-    subprocess.run(["pyinstaller", "--clean", "--noconfirm", spec_path],
+    subprocess.run(["pyinstaller", "--noconfirm", spec_path],
                    check=True, cwd=BASE_DIR)
 except Exception as e:
     print(f"[Error] 빌드 실패: {e}")
@@ -133,7 +133,7 @@ except Exception as e:
 print("\n[3-2단계] 스마트_전원_관리자_설치파일.exe 빌드 중... (최신 auto_shutdown.exe 포함)")
 if os.path.exists(installer_spec):
     try:
-        subprocess.run(["pyinstaller", "--clean", "--noconfirm", installer_spec],
+        subprocess.run(["pyinstaller", "--noconfirm", installer_spec],
                        check=True, cwd=BASE_DIR)
         print("[SUCCESS] 설치파일 빌드 완료")
     except Exception as e:

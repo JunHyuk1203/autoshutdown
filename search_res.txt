@@ -1,0 +1,32 @@
+702: .app-preset-btn {
+718: .app-preset-btn:hover {
+722: .app-preset-btn.active {
+766: <button class="btn-icon" onclick="resetConfiguration()" title="서버 설정 변경">⚙️</button>
+797: <button class="action-btn action-btn-secondary" onclick="triggerCommandAll('setup_mode')">🚀 전체 초기설정</button>
+974: <button type="button" onclick="setAppPreset('chrome')" class="app-preset-btn" id="preset-chrome">
+978: <button type="button" onclick="setAppPreset('edge')" class="app-preset-btn" id="preset-edge">
+982: <button type="button" onclick="setAppPreset('powerpoint')" class="app-preset-btn" id="preset-powerpoint">
+986: <button type="button" onclick="setAppPreset('excel')" class="app-preset-btn" id="preset-excel">
+990: <button type="button" onclick="setAppPreset('word')" class="app-preset-btn" id="preset-word">
+994: <button type="button" onclick="setAppPreset('notepad')" class="app-preset-btn" id="preset-notepad">
+998: <button type="button" onclick="setAppPreset('')" class="app-preset-btn" id="preset-default" style="border-color: rgba(255,255,255,0.12); color: var(--text-muted);">
+1079: function resetConfiguration() {
+1263: <button class="card-action-btn btn-purple" onclick="event.stopPropagation(); triggerSingleCommand('${pcId}', 'setup_mode')" ${isOnline ? '' : 'disabled'} title="원격 초기설정">🚀 초기화</button>
+1546: const labels = { shutdown: "전체 종료", sleep: "전체 절전", restart: "전체 재부팅", setup_mode: "전체 초기설정", close_active_window: "전체 활성 창 종료" };
+1563: const labels = { shutdown: "종료", sleep: "절전", restart: "재부팅", setup_mode: "초기설정", update: "원격 업데이트", close_active_window: "활성 창 종료" };
+1677: const APP_PRESETS = {
+1725: let activePreset = null;
+1728: function setAppPreset(key) {
+1734: activePreset = null;
+1735: refreshPresetHighlight();
+1739: const preset = APP_PRESETS[key];
+1740: if (!preset) return;
+1743: input.value = preset.paths[0];
+1744: activePreset = key;
+1745: refreshPresetHighlight();
+1749: function refreshPresetHighlight() {
+1752: const btn = document.getElementById('preset-' + k);
+1754: if (k === activePreset) {
+2001: // 입력란 초기화
+2005: activePreset = null;
+2006: refreshPresetHighlight();

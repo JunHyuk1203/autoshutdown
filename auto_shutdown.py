@@ -62,7 +62,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.87"
+CURRENT_VERSION = "1.1.88"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -612,158 +612,170 @@ class AutoShutdownAppV2:
                                 
                 # 명령 실행
                 if cmd and isinstance(cmd, dict):
-                    action = cmd.get("action")
-                    message = cmd.get("message", "")
+                    commands_to_process = []
+                    if "action" in cmd:
+                        commands_to_process.append((None, cmd))
+                    else:
+                        for push_id, payload in cmd.items():
+                            if isinstance(payload, dict) and "action" in payload:
+                                commands_to_process.append((push_id, payload))
+
+                    for push_id, payload in commands_to_process:
+                        action = payload.get("action")
+                        message = payload.get("message", "")
                     
-                    # 진단 로그: 명령 수신 기록
-                    try:
-                        with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
-                            ef.write(f"[{datetime.now()}] CMD RECEIVED: action={action}, type={cmd_type}, msg_type={type(message).__name__}, msg_keys={list(message.keys()) if isinstance(message, dict) else 'N/A'}\n")
-                    except: pass
-                    
-                    # 명령 실행 액션 (성공 후에 삭제)
-                    cmd_success = False
-                    if action == 'shutdown':
-                        os.system('shutdown /s /t 0')
-                        cmd_success = True
-                    elif action == 'sleep':
-                        os.system('rundll32.exe powrprof.dll,SetSuspendState 0,1,0')
-                        cmd_success = True
-                    elif action == 'restart':
-                        os.system('shutdown /r /t 0')
-                        cmd_success = True
-                    elif action == 'update':
-                        threading.Thread(target=self.check_for_updates, kwargs={'silent': True}, daemon=True).start()
-                        cmd_success = True
-                    elif action == 'setup_mode':
-                        threading.Thread(target=self.run_setup_mode, daemon=True).start()
-                        cmd_success = True
-                    elif action == 'wol' and isinstance(message, dict):
-                        mac_to_wake = message.get('mac', '')
-                        if mac_to_wake:
-                            send_wol_packet(mac_to_wake)
-                            cmd_success = True
-                            if app_instance:
-                                app_instance.root.after(0, lambda m=mac_to_wake: app_instance.add_system_alert(f"⚡ 원격 PC 깨우기(WOL) 패킷 송신: {m}"))
-                    elif action == 'set_config' and isinstance(message, dict):
+                        # 진단 로그: 명령 수신 기록
                         try:
-                            current = {}
-                            if os.path.exists(CONFIG_FILE):
-                                with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
-                                    current = json.load(f)
-                                    
-                            # 복구된 설정을 GUI 릴로드에도 적용하기 위해 message_clean 딕셔너리 생성
-                            message_clean = {}
-                            for k, v in message.items():
-                                # 요일 스케줄 데이터 처리 (Firebase 우회용 언더바를 원래 슬래시로 De-sanitize 복구)
-                                if k in DAYS and isinstance(v, dict):
-                                    if k not in current:
-                                        current[k] = {}
-                                    message_clean[k] = {}
-                                    for period, p_data in v.items():
-                                        orig_period = period.replace("_", "/") # '방과후_기타' -> '방과후/기타'
-                                        current[k][orig_period] = p_data
-                                        message_clean[k][orig_period] = p_data
-                                else:
-                                    message_clean[k] = v
-                                    if isinstance(v, dict) and k in current and isinstance(current[k], dict):
-                                        current[k].update(v)
-                                    else:
-                                        current[k] = v
-                                        
-                            with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
-                                json.dump(current, f, ensure_ascii=False, indent=4)
-                                
-                            if app_instance:
-                                app_instance.root.after(0, lambda d=message_clean: app_instance.reload_config_from_web(d))
-                            
+                            with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
+                                ef.write(f"[{datetime.now()}] CMD RECEIVED: action={action}, type={cmd_type}, msg_type={type(message).__name__}, msg_keys={list(message.keys()) if isinstance(message, dict) else 'N/A'}\n")
+                        except: pass
+                    
+                        # 명령 실행 액션 (성공 후에 삭제)
+                        cmd_success = False
+                        if action == 'shutdown':
+                            os.system('shutdown /s /t 0')
                             cmd_success = True
-                            
-                            # ★ 핵심 수정: set_config 성공 직후 Firebase /pcs/{pc_id}/config를 즉시 갱신
-                            # 기존 로직은 다음 폴링 루프(2초 후)에서야 config를 올려 대시보드에 이전 값이 보이는 문제가 있었음
-                            try:
-                                updated_cfg = sanitize_rtdb_keys(current)
-                                cfg_patch_payload = json.dumps({'config': updated_cfg}).encode('utf-8')
-                                cfg_patch_url = f"{central_url.rstrip('/')}/pcs/{pc_id}.json"
-                                cfg_patch_req = urllib.request.Request(
-                                    cfg_patch_url,
-                                    data=cfg_patch_payload,
-                                    method='PATCH',
-                                    headers={'Content-Type': 'application/json'}
-                                )
-                                with urllib.request.urlopen(cfg_patch_req, timeout=5, context=ssl_context) as _:
-                                    pass
-                            except Exception as patch_ex:
-                                try:
-                                    with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
-                                        ef.write(f"[{datetime.now()}] set_config immediate PATCH failed: {patch_ex}\n")
-                                except: pass
-                            
-                            # 진단 로그: 설정 적용 성공
-                            try:
-                                with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
-                                    ef.write(f"[{datetime.now()}] set_config SUCCESS: wrote {len(message)} keys to config, scheduled GUI reload\n")
-                            except: pass
-                            
-                            # 시스템 알림: 원격 설정 수신 알림
-                            if app_instance:
-                                app_instance.root.after(0, lambda: app_instance.add_system_alert("✅ 원격 설정 변경이 수신되어 적용되었습니다."))
-                        except Exception as ex:
-                            try:
-                                with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
-                                    ef.write(f"[{datetime.now()}] set_config FAILED: {ex}\n")
-                            except: pass
-                    elif action == 'open_file' and isinstance(message, dict):
-                        file_path = message.get('file_path', '').strip()
-                        app_path  = message.get('app_path', '').strip()
-                        if file_path:
-                            try:
-                                if app_path:
-                                    subprocess.Popen([app_path, file_path])
-                                else:
-                                    os.startfile(file_path)
+                        elif action == 'sleep':
+                            os.system('rundll32.exe powrprof.dll,SetSuspendState 0,1,0')
+                            cmd_success = True
+                        elif action == 'restart':
+                            os.system('shutdown /r /t 0')
+                            cmd_success = True
+                        elif action == 'update':
+                            threading.Thread(target=self.check_for_updates, kwargs={'silent': True}, daemon=True).start()
+                            cmd_success = True
+                        elif action == 'setup_mode':
+                            threading.Thread(target=self.run_setup_mode, daemon=True).start()
+                            cmd_success = True
+                        elif action == 'wol' and isinstance(message, dict):
+                            mac_to_wake = message.get('mac', '')
+                            if mac_to_wake:
+                                send_wol_packet(mac_to_wake)
                                 cmd_success = True
                                 if app_instance:
-                                    app_instance.root.after(0, lambda fp=file_path: app_instance.add_system_alert(f"📂 원격 파일 열기 실행: {fp}"))
-                            except Exception as open_ex:
+                                    app_instance.root.after(0, lambda m=mac_to_wake: app_instance.add_system_alert(f"⚡ 원격 PC 깨우기(WOL) 패킷 송신: {m}"))
+                        elif action == 'set_config' and isinstance(message, dict):
+                            try:
+                                current = {}
+                                if os.path.exists(CONFIG_FILE):
+                                    with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                                        current = json.load(f)
+                                    
+                                # 복구된 설정을 GUI 릴로드에도 적용하기 위해 message_clean 딕셔너리 생성
+                                message_clean = {}
+                                for k, v in message.items():
+                                    # 요일 스케줄 데이터 처리 (Firebase 우회용 언더바를 원래 슬래시로 De-sanitize 복구)
+                                    if k in DAYS and isinstance(v, dict):
+                                        if k not in current:
+                                            current[k] = {}
+                                        message_clean[k] = {}
+                                        for period, p_data in v.items():
+                                            orig_period = period.replace("_", "/") # '방과후_기타' -> '방과후/기타'
+                                            current[k][orig_period] = p_data
+                                            message_clean[k][orig_period] = p_data
+                                    else:
+                                        message_clean[k] = v
+                                        if isinstance(v, dict) and k in current and isinstance(current[k], dict):
+                                            current[k].update(v)
+                                        else:
+                                            current[k] = v
+                                        
+                                with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+                                    json.dump(current, f, ensure_ascii=False, indent=4)
+                                
+                                if app_instance:
+                                    app_instance.root.after(0, lambda d=message_clean: app_instance.reload_config_from_web(d))
+                            
+                                cmd_success = True
+                            
+                                # ★ 핵심 수정: set_config 성공 직후 Firebase /pcs/{pc_id}/config를 즉시 갱신
+                                # 기존 로직은 다음 폴링 루프(2초 후)에서야 config를 올려 대시보드에 이전 값이 보이는 문제가 있었음
+                                try:
+                                    updated_cfg = sanitize_rtdb_keys(current)
+                                    cfg_patch_payload = json.dumps({'config': updated_cfg}).encode('utf-8')
+                                    cfg_patch_url = f"{central_url.rstrip('/')}/pcs/{pc_id}.json"
+                                    cfg_patch_req = urllib.request.Request(
+                                        cfg_patch_url,
+                                        data=cfg_patch_payload,
+                                        method='PATCH',
+                                        headers={'Content-Type': 'application/json'}
+                                    )
+                                    with urllib.request.urlopen(cfg_patch_req, timeout=5, context=ssl_context) as _:
+                                        pass
+                                except Exception as patch_ex:
+                                    try:
+                                        with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
+                                            ef.write(f"[{datetime.now()}] set_config immediate PATCH failed: {patch_ex}\n")
+                                    except: pass
+                            
+                                # 진단 로그: 설정 적용 성공
                                 try:
                                     with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
-                                        ef.write(f"[{datetime.now()}] open_file FAILED: file={file_path!r} app={app_path!r} err={open_ex}\n")
+                                        ef.write(f"[{datetime.now()}] set_config SUCCESS: wrote {len(message)} keys to config, scheduled GUI reload\n")
                                 except: pass
-                    elif action == 'close_active_window':
-                        try:
-                            hwnd = ctypes.windll.user32.GetForegroundWindow()
-                            if hwnd:
-                                length = 256
-                                class_name = ctypes.create_unicode_buffer(length)
-                                ctypes.windll.user32.GetClassNameW(hwnd, class_name, length)
-                                if class_name.value not in ["Progman", "WorkerW", "Shell_TrayWnd"]:
-                                    ctypes.windll.user32.PostMessageW(hwnd, 0x0010, 0, 0)
-                            cmd_success = True
-                            if app_instance:
-                                app_instance.root.after(0, lambda: app_instance.add_system_alert("❌ 원격 활성 창 종료 실행"))
-                        except Exception as close_ex:
+                            
+                                # 시스템 알림: 원격 설정 수신 알림
+                                if app_instance:
+                                    app_instance.root.after(0, lambda: app_instance.add_system_alert("✅ 원격 설정 변경이 수신되어 적용되었습니다."))
+                            except Exception as ex:
+                                try:
+                                    with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
+                                        ef.write(f"[{datetime.now()}] set_config FAILED: {ex}\n")
+                                except: pass
+                        elif action == 'open_file' and isinstance(message, dict):
+                            file_path = message.get('file_path', '').strip()
+                            app_path  = message.get('app_path', '').strip()
+                            if file_path:
+                                try:
+                                    if app_path:
+                                        subprocess.Popen([app_path, file_path])
+                                    else:
+                                        os.startfile(file_path)
+                                    cmd_success = True
+                                    if app_instance:
+                                        app_instance.root.after(0, lambda fp=file_path: app_instance.add_system_alert(f"📂 원격 파일 열기 실행: {fp}"))
+                                except Exception as open_ex:
+                                    try:
+                                        with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
+                                            ef.write(f"[{datetime.now()}] open_file FAILED: file={file_path!r} app={app_path!r} err={open_ex}\n")
+                                    except: pass
+                        elif action == 'close_active_window':
                             try:
-                                with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
-                                    ef.write(f"[{datetime.now()}] close_active_window FAILED: err={close_ex}\n")
-                            except: pass
+                                hwnd = ctypes.windll.user32.GetForegroundWindow()
+                                if hwnd:
+                                    length = 256
+                                    class_name = ctypes.create_unicode_buffer(length)
+                                    ctypes.windll.user32.GetClassNameW(hwnd, class_name, length)
+                                    if class_name.value not in ["Progman", "WorkerW", "Shell_TrayWnd"]:
+                                        ctypes.windll.user32.PostMessageW(hwnd, 0x0010, 0, 0)
+                                cmd_success = True
+                                if app_instance:
+                                    app_instance.root.after(0, lambda: app_instance.add_system_alert("❌ 원격 활성 창 종료 실행"))
+                            except Exception as close_ex:
+                                try:
+                                    with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
+                                        ef.write(f"[{datetime.now()}] close_active_window FAILED: err={close_ex}\n")
+                                except: pass
+                                cmd_success = True
+                        elif action == 'message' and message:
+                            self.root.after(0, lambda m=message: messagebox.showinfo("관리자 메시지", m, parent=self.root))
                             cmd_success = True
-                    elif action == 'message' and message:
-                        self.root.after(0, lambda m=message: messagebox.showinfo("관리자 메시지", m, parent=self.root))
-                        cmd_success = True
                     
-                    # 명령 처리 성공 후에만 Firebase에서 삭제 (실패 시 재시도 가능)
-                    if cmd_success and cmd_type == 'individual':
-                        del_url = f"{central_url.rstrip('/')}/commands/{pc_id}.json"
-                        del_req = urllib.request.Request(del_url, method='DELETE')
-                        try:
-                            with urllib.request.urlopen(del_req, timeout=6, context=ssl_context) as res:
-                                pass
-                        except Exception as e:
+                        # 명령 처리 성공 후에만 Firebase에서 삭제 (실패 시 재시도 가능)
+                        if cmd_success and cmd_type == 'individual':
+                            if push_id:
+                                del_url = f"{central_url.rstrip('/')}/commands/{pc_id}/{push_id}.json"
+                            else:
+                                                        del_url = f"{central_url.rstrip('/')}/commands/{pc_id}.json"
+                            del_req = urllib.request.Request(del_url, method='DELETE')
                             try:
-                                with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
-                                    ef.write(f"[{datetime.now()}] DELETE cmd error: {e}\n")
-                            except: pass
+                                with urllib.request.urlopen(del_req, timeout=6, context=ssl_context) as res:
+                                    pass
+                            except Exception as e:
+                                try:
+                                    with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
+                                        ef.write(f"[{datetime.now()}] DELETE cmd error: {e}\n")
+                                except: pass
             except Exception as ge:
                 try:
                     with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
@@ -1825,7 +1837,7 @@ class AutoShutdownAppV2:
                 try:
                     # PowerShell의 Shell.Application COM 객체를 이용해 안전하게 폴더 창만 닫기
                     ps_cmd = "$shell = New-Object -ComObject Shell.Application; $shell.Windows() | ForEach-Object { $_.Quit() }"
-                    subprocess.run(['powershell', '-Command', ps_cmd], creationflags=subprocess.CREATE_NO_WINDOW)
+                    subprocess.run(['powershell', '-Command', ps_cmd], creationflags=subprocess.CREATE_NO_WINDOW, timeout=10)
                     self.root.after(0, lambda: self.add_system_alert("📂 파일탐색기 창 닫기 완료 (프로세스 유지)"))
                 except Exception as e:
                     self.root.after(0, lambda m=str(e): self.add_system_alert(f"⚠️ 파일탐색기 창 닫기 오류: {m}"))
@@ -1835,7 +1847,8 @@ class AutoShutdownAppV2:
                     result = subprocess.run(
                         ['tasklist', '/fo', 'csv', '/nh'],
                         capture_output=True, text=True,
-                        creationflags=subprocess.CREATE_NO_WINDOW
+                        creationflags=subprocess.CREATE_NO_WINDOW,
+                        timeout=10
                     )
                     pids_to_kill = []
                     for line in result.stdout.strip().split('\n'):
@@ -1859,7 +1872,7 @@ class AutoShutdownAppV2:
                             args = ['taskkill', '/f']
                             for p in chunk:
                                 args.extend(['/pid', p])
-                            subprocess.run(args, creationflags=subprocess.CREATE_NO_WINDOW)
+                            subprocess.run(args, creationflags=subprocess.CREATE_NO_WINDOW, timeout=5)
                 except Exception as e:
                     self.root.after(0, lambda m=str(e): self.add_system_alert(f"⚠️ 프로세스 종료 오류: {m}"))
                 
@@ -1879,7 +1892,8 @@ class AutoShutdownAppV2:
                         tl = subprocess.run(
                             ['tasklist', '/fo', 'csv', '/nh'],
                             capture_output=True, text=True,
-                            creationflags=subprocess.CREATE_NO_WINDOW
+                            creationflags=subprocess.CREATE_NO_WINDOW,
+                            timeout=10
                         )
                         for line in tl.stdout.strip().split('\n'):
                             line = line.strip()
@@ -1907,21 +1921,27 @@ class AutoShutdownAppV2:
                             continue
                         try:
                             full_path = os.path.join(on_folder, f)
-                            
                             # 포커스 강제 가져오기 트릭 (Alt 키 시뮬레이션)
                             try:
                                 ctypes.windll.user32.keybd_event(0x12, 0, 0, 0) # Alt 누름
                                 ctypes.windll.user32.keybd_event(0x12, 0, 2, 0) # Alt 뗌
                             except: pass
 
-                            subprocess.Popen(
-                                full_path,
-                                cwd=on_folder,
-                                shell=True,
-                                creationflags=subprocess.CREATE_NO_WINDOW
-                            )
+                            # OS Shell을 직접 호출하여 사용자가 더블클릭한 것과 동일하게 실행 (포커스 획득 보장)
+                            try:
+                                # SW_SHOWNORMAL = 1
+                                ctypes.windll.shell32.ShellExecuteW(None, "open", full_path, None, on_folder, 1)
+                            except Exception:
+                                # 실패 시 fallback
+                                subprocess.Popen(
+                                    full_path,
+                                    cwd=on_folder,
+                                    shell=True,
+                                    creationflags=subprocess.CREATE_NO_WINDOW
+                                )
+                                
                             launched += 1
-                            time.sleep(0.2)
+                            time.sleep(0.5) # 여러 프로그램 실행 시 포커스 경합 방지
                         except Exception as e:
                             self.root.after(0, lambda m=f"{f}: {e}": self.add_system_alert(f"⚠️ 실행 실패 - {m}"))
                 except Exception as e:
@@ -2330,107 +2350,119 @@ class HeadlessShutdownApp:
                                 
                 # 3. 명령 실행
                 if cmd and isinstance(cmd, dict):
-                    action = cmd.get("action")
-                    message = cmd.get("message", "")
-                    _log(f"Executing cmd: action={action}")
+                    commands_to_process = []
+                    if "action" in cmd:
+                        commands_to_process.append((None, cmd))
+                    else:
+                        for push_id, payload in cmd.items():
+                            if isinstance(payload, dict) and "action" in payload:
+                                commands_to_process.append((push_id, payload))
+
+                    for push_id, payload in commands_to_process:
+                        action = payload.get("action")
+                        message = payload.get("message", "")
+                        _log(f"Executing cmd: action={action}")
                     
-                    cmd_success = False
-                    try:
-                        if action == 'shutdown':
-                            _log("Executing: shutdown /s /t 0")
-                            subprocess.run(['shutdown', '/s', '/t', '0'], creationflags=subprocess.CREATE_NO_WINDOW)
-                            cmd_success = True
-                        elif action == 'sleep':
-                            _log("Executing: sleep (SetSuspendState)")
-                            subprocess.run(['rundll32.exe', 'powrprof.dll,SetSuspendState', '0,1,0'], creationflags=subprocess.CREATE_NO_WINDOW)
-                            cmd_success = True
-                        elif action == 'restart':
-                            _log("Executing: shutdown /r /t 0")
-                            subprocess.run(['shutdown', '/r', '/t', '0'], creationflags=subprocess.CREATE_NO_WINDOW)
-                            cmd_success = True
-                        elif action == 'update':
-                            _log("Executing: update check")
-                            threading.Thread(target=self.check_for_updates, daemon=True).start()
-                            cmd_success = True
-                        elif action == 'setup_mode':
-                            # headless 모드에서는 setup_mode 지원 불가 → 명령만 소비(삭제)
-                            _log("setup_mode received in headless - acknowledging (no-op)")
-                            cmd_success = True
-                        elif action == 'wol' and isinstance(message, dict):
-                            _log("Executing: wol packet broadcast")
-                            mac_to_wake = message.get('mac', '')
-                            if mac_to_wake:
-                                send_wol_packet(mac_to_wake)
-                                cmd_success = True
-                        elif action == 'close_active_window':
-                            _log("Executing: close active window")
-                            try:
-                                hwnd = ctypes.windll.user32.GetForegroundWindow()
-                                if hwnd:
-                                    length = 256
-                                    class_name = ctypes.create_unicode_buffer(length)
-                                    ctypes.windll.user32.GetClassNameW(hwnd, class_name, length)
-                                    if class_name.value not in ["Progman", "WorkerW", "Shell_TrayWnd"]:
-                                        ctypes.windll.user32.PostMessageW(hwnd, 0x0010, 0, 0)
-                            except Exception as close_ex:
-                                _log(f"close_active_window error: {close_ex}")
-                            cmd_success = True
-                        elif action == 'message':
-                            # headless 모드에서는 팝업 표시 불가 → 명령만 소비(삭제)
-                            _log(f"message received in headless - acknowledging: {message}")
-                            cmd_success = True
-                        elif action == 'set_config' and isinstance(message, dict):
-                            _log(f"Executing: set_config with {len(message)} keys")
-                            current = self.load_config()
-                            for k, v in message.items():
-                                if k in DAYS and isinstance(v, dict):
-                                    if k not in current:
-                                        current[k] = {}
-                                    for period, p_data in v.items():
-                                        orig_period = period.replace("_", "/")
-                                        current[k][orig_period] = p_data
-                                else:
-                                    if isinstance(v, dict) and k in current and isinstance(current[k], dict):
-                                        current[k].update(v)
-                                    else:
-                                        current[k] = v
-                            self.config = current
-                            self.save_config()
-                            cmd_success = True
-                            
-                            try:
-                                updated_cfg = sanitize_rtdb_keys(current)
-                                cfg_patch_payload = json.dumps({'config': updated_cfg}).encode('utf-8')
-                                cfg_patch_url = f"{central_url.rstrip('/')}/pcs/{pc_id}.json"
-                                cfg_patch_req = urllib.request.Request(
-                                    cfg_patch_url,
-                                    data=cfg_patch_payload,
-                                    method='PATCH',
-                                    headers=_headers
-                                )
-                                with urllib.request.urlopen(cfg_patch_req, timeout=5, context=ssl_context) as _:
-                                    pass
-                                _log("set_config Firebase PATCH success")
-                            except Exception as pe:
-                                _log(f"set_config Firebase PATCH error: {pe}")
-                        else:
-                            # 알 수 없는 명령도 소비하여 큐에 쌓이지 않도록 함
-                            _log(f"Unknown action '{action}' - acknowledging to clear queue")
-                            cmd_success = True
-                    except Exception as exec_err:
-                        _log(f"CMD execution error: {exec_err}")
-                        cmd_success = True  # 실패해도 명령 삭제하여 무한 재시도 방지
-                    
-                    # 4. 명령 삭제 (개별 명령일 때만)
-                    if cmd_success and cmd_type == 'individual':
-                        del_url = f"{central_url.rstrip('/')}/commands/{pc_id}.json"
-                        del_req = urllib.request.Request(del_url, method='DELETE', headers={'User-Agent': 'Mozilla/5.0'})
+                        cmd_success = False
                         try:
-                            with urllib.request.urlopen(del_req, timeout=5, context=ssl_context) as res:
-                                pass
-                            _log("CMD deleted from Firebase")
-                        except Exception as de:
-                            _log(f"CMD delete error: {de}")
+                            if action == 'shutdown':
+                                _log("Executing: shutdown /s /t 0")
+                                subprocess.run(['shutdown', '/s', '/t', '0'], creationflags=subprocess.CREATE_NO_WINDOW)
+                                cmd_success = True
+                            elif action == 'sleep':
+                                _log("Executing: sleep (SetSuspendState)")
+                                subprocess.run(['rundll32.exe', 'powrprof.dll,SetSuspendState', '0,1,0'], creationflags=subprocess.CREATE_NO_WINDOW)
+                                cmd_success = True
+                            elif action == 'restart':
+                                _log("Executing: shutdown /r /t 0")
+                                subprocess.run(['shutdown', '/r', '/t', '0'], creationflags=subprocess.CREATE_NO_WINDOW)
+                                cmd_success = True
+                            elif action == 'update':
+                                _log("Executing: update check")
+                                threading.Thread(target=self.check_for_updates, daemon=True).start()
+                                cmd_success = True
+                            elif action == 'setup_mode':
+                                # headless 모드에서는 setup_mode 지원 불가 → 명령만 소비(삭제)
+                                _log("setup_mode received in headless - acknowledging (no-op)")
+                                cmd_success = True
+                            elif action == 'wol' and isinstance(message, dict):
+                                _log("Executing: wol packet broadcast")
+                                mac_to_wake = message.get('mac', '')
+                                if mac_to_wake:
+                                    send_wol_packet(mac_to_wake)
+                                    cmd_success = True
+                            elif action == 'close_active_window':
+                                _log("Executing: close active window")
+                                try:
+                                    hwnd = ctypes.windll.user32.GetForegroundWindow()
+                                    if hwnd:
+                                        length = 256
+                                        class_name = ctypes.create_unicode_buffer(length)
+                                        ctypes.windll.user32.GetClassNameW(hwnd, class_name, length)
+                                        if class_name.value not in ["Progman", "WorkerW", "Shell_TrayWnd"]:
+                                            ctypes.windll.user32.PostMessageW(hwnd, 0x0010, 0, 0)
+                                except Exception as close_ex:
+                                    _log(f"close_active_window error: {close_ex}")
+                                cmd_success = True
+                            elif action == 'message':
+                                # headless 모드에서는 팝업 표시 불가 → 명령만 소비(삭제)
+                                _log(f"message received in headless - acknowledging: {message}")
+                                cmd_success = True
+                            elif action == 'set_config' and isinstance(message, dict):
+                                _log(f"Executing: set_config with {len(message)} keys")
+                                current = self.load_config()
+                                for k, v in message.items():
+                                    if k in DAYS and isinstance(v, dict):
+                                        if k not in current:
+                                            current[k] = {}
+                                        for period, p_data in v.items():
+                                            orig_period = period.replace("_", "/")
+                                            current[k][orig_period] = p_data
+                                    else:
+                                        if isinstance(v, dict) and k in current and isinstance(current[k], dict):
+                                            current[k].update(v)
+                                        else:
+                                            current[k] = v
+                                self.config = current
+                                self.save_config()
+                                cmd_success = True
+                            
+                                try:
+                                    updated_cfg = sanitize_rtdb_keys(current)
+                                    cfg_patch_payload = json.dumps({'config': updated_cfg}).encode('utf-8')
+                                    cfg_patch_url = f"{central_url.rstrip('/')}/pcs/{pc_id}.json"
+                                    cfg_patch_req = urllib.request.Request(
+                                        cfg_patch_url,
+                                        data=cfg_patch_payload,
+                                        method='PATCH',
+                                        headers=_headers
+                                    )
+                                    with urllib.request.urlopen(cfg_patch_req, timeout=5, context=ssl_context) as _:
+                                        pass
+                                    _log("set_config Firebase PATCH success")
+                                except Exception as pe:
+                                    _log(f"set_config Firebase PATCH error: {pe}")
+                            else:
+                                # 알 수 없는 명령도 소비하여 큐에 쌓이지 않도록 함
+                                _log(f"Unknown action '{action}' - acknowledging to clear queue")
+                                cmd_success = True
+                        except Exception as exec_err:
+                            _log(f"CMD execution error: {exec_err}")
+                            cmd_success = True  # 실패해도 명령 삭제하여 무한 재시도 방지
+                    
+                        # 4. 명령 삭제 (개별 명령일 때만)
+                        if cmd_success and cmd_type == 'individual':
+                            if push_id:
+                                del_url = f"{central_url.rstrip('/')}/commands/{pc_id}/{push_id}.json"
+                            else:
+                                                        del_url = f"{central_url.rstrip('/')}/commands/{pc_id}.json"
+                            del_req = urllib.request.Request(del_url, method='DELETE', headers={'User-Agent': 'Mozilla/5.0'})
+                            try:
+                                with urllib.request.urlopen(del_req, timeout=5, context=ssl_context) as res:
+                                    pass
+                                _log("CMD deleted from Firebase")
+                            except Exception as de:
+                                _log(f"CMD delete error: {de}")
             except Exception as ge:
                 _log(f"General poller error: {ge}")
             time.sleep(2)
