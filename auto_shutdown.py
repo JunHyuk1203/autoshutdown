@@ -219,24 +219,45 @@ ctk.set_appearance_mode("System")
 ctk.set_default_color_theme("blue")
 
 def get_open_windows():
-    """현재 화면에 보이는 창 목록 반환: [{"title": "...", "exe": "..."}, ...]"""
+    """ALT+TAB 목록과 동일한 방식으로 사용자에게 보이는 창만 반환"""
     results = []
     PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    GW_OWNER = 4
+    WS_EX_TOOLWINDOW = 0x00000080
+    DWMWA_CLOAKED = 14
+
+    def is_real_window(hwnd):
+        """ALT+TAB에 나타나는 실제 사용자 창인지 확인"""
+        if not ctypes.windll.user32.IsWindowVisible(hwnd):
+            return False
+        # 소유자(owner)가 있는 창은 자식/팝업 창 → 제외
+        owner = ctypes.windll.user32.GetWindow(hwnd, GW_OWNER)
+        if owner != 0:
+            return False
+        # 툴윈도우 스타일(트레이 팝업, 미니 유틸 등) → 제외
+        ex_style = ctypes.windll.user32.GetWindowLongW(hwnd, -20)  # GWL_EXSTYLE
+        if ex_style & WS_EX_TOOLWINDOW:
+            return False
+        # Windows 10+ 가상 데스크탑의 숨겨진 창(Cloaked) → 제외
+        try:
+            cloaked = ctypes.c_int(0)
+            ctypes.windll.dwmapi.DwmGetWindowAttribute(
+                hwnd, DWMWA_CLOAKED, ctypes.byref(cloaked), ctypes.sizeof(cloaked)
+            )
+            if cloaked.value != 0:
+                return False
+        except Exception:
+            pass
+        return True
 
     def enum_handler(hwnd, _):
         try:
-            if not ctypes.windll.user32.IsWindowVisible(hwnd):
+            if not is_real_window(hwnd):
                 return True
-            length = ctypes.windll.user32.GetWindowTextLengthW(hwnd)
-            if length == 0:
-                return True
-            buf = ctypes.create_unicode_buffer(length + 1)
-            ctypes.windll.user32.GetWindowTextW(hwnd, buf, length + 1)
+            buf = ctypes.create_unicode_buffer(256)
+            ctypes.windll.user32.GetWindowTextW(hwnd, buf, 256)
             title = buf.value.strip()
             if not title:
-                return True
-            # 부모 창이 없는 최상위 창만 (자식 창 제외)
-            if ctypes.windll.user32.GetParent(hwnd) != 0:
                 return True
             pid = ctypes.c_ulong()
             ctypes.windll.user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
@@ -251,7 +272,7 @@ def get_open_windows():
                     exe = os.path.basename(exe_buf.value) if exe_buf.value else "unknown.exe"
             except Exception:
                 pass
-            results.append({"title": title[:100], "exe": exe})
+            results.append({"title": title[:120], "exe": exe})
         except Exception:
             pass
         return True
@@ -261,7 +282,7 @@ def get_open_windows():
         ctypes.windll.user32.EnumWindows(WNDENUMPROC(enum_handler), 0)
     except Exception:
         pass
-    return results[:30]
+    return results[:40]
 
 def sanitize_rtdb_keys(data):
     if isinstance(data, dict):
