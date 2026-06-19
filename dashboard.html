@@ -726,6 +726,76 @@ body {
     color: #a5b4fc;
     box-shadow: 0 0 8px rgba(79, 70, 229, 0.3);
 }
+/* ── 창 목록 모달 ── */
+#windows-modal .window-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 420px;
+    overflow-y: auto;
+    margin-top: 12px;
+    padding-right: 4px;
+}
+#windows-modal .window-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border-light);
+    border-radius: 10px;
+    padding: 9px 12px;
+    transition: background 0.2s;
+}
+#windows-modal .window-row:hover {
+    background: rgba(255,255,255,0.07);
+}
+#windows-modal .exe-badge {
+    flex-shrink: 0;
+    background: rgba(79,70,229,0.18);
+    border: 1px solid rgba(79,70,229,0.35);
+    border-radius: 6px;
+    color: #a5b4fc;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 7px;
+    white-space: nowrap;
+    max-width: 130px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+#windows-modal .window-title {
+    font-size: 12px;
+    color: var(--text-main);
+    word-break: break-word;
+    line-height: 1.4;
+}
+#windows-modal .wm-search {
+    width: 100%;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--border-light);
+    border-radius: 8px;
+    color: var(--text-main);
+    font-size: 12px;
+    font-family: inherit;
+    padding: 7px 12px;
+    outline: none;
+    transition: border-color 0.2s;
+    box-sizing: border-box;
+    margin-top: 12px;
+}
+#windows-modal .wm-search:focus {
+    border-color: var(--primary);
+}
+.btn-teal {
+    background: rgba(6, 182, 212, 0.15);
+    color: #67e8f9;
+    border: 1px solid rgba(6, 182, 212, 0.35);
+}
+.btn-teal:hover:not(:disabled) {
+    background: rgba(6, 182, 212, 0.3);
+    border-color: #22d3ee;
+    box-shadow: 0 0 8px rgba(6, 182, 212, 0.3);
+}
 </style>
 </head>
 <body>
@@ -1018,6 +1088,26 @@ body {
 </div>
 
 <!-- ─────────────────────────────────────────────────────────────
+   실행 중인 창 목록 모달
+   ───────────────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="windows-modal">
+    <div class="modal-card" style="max-width: 560px; width: 95%; max-height: 90vh; overflow-y: auto; text-align: left;">
+        <h3 class="modal-title" style="margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
+            <span>🖥️ 실행 중인 창 목록</span>
+            <span style="font-size: 12px; color: var(--accent-blue);" id="windows-modal-target-label">-</span>
+        </h3>
+        <p style="font-size: 12px; color: var(--text-muted);">해당 PC에서 현재 화면에 보이는 창 목록입니다. (최대 30개, 5초마다 갱신)</p>
+        <input class="wm-search" id="wm-search-input" type="text" placeholder="🔍 창 제목 또는 프로그램명 검색..." oninput="filterWindowsList()" autocomplete="off">
+        <div class="window-list" id="wm-list-container">
+            <!-- JS로 채워짐 -->
+        </div>
+        <div class="modal-actions" style="margin-top: 20px;">
+            <button class="modal-btn modal-btn-cancel" onclick="closeWindowsModal()">닫기</button>
+        </div>
+    </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────
    JAVASCRIPT LOGIC (Firebase SDK & REST Hybrid)
    ───────────────────────────────────────────────────────────── -->
 <script>
@@ -1030,6 +1120,10 @@ let pcs = {};
 let selectedPcs = new Set();
 let pollerInterval = null;
 let serverTimeOffset = 0;
+
+// 창 목록 모달 상태
+let _wmPcId = null;
+let _wmAllWindows = [];
 
 // 모달 콜백
 let pendingAction = null;
@@ -1123,6 +1217,23 @@ async function fetchPCData() {
         pcs = data || {};
         renderPCGrid(serverNowMs);
         updateStatistics(serverNowMs);
+
+        // 창 목록 모달이 열려있으면 자동 갱신
+        if (_wmPcId && document.getElementById('windows-modal').classList.contains('show')) {
+            const pc = pcs[_wmPcId];
+            if (pc) {
+                const raw = pc.windows;
+                if (Array.isArray(raw)) {
+                    _wmAllWindows = raw;
+                } else if (raw && typeof raw === 'object') {
+                    _wmAllWindows = Object.values(raw);
+                } else {
+                    _wmAllWindows = [];
+                }
+                const q = document.getElementById('wm-search-input').value.trim().toLowerCase();
+                if (q) { filterWindowsList(); } else { renderWindowsList(_wmAllWindows); }
+            }
+        }
     } catch (e) {
         document.getElementById("label-connected-db").innerText = "⚠️ 데이터베이스에 연결할 수 없습니다. 설정을 확인하세요.";
     }
@@ -1266,8 +1377,9 @@ function renderPCGrid(serverNowMs) {
                 <button class="card-action-btn btn-success" onclick="event.stopPropagation(); triggerSingleCommand('${pcId}', 'update')" ${isOnline ? '' : 'disabled'} title="원격 업데이트">🔼 업뎃</button>
                 <button class="card-action-btn btn-secondary" onclick="event.stopPropagation(); triggerSingleMessage('${pcId}')" ${isOnline ? '' : 'disabled'} title="메시지 전송">💬 메시지</button>
                 ${isOnline 
-                    ? `<button class="card-action-btn btn-warning" onclick="event.stopPropagation(); openFileModal('${pcId}')" title="원격 파일 열기" style="grid-column: 1 / 3;">📂 파일 열기</button>
-                       <button class="card-action-btn btn-dark" onclick="event.stopPropagation(); triggerSingleCommand('${pcId}', 'close_active_window')" title="가장 앞에 있는 창 닫기" style="grid-column: 3 / 4;">❌ 창 닫기</button>`
+                    ? `<button class="card-action-btn btn-warning" onclick="event.stopPropagation(); openFileModal('${pcId}')" title="원격 파일 열기" style="grid-column: 1 / 2;">📂 파일 열기</button>
+                       <button class="card-action-btn btn-dark" onclick="event.stopPropagation(); triggerSingleCommand('${pcId}', 'close_active_window')" title="가장 앞에 있는 창 닫기" style="grid-column: 2 / 3;">❌ 창 닫기</button>
+                       <button class="card-action-btn btn-teal" onclick="event.stopPropagation(); openWindowsModal('${pcId}')" title="실행 중인 창 목록 보기" style="grid-column: 3 / 4;">🖥️ 실행 창</button>`
                     : `<button class="card-action-btn btn-success" onclick="event.stopPropagation(); triggerWOL('${pcId}', '${pc.mac || ''}')" title="원격 전원 켜기" style="grid-column: 1 / -1;">⚡ 전원 켜기 (WOL)</button>`
                 }
             `;
@@ -2054,6 +2166,73 @@ async function sendOpenFileCommand() {
         }
     );
 }
+
+// ── 실행 중인 창 목록 모달 ──
+function openWindowsModal(pcId) {
+    _wmPcId = pcId;
+    const pc = pcs[pcId];
+    if (!pc) return;
+
+    document.getElementById('windows-modal-target-label').innerText = pc.hostname || pcId;
+    document.getElementById('wm-search-input').value = '';
+
+    // Firebase는 배열을 인덱스 객체로 저장하므로 Object.values()로 변환
+    const raw = pc.windows;
+    if (Array.isArray(raw)) {
+        _wmAllWindows = raw;
+    } else if (raw && typeof raw === 'object') {
+        _wmAllWindows = Object.values(raw);
+    } else {
+        _wmAllWindows = [];
+    }
+
+    renderWindowsList(_wmAllWindows);
+    document.getElementById('windows-modal').classList.add('show');
+}
+
+function closeWindowsModal() {
+    document.getElementById('windows-modal').classList.remove('show');
+    _wmPcId = null;
+    _wmAllWindows = [];
+}
+
+function renderWindowsList(list) {
+    const container = document.getElementById('wm-list-container');
+    if (!list || list.length === 0) {
+        container.innerHTML = `
+            <div style="text-align:center; padding: 30px 0; color: var(--text-muted); font-size: 13px;">
+                <div style="font-size: 32px; margin-bottom: 10px;">🪟</div>
+                표시할 창이 없습니다.<br>
+                <span style="font-size: 11px;">PC가 오프라인이거나 아직 창 정보가 수집되지 않았습니다.</span>
+            </div>`;
+        return;
+    }
+
+    container.innerHTML = list.map((w, i) => {
+        const exe = (w.exe || 'unknown.exe').replace(/</g, '&lt;');
+        const title = (w.title || '(제목 없음)').replace(/</g, '&lt;');
+        return `
+            <div class="window-row">
+                <span class="exe-badge" title="${exe}">${exe}</span>
+                <span class="window-title">${title}</span>
+            </div>`;
+    }).join('');
+}
+
+function filterWindowsList() {
+    const q = document.getElementById('wm-search-input').value.trim().toLowerCase();
+    if (!q) {
+        renderWindowsList(_wmAllWindows);
+        return;
+    }
+    const filtered = _wmAllWindows.filter(w =>
+        (w.title || '').toLowerCase().includes(q) ||
+        (w.exe || '').toLowerCase().includes(q)
+    );
+    renderWindowsList(filtered);
+}
+
+// (windows modal auto-refresh is handled directly inside fetchPCData above)
 </script>
 </body>
 </html>

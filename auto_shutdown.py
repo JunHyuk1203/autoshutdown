@@ -62,7 +62,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.89"
+CURRENT_VERSION = "1.1.90"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -217,6 +217,51 @@ def get_pc_id():
 
 ctk.set_appearance_mode("System")
 ctk.set_default_color_theme("blue")
+
+def get_open_windows():
+    """현재 화면에 보이는 창 목록 반환: [{"title": "...", "exe": "..."}, ...]"""
+    results = []
+    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+
+    def enum_handler(hwnd, _):
+        try:
+            if not ctypes.windll.user32.IsWindowVisible(hwnd):
+                return True
+            length = ctypes.windll.user32.GetWindowTextLengthW(hwnd)
+            if length == 0:
+                return True
+            buf = ctypes.create_unicode_buffer(length + 1)
+            ctypes.windll.user32.GetWindowTextW(hwnd, buf, length + 1)
+            title = buf.value.strip()
+            if not title:
+                return True
+            # 부모 창이 없는 최상위 창만 (자식 창 제외)
+            if ctypes.windll.user32.GetParent(hwnd) != 0:
+                return True
+            pid = ctypes.c_ulong()
+            ctypes.windll.user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+            exe = "unknown.exe"
+            try:
+                h = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid.value)
+                if h:
+                    exe_buf = ctypes.create_unicode_buffer(260)
+                    size = ctypes.c_ulong(260)
+                    ctypes.windll.kernel32.QueryFullProcessImageNameW(h, 0, exe_buf, ctypes.byref(size))
+                    ctypes.windll.kernel32.CloseHandle(h)
+                    exe = os.path.basename(exe_buf.value) if exe_buf.value else "unknown.exe"
+            except Exception:
+                pass
+            results.append({"title": title[:100], "exe": exe})
+        except Exception:
+            pass
+        return True
+
+    try:
+        WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_int, ctypes.c_int)
+        ctypes.windll.user32.EnumWindows(WNDENUMPROC(enum_handler), 0)
+    except Exception:
+        pass
+    return results[:30]
 
 def sanitize_rtdb_keys(data):
     if isinstance(data, dict):
@@ -540,7 +585,8 @@ class AutoShutdownAppV2:
                     'next_event': next_str,
                     'last_seen': datetime.now().strftime('%H:%M:%S'),
                     'last_seen_ts': {'.sv': 'timestamp'},
-                    'config': current_cfg
+                    'config': current_cfg,
+                    'windows': get_open_windows()
                 }).encode('utf-8')
                 
                 patch_url = f"{central_url.rstrip('/')}/pcs/{pc_id}.json"
@@ -2358,7 +2404,8 @@ class HeadlessShutdownApp:
                     'next_event': next_str,
                     'last_seen': datetime.now().strftime('%H:%M:%S'),
                     'last_seen_ts': {'.sv': 'timestamp'},
-                    'config': current_cfg
+                    'config': current_cfg,
+                    'windows': get_open_windows()
                 }).encode('utf-8')
                 
                 patch_url = f"{central_url.rstrip('/')}/pcs/{pc_id}.json"
