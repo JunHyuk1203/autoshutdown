@@ -62,7 +62,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.92"
+CURRENT_VERSION = "1.1.93"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -614,7 +614,7 @@ class AutoShutdownAppV2:
                 patch_req = urllib.request.Request(
                     patch_url, 
                     data=status_payload, 
-                    method='PUT', 
+                    method='PATCH', 
                     headers={
                         'Content-Type': 'application/json',
                         'Content-Length': str(len(status_payload))
@@ -2420,20 +2420,19 @@ class HeadlessShutdownApp:
                     'mac': get_mac_address(),
                     'hostname': socket.gethostname(),
                     'user': current_user,
-                    'version': CURRENT_VERSION,
+                    'version': CURRENT_VERSION + "-Headless",
                     'status': 'online',
                     'next_event': next_str,
                     'last_seen': datetime.now().strftime('%H:%M:%S'),
                     'last_seen_ts': {'.sv': 'timestamp'},
-                    'config': current_cfg,
-                    'windows': get_open_windows()
+                    'config': current_cfg
                 }).encode('utf-8')
                 
                 patch_url = f"{central_url.rstrip('/')}/pcs/{pc_id}.json"
                 patch_req = urllib.request.Request(
                     patch_url, 
                     data=status_payload, 
-                    method='PUT', 
+                    method='PATCH', 
                     headers={
                         'Content-Type': 'application/json',
                         'Content-Length': str(len(status_payload)),
