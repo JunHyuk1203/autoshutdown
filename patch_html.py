@@ -83,7 +83,7 @@ function renderExplorerList(data) {
         const icon = isFolder ? "📁" : "📄";
         const sizeStr = isFolder ? "" : (item.size > 1024*1024 ? (item.size/(1024*1024)).toFixed(1)+'MB' : Math.ceil(item.size/1024)+'KB');
         
-        const safeName = item.name.replace(/'/g, "\\\\\\'").replace(/"/g, "&quot;");
+        const safeName = item.name.replace(/\\\\/g, "\\\\\\\\").replace(/'/g, "\\\\\\'").replace(/"/g, "&quot;");
         
         html += `
             <div style="display:flex; justify-content:space-between; padding:6px 8px; border-bottom:1px solid var(--border-light); cursor:pointer; font-size:12px;"
