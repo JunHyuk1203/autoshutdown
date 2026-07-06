@@ -62,7 +62,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.97"
+CURRENT_VERSION = "1.1.98"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -2783,7 +2783,7 @@ if __name__ == "__main__":
         mutex_global = ctypes.windll.kernel32.CreateMutexW(None, False, "Global\\AutoShutdownAppV2_Mutex")
         err = ctypes.windll.kernel32.GetLastError()
         
-        if err == 183:
+        if err == 183 or err == 5:
             # 다른 인스턴스(예: --headless)가 이미 실행 중인 경우에만 소켓 연결 시도 (바통 터치)
             # 이로써 평상시 무의미한 소켓 연결 시도로 인한 딜레이를 100% 원천 차단!
             try:
@@ -2801,7 +2801,7 @@ if __name__ == "__main__":
                     ctypes.windll.kernel32.SetLastError(0)
                     test_mutex = ctypes.windll.kernel32.CreateMutexW(None, False, "Global\\AutoShutdownAppV2_Mutex")
                     test_err = ctypes.windll.kernel32.GetLastError()
-                    if test_err != 183:
+                    if test_err != 183 and test_err != 5:
                         mutex_global = test_mutex
                         released = True
                         break
