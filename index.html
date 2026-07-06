@@ -2211,12 +2211,39 @@ function renderWindowsList(list) {
     container.innerHTML = list.map((w, i) => {
         const exe = (w.exe || 'unknown.exe').replace(/</g, '&lt;');
         const title = (w.title || '(제목 없음)').replace(/</g, '&lt;');
+        const pid = w.pid;
+        const hwnd = w.hwnd;
+        
+        let actions = '';
+        if (pid && hwnd) {
+            const escapedTitle = title.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+            actions = `
+                <div style="display: flex; gap: 4px; margin-left: auto;">
+                    <button class="card-action-btn btn-teal" style="padding: 2px 6px; font-size: 11px;" onclick="triggerWindowCommand('${_wmPcId}', 'bring_to_front', {hwnd: ${hwnd}}, '창 앞으로 가져오기', '${escapedTitle} 창을 가장 앞으로 가져오시겠습니까?')" title="앞으로 가져오기">🚀</button>
+                    <button class="card-action-btn btn-danger" style="padding: 2px 6px; font-size: 11px;" onclick="triggerWindowCommand('${_wmPcId}', 'kill_process', {pid: ${pid}}, '프로세스 강제 종료', '${escapedTitle} 프로세스를 강제로 종료하시겠습니까?')" title="프로세스 강제 종료">❌</button>
+                </div>
+            `;
+        }
+        
         return `
-            <div class="window-row">
-                <span class="exe-badge" title="${exe}">${exe}</span>
-                <span class="window-title">${title}</span>
+            <div class="window-row" style="display: flex; align-items: center; gap: 8px;">
+                <span class="exe-badge" title="${exe}" style="flex-shrink: 0;">${exe}</span>
+                <span class="window-title" style="flex-grow: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${title}</span>
+                ${actions}
             </div>`;
     }).join('');
+}
+
+async function triggerWindowCommand(pcId, action, data, title, content) {
+    showModal(title, content, async () => {
+        closeModal();
+        const result = await writeCommandToDB(pcId, action, data);
+        if (result.success) {
+            // alert("명령이 전송되었습니다.");
+        } else {
+            alert("명령 전송 중 오류가 발생했습니다: " + result.error);
+        }
+    });
 }
 
 function filterWindowsList() {
