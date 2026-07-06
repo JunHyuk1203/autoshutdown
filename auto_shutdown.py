@@ -62,7 +62,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.99"
+CURRENT_VERSION = "1.1.100"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -739,6 +739,21 @@ class AutoShutdownAppV2:
                                     else:
                                         ctypes.windll.user32.ShowWindow(target_hwnd, 5) # SW_SHOW
                                         
+                                    ctypes.windll.user32.SetForegroundWindow(target_hwnd)
+                                except Exception: pass
+                                cmd_success = True
+                        elif action == 'minimize_window' and isinstance(message, dict):
+                            target_hwnd = message.get('hwnd')
+                            if target_hwnd:
+                                try:
+                                    ctypes.windll.user32.ShowWindow(target_hwnd, 6) # SW_MINIMIZE
+                                except Exception: pass
+                                cmd_success = True
+                        elif action == 'maximize_window' and isinstance(message, dict):
+                            target_hwnd = message.get('hwnd')
+                            if target_hwnd:
+                                try:
+                                    ctypes.windll.user32.ShowWindow(target_hwnd, 3) # SW_MAXIMIZE
                                     ctypes.windll.user32.SetForegroundWindow(target_hwnd)
                                 except Exception: pass
                                 cmd_success = True
