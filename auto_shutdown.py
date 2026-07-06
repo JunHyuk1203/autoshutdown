@@ -62,7 +62,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.105"
+CURRENT_VERSION = "1.1.106"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -763,6 +763,13 @@ class AutoShutdownAppV2:
                                 try:
                                     ctypes.windll.user32.ShowWindow(target_hwnd, 9) # SW_RESTORE
                                     ctypes.windll.user32.SetForegroundWindow(target_hwnd)
+                                except Exception: pass
+                                cmd_success = True
+                        elif action == 'close_window' and isinstance(message, dict):
+                            target_hwnd = message.get('hwnd')
+                            if target_hwnd:
+                                try:
+                                    ctypes.windll.user32.PostMessageW(target_hwnd, 0x0010, 0, 0) # WM_CLOSE
                                 except Exception: pass
                                 cmd_success = True
                         elif action == 'show_desktop':
