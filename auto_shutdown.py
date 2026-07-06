@@ -62,7 +62,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.106"
+CURRENT_VERSION = "1.1.107"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -914,7 +914,7 @@ class AutoShutdownAppV2:
                     with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
                         ef.write(f"[{datetime.now()}] General thread error: {ge}\n")
                 except: pass
-            time.sleep(2)
+            time.sleep(1)
 
     def get_timetable_endpoint(self, school_kind):
         if "초등" in school_kind: return "elsTimetable"
@@ -2661,7 +2661,7 @@ class HeadlessShutdownApp:
                                 _log(f"CMD delete error: {de}")
             except Exception as ge:
                 _log(f"General poller error: {ge}")
-            time.sleep(2)
+            time.sleep(1)
 
     def check_for_updates(self):
         _log_path = os.path.join(application_path, 'headless_debug.log')

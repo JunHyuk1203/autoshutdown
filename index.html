@@ -1196,8 +1196,8 @@ function initializeDashboard() {
     // 첫 조회 실행
     fetchPCData();
     
-    // 2초마다 REST API 폴링 (SDK 비동기 로드 에러 대비 및 완전 정적 무중단 구동)
-    pollerInterval = setInterval(fetchPCData, 2000);
+    // 1초마다 REST API 호출 (더 빠릿하게 반영)
+    pollerInterval = setInterval(fetchPCData, 1000);
 }
 
 // REST API로 Firebase DB의 pcs 노드 동기화
