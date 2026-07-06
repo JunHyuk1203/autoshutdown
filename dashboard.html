@@ -2229,6 +2229,7 @@ function renderWindowsList(list) {
                     <button class="card-action-btn btn-teal" style="padding: 2px 6px; font-size: 11px;" onclick="triggerWindowCommand('${_wmPcId}', 'bring_to_front', {hwnd: ${hwnd}}, '창 앞으로 가져오기', '${escapedTitle} 창을 가장 앞으로 가져오시겠습니까?')" title="앞으로 가져오기">🚀</button>
                     <button class="card-action-btn btn-teal" style="padding: 2px 6px; font-size: 11px;" onclick="triggerWindowCommand('${_wmPcId}', 'minimize_window', {hwnd: ${hwnd}}, '창 최소화', '${escapedTitle} 창을 최소화하시겠습니까?')" title="창 최소화">🔽</button>
                     <button class="card-action-btn btn-teal" style="padding: 2px 6px; font-size: 11px;" onclick="triggerWindowCommand('${_wmPcId}', 'maximize_window', {hwnd: ${hwnd}}, '창 최대화', '${escapedTitle} 창을 최대화하시겠습니까?')" title="창 최대화">🔼</button>
+                    <button class="card-action-btn btn-teal" style="padding: 2px 6px; font-size: 11px;" onclick="triggerWindowCommand('${_wmPcId}', 'restore_window', {hwnd: ${hwnd}}, '창 복구', '${escapedTitle} 창을 원래 크기로 복구하시겠습니까?')" title="창 복구">🗗</button>
                     <button class="card-action-btn btn-danger" style="padding: 2px 6px; font-size: 11px;" onclick="triggerWindowCommand('${_wmPcId}', 'kill_process', {pid: ${pid}, hwnd: ${hwnd}, exe: '${safeExe}'}, '프로세스 강제 종료', '${escapedTitle} 프로세스를 강제로 종료하시겠습니까?')" title="프로세스 강제 종료">❌</button>
                 </div>
             `;
