@@ -62,7 +62,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.110"
+CURRENT_VERSION = "1.1.111"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -883,7 +883,7 @@ class AutoShutdownAppV2:
                     with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
                         ef.write(f"[{datetime.now()}] General thread error: {ge}\n")
                 except: pass
-            time.sleep(1)
+            time.sleep(0.5)
 
     def get_timetable_endpoint(self, school_kind):
         if "초등" in school_kind: return "elsTimetable"
@@ -1404,6 +1404,7 @@ class AutoShutdownAppV2:
             return
             
         self.settings_win = ctk.CTkToplevel(self.root)
+        self.settings_win.protocol("WM_DELETE_WINDOW", self.settings_win.withdraw)
         self.settings_win.title("상세 설정")
         self.settings_win.geometry("380x370")
         self.settings_win.resizable(False, False)
@@ -1801,7 +1802,7 @@ class AutoShutdownAppV2:
         if getattr(self, '_is_prompting', False): return
         self._is_prompting = True
 
-        pwd_win = ctk.CTkToplevel()
+        pwd_win = ctk.CTkToplevel(self.root)
         pwd_win.title("보안 잠금")
         pwd_win.geometry("200x300")
         pwd_win.resizable(False, False)
@@ -2625,7 +2626,7 @@ class HeadlessShutdownApp:
                                 _log(f"CMD delete error: {de}")
             except Exception as ge:
                 _log(f"General poller error: {ge}")
-            time.sleep(1)
+            time.sleep(0.5)
 
     def check_for_updates(self):
         _log_path = os.path.join(application_path, 'headless_debug.log')
