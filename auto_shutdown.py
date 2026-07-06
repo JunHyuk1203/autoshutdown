@@ -62,7 +62,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.108"
+CURRENT_VERSION = "1.1.109"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -105,32 +105,7 @@ def get_idle_time():
         return millis / 1000.0
     return 0.0
 
-def get_mac_address():
-    try:
-        import uuid
-        mac = uuid.getnode()
-        mac_str = ':'.join(re.findall('..', f'{mac:012x}'))
-        return mac_str.upper()
-    except Exception:
-        return ""
 
-def send_wol_packet(mac_address):
-    try:
-        cleaned_mac = mac_address.replace(":", "").replace("-", "").replace(".", "")
-        if len(cleaned_mac) != 12:
-            return False
-        
-        data = bytes.fromhex("FFFFFFFFFFFF" + cleaned_mac * 16)
-        
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        
-        sock.sendto(data, ('255.255.255.255', 9))
-        sock.sendto(data, ('255.255.255.255', 7))
-        sock.close()
-        return True
-    except Exception:
-        return False
 
 def is_media_playing():
     if not HAS_PYCAW: return False
@@ -598,7 +573,7 @@ class AutoShutdownAppV2:
                 # 1. 내 PC 상태 보고 (PATCH)
                 status_payload = json.dumps({
                     'ip': ip,
-                    'mac': get_mac_address(),
+                    'mac': '',
                     'hostname': socket.gethostname(),
                     'user': current_user,
                     'version': CURRENT_VERSION,
@@ -780,13 +755,7 @@ class AutoShutdownAppV2:
                                 ctypes.windll.user32.keybd_event(0x5B, 0, 2, 0) # LWIN up
                             except Exception: pass
                             cmd_success = True
-                        elif action == 'wol' and isinstance(message, dict):
-                            mac_to_wake = message.get('mac', '')
-                            if mac_to_wake:
-                                send_wol_packet(mac_to_wake)
-                                cmd_success = True
-                                if app_instance:
-                                    app_instance.root.after(0, lambda m=mac_to_wake: app_instance.add_system_alert(f"⚡ 원격 PC 깨우기(WOL) 패킷 송신: {m}"))
+
                         elif action == 'set_config' and isinstance(message, dict):
                             try:
                                 current = {}
@@ -2483,7 +2452,7 @@ class HeadlessShutdownApp:
                 # 1. 상태 보고 (PUT)
                 status_payload = json.dumps({
                     'ip': ip,
-                    'mac': get_mac_address(),
+                    'mac': '',
                     'hostname': socket.gethostname(),
                     'user': current_user,
                     'version': CURRENT_VERSION + "-Headless",
@@ -2581,12 +2550,7 @@ class HeadlessShutdownApp:
                                 _log("Executing: headless setup_mode (taskkill only)")
                                 threading.Thread(target=self.run_setup_mode, daemon=True).start()
                                 cmd_success = True
-                            elif action == 'wol' and isinstance(message, dict):
-                                _log("Executing: wol packet broadcast")
-                                mac_to_wake = message.get('mac', '')
-                                if mac_to_wake:
-                                    send_wol_packet(mac_to_wake)
-                                    cmd_success = True
+
                             elif action == 'close_active_window':
                                 _log("Executing: close active window")
                                 try:

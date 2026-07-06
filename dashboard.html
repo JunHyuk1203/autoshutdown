@@ -940,7 +940,7 @@ body {
                     <input class="form-input" id="cfg-st-token" type="password" placeholder="스마트싱스 PAT (Bearer 토큰) 입력">
                 </div>
                 <div class="form-group" style="margin-bottom: 0;">
-                    <label class="form-label">디바이스 ID <span style="font-weight: 400; color: var(--text-muted);">(WOL 기기 / 스마트 플러그 ID)</span></label>
+                    <label class="form-label">디바이스 ID <span style="font-weight: 400; color: var(--text-muted);">(스마트 플러그 ID)</span></label>
                     <input class="form-input" id="cfg-st-device-id" type="text" placeholder="SmartThings Device UUID 입력">
                 </div>
             </div>
@@ -1394,7 +1394,9 @@ function renderPCGrid(serverNowMs) {
                     ? `<button class="card-action-btn btn-warning" onclick="event.stopPropagation(); openFileModal('${pcId}')" title="원격 파일 열기" style="grid-column: 1 / 2;">📂 파일 열기</button>
                        <button class="card-action-btn btn-dark" onclick="event.stopPropagation(); triggerSingleCommand('${pcId}', 'close_active_window')" title="가장 앞에 있는 창 닫기" style="grid-column: 2 / 3;">❌ 창 닫기</button>
                        <button class="card-action-btn btn-teal" onclick="event.stopPropagation(); openWindowsModal('${pcId}')" title="실행 중인 창 목록 보기" style="grid-column: 3 / 4;">🖥️ 실행 창</button>`
-                    : `<button class="card-action-btn btn-success" onclick="event.stopPropagation(); triggerWOL('${pcId}', '${pc.mac || ''}')" title="원격 전원 켜기" style="grid-column: 1 / -1;">⚡ 전원 켜기 (WOL)</button>`
+                    : (pc?.config?.smartthings?.token && pc?.config?.smartthings?.deviceId 
+                        ? `<button class="card-action-btn btn-success" onclick="event.stopPropagation(); triggerSmartThingsPowerOn('${pcId}')" title="스마트싱스 전원 켜기" style="grid-column: 1 / -1;">⚡ 스마트플러그 전원 켜기</button>` 
+                        : `<div style="grid-column: 1 / -1; text-align: center; color: var(--text-muted); font-size: 13px; padding: 10px;">전원을 켤 수 없습니다 (스마트싱스 미설정)</div>`)
                 }
             `;
         }
