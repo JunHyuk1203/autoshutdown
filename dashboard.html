@@ -1284,7 +1284,7 @@ function renderPCGrid(serverNowMs) {
     pcKeys.sort().forEach(pcId => {
         const pc = pcs[pcId];
         const diffSeconds = getPCDiffSeconds(pc, serverNowMs);
-        const isOnline = (pc.status === "online") && (diffSeconds < 15);
+        const isOnline = (pc.status === "online") && (diffSeconds < 30);
         
         // Offline deselect logic removed to allow offline selection
         
@@ -1398,7 +1398,7 @@ function updateStatistics(serverNowMs) {
     const online = pcKeys.filter(k => {
         const pc = pcs[k];
         const diffSeconds = getPCDiffSeconds(pc, serverNowMs);
-        return (pc.status === "online") && (diffSeconds < 15);
+        return (pc.status === "online") && (diffSeconds < 30);
     }).length;
     const offline = total - online;
     
@@ -2086,7 +2086,7 @@ async function triggerWOL(pcId, mac) {
             const onlinePCs = Object.keys(pcs).filter(k => {
                 const item = pcs[k];
                 const diffSeconds = getPCDiffSeconds(item, Date.now() + serverTimeOffset);
-                return (item.status === "online") && (diffSeconds < 15) && (k !== pcId);
+                return (item.status === "online") && (diffSeconds < 30) && (k !== pcId);
             });
 
             if (onlinePCs.length === 0) {
