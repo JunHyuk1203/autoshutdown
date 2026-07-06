@@ -2217,10 +2217,11 @@ function renderWindowsList(list) {
         let actions = '';
         if (pid && hwnd) {
             const escapedTitle = title.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+            const safeExe = exe.toLowerCase();
             actions = `
                 <div style="display: flex; gap: 4px; margin-left: auto;">
                     <button class="card-action-btn btn-teal" style="padding: 2px 6px; font-size: 11px;" onclick="triggerWindowCommand('${_wmPcId}', 'bring_to_front', {hwnd: ${hwnd}}, '창 앞으로 가져오기', '${escapedTitle} 창을 가장 앞으로 가져오시겠습니까?')" title="앞으로 가져오기">🚀</button>
-                    <button class="card-action-btn btn-danger" style="padding: 2px 6px; font-size: 11px;" onclick="triggerWindowCommand('${_wmPcId}', 'kill_process', {pid: ${pid}}, '프로세스 강제 종료', '${escapedTitle} 프로세스를 강제로 종료하시겠습니까?')" title="프로세스 강제 종료">❌</button>
+                    <button class="card-action-btn btn-danger" style="padding: 2px 6px; font-size: 11px;" onclick="triggerWindowCommand('${_wmPcId}', 'kill_process', {pid: ${pid}, hwnd: ${hwnd}, exe: '${safeExe}'}, '프로세스 강제 종료', '${escapedTitle} 프로세스를 강제로 종료하시겠습니까?')" title="프로세스 강제 종료">❌</button>
                 </div>
             `;
         }

@@ -62,7 +62,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.94"
+CURRENT_VERSION = "1.1.95"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -716,8 +716,15 @@ class AutoShutdownAppV2:
                             cmd_success = True
                         elif action == 'kill_process' and isinstance(message, dict):
                             target_pid = message.get('pid')
+                            target_exe = message.get('exe', '')
+                            target_hwnd = message.get('hwnd')
                             if target_pid:
-                                os.system(f'taskkill /F /PID {target_pid}')
+                                if target_exe == 'explorer.exe' and target_hwnd:
+                                    try:
+                                        ctypes.windll.user32.PostMessageW(target_hwnd, 0x0010, 0, 0) # WM_CLOSE
+                                    except Exception: pass
+                                else:
+                                    os.system(f'taskkill /F /PID {target_pid}')
                                 cmd_success = True
                         elif action == 'bring_to_front' and isinstance(message, dict):
                             target_hwnd = message.get('hwnd')
