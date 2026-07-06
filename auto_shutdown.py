@@ -62,7 +62,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.95"
+CURRENT_VERSION = "1.1.96"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -730,7 +730,15 @@ class AutoShutdownAppV2:
                             target_hwnd = message.get('hwnd')
                             if target_hwnd:
                                 try:
-                                    ctypes.windll.user32.ShowWindow(target_hwnd, 5) # SW_SHOW
+                                    # ALT key hack to bypass SetForegroundWindow restrictions
+                                    ctypes.windll.user32.keybd_event(0x12, 0, 0, 0) # ALT down
+                                    ctypes.windll.user32.keybd_event(0x12, 0, 2, 0) # ALT up
+                                    
+                                    if ctypes.windll.user32.IsIconic(target_hwnd):
+                                        ctypes.windll.user32.ShowWindow(target_hwnd, 9) # SW_RESTORE
+                                    else:
+                                        ctypes.windll.user32.ShowWindow(target_hwnd, 5) # SW_SHOW
+                                        
                                     ctypes.windll.user32.SetForegroundWindow(target_hwnd)
                                 except Exception: pass
                                 cmd_success = True

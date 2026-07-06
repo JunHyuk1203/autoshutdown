@@ -1223,15 +1223,18 @@ async function fetchPCData() {
             const pc = pcs[_wmPcId];
             if (pc) {
                 const raw = pc.windows;
+                let newWindows = [];
                 if (Array.isArray(raw)) {
-                    _wmAllWindows = raw;
+                    newWindows = raw;
                 } else if (raw && typeof raw === 'object') {
-                    _wmAllWindows = Object.values(raw);
-                } else {
-                    _wmAllWindows = [];
+                    newWindows = Object.values(raw);
                 }
-                const q = document.getElementById('wm-search-input').value.trim().toLowerCase();
-                if (q) { filterWindowsList(); } else { renderWindowsList(_wmAllWindows); }
+                
+                if (JSON.stringify(_wmAllWindows) !== JSON.stringify(newWindows)) {
+                    _wmAllWindows = newWindows;
+                    const q = document.getElementById('wm-search-input').value.trim().toLowerCase();
+                    if (q) { filterWindowsList(); } else { renderWindowsList(_wmAllWindows); }
+                }
             }
         }
     } catch (e) {
