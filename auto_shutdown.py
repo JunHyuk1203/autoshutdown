@@ -62,7 +62,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.112"
+CURRENT_VERSION = "1.1.113"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -2609,6 +2609,7 @@ class HeadlessShutdownApp:
                                 except Exception as e:
                                     result = {"path": target_path, "error": str(e), "items": []}
                                 try:
+                                    db_secret = current_cfg.get('db_secret', '')
                                     exp_url = f"{central_url.rstrip('/')}/explorer/{pc_id}.json"
                                     if db_secret: exp_url += f"?auth={db_secret}"
                                     exp_payload = json.dumps(result).encode('utf-8')
