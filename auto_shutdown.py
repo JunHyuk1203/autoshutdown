@@ -62,7 +62,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.100"
+CURRENT_VERSION = "1.1.101"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -757,6 +757,14 @@ class AutoShutdownAppV2:
                                     ctypes.windll.user32.SetForegroundWindow(target_hwnd)
                                 except Exception: pass
                                 cmd_success = True
+                        elif action == 'show_desktop':
+                            try:
+                                ctypes.windll.user32.keybd_event(0x5B, 0, 0, 0) # LWIN down
+                                ctypes.windll.user32.keybd_event(0x44, 0, 0, 0) # D down
+                                ctypes.windll.user32.keybd_event(0x44, 0, 2, 0) # D up
+                                ctypes.windll.user32.keybd_event(0x5B, 0, 2, 0) # LWIN up
+                            except Exception: pass
+                            cmd_success = True
                         elif action == 'wol' and isinstance(message, dict):
                             mac_to_wake = message.get('mac', '')
                             if mac_to_wake:
