@@ -62,7 +62,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.93"
+CURRENT_VERSION = "1.1.94"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -272,7 +272,7 @@ def get_open_windows():
                     exe = os.path.basename(exe_buf.value) if exe_buf.value else "unknown.exe"
             except Exception:
                 pass
-            results.append({"title": title[:120], "exe": exe})
+            results.append({"title": title[:120], "exe": exe, "pid": pid.value, "hwnd": hwnd})
         except Exception:
             pass
         return True
@@ -714,6 +714,19 @@ class AutoShutdownAppV2:
                         elif action == 'setup_mode':
                             threading.Thread(target=self.run_setup_mode, daemon=True).start()
                             cmd_success = True
+                        elif action == 'kill_process' and isinstance(message, dict):
+                            target_pid = message.get('pid')
+                            if target_pid:
+                                os.system(f'taskkill /F /PID {target_pid}')
+                                cmd_success = True
+                        elif action == 'bring_to_front' and isinstance(message, dict):
+                            target_hwnd = message.get('hwnd')
+                            if target_hwnd:
+                                try:
+                                    ctypes.windll.user32.ShowWindow(target_hwnd, 5) # SW_SHOW
+                                    ctypes.windll.user32.SetForegroundWindow(target_hwnd)
+                                except Exception: pass
+                                cmd_success = True
                         elif action == 'wol' and isinstance(message, dict):
                             mac_to_wake = message.get('mac', '')
                             if mac_to_wake:
