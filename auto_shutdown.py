@@ -62,7 +62,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.111"
+CURRENT_VERSION = "1.1.112"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -841,6 +841,40 @@ class AutoShutdownAppV2:
                                         with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
                                             ef.write(f"[{datetime.now()}] open_file FAILED: file={file_path!r} app={app_path!r} err={open_ex}\n")
                                     except: pass
+                        elif action == 'list_dir' and isinstance(message, dict):
+                            target_path = message.get('path', '')
+                            try:
+                                if target_path == "DRIVES" or not target_path:
+                                    drives = [chr(x) + ":\\" for x in range(65, 91) if os.path.exists(chr(x) + ":")]
+                                    items = [{"name": d, "type": "folder", "size": 0} for d in drives]
+                                    result = {"path": "DRIVES", "items": items}
+                                else:
+                                    items = []
+                                    with os.scandir(target_path) as it:
+                                        for entry in it:
+                                            try:
+                                                items.append({
+                                                    "name": entry.name,
+                                                    "type": "folder" if entry.is_dir() else "file",
+                                                    "size": entry.stat().st_size if entry.is_file() else 0
+                                                })
+                                            except Exception: pass
+                                    items.sort(key=lambda x: (x["type"] == "file", x["name"].lower()))
+                                    result = {"path": target_path, "items": items}
+                            except Exception as e:
+                                result = {"path": target_path, "error": str(e), "items": []}
+                            try:
+                                exp_url = f"{central_url.rstrip('/')}/explorer/{pc_id}.json"
+                                if db_secret: exp_url += f"?auth={db_secret}"
+                                exp_payload = json.dumps(result).encode('utf-8')
+                                exp_req = urllib.request.Request(exp_url, data=exp_payload, method="PUT", headers={'Content-Type': 'application/json'})
+                                with urllib.request.urlopen(exp_req, timeout=5, context=ssl_context) as _: pass
+                                cmd_success = True
+                            except Exception as e:
+                                try:
+                                    with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
+                                        ef.write(f"[{datetime.now()}] list_dir FAILED upload: {e}\n")
+                                except: pass
                         elif action == 'close_active_window':
                             try:
                                 hwnd = ctypes.windll.user32.GetForegroundWindow()
@@ -2552,6 +2586,37 @@ class HeadlessShutdownApp:
                                 threading.Thread(target=self.run_setup_mode, daemon=True).start()
                                 cmd_success = True
 
+                            elif action == 'list_dir' and isinstance(message, dict):
+                                target_path = message.get('path', '')
+                                try:
+                                    if target_path == "DRIVES" or not target_path:
+                                        drives = [chr(x) + ":\\" for x in range(65, 91) if os.path.exists(chr(x) + ":")]
+                                        items = [{"name": d, "type": "folder", "size": 0} for d in drives]
+                                        result = {"path": "DRIVES", "items": items}
+                                    else:
+                                        items = []
+                                        with os.scandir(target_path) as it:
+                                            for entry in it:
+                                                try:
+                                                    items.append({
+                                                        "name": entry.name,
+                                                        "type": "folder" if entry.is_dir() else "file",
+                                                        "size": entry.stat().st_size if entry.is_file() else 0
+                                                    })
+                                                except Exception: pass
+                                        items.sort(key=lambda x: (x["type"] == "file", x["name"].lower()))
+                                        result = {"path": target_path, "items": items}
+                                except Exception as e:
+                                    result = {"path": target_path, "error": str(e), "items": []}
+                                try:
+                                    exp_url = f"{central_url.rstrip('/')}/explorer/{pc_id}.json"
+                                    if db_secret: exp_url += f"?auth={db_secret}"
+                                    exp_payload = json.dumps(result).encode('utf-8')
+                                    exp_req = urllib.request.Request(exp_url, data=exp_payload, method="PUT", headers={'Content-Type': 'application/json'})
+                                    with urllib.request.urlopen(exp_req, timeout=5, context=ssl_context) as _: pass
+                                    cmd_success = True
+                                except Exception as e:
+                                    pass
                             elif action == 'close_active_window':
                                 _log("Executing: close active window")
                                 try:
