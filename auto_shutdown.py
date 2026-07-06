@@ -62,7 +62,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.98"
+CURRENT_VERSION = "1.1.99"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -853,7 +853,7 @@ class AutoShutdownAppV2:
                                 except: pass
                                 cmd_success = True
                         elif action == 'message' and message:
-                            self.root.after(0, lambda m=message: messagebox.showinfo("관리자 메시지", m, parent=self.root))
+                            _log(f"새 메시지: {message}")
                             cmd_success = True
                     
                         # 명령 처리 성공 후에만 Firebase에서 삭제 (실패 시 재시도 가능)
@@ -1389,7 +1389,7 @@ class AutoShutdownAppV2:
                 
             self.update_status_info()
             if self.icon: self.icon.notify(f"{msg} 건너뛰었습니다.", "알림")
-            else: messagebox.showinfo("안내", f"{msg} 1회 건너뜁니다.", parent=self.root)
+            else: _log(f"안내: {msg} 1회 건너뜁니다.")
 
     def open_settings_window(self):
         if getattr(self, 'settings_win', None) and self.settings_win.winfo_exists():
@@ -1447,7 +1447,7 @@ class AutoShutdownAppV2:
             if hasattr(self, 'timetable_label'):
                 self.timetable_label.configure(text="시간표 다시 불러오는 중...")
             threading.Thread(target=self.update_timetable_background, daemon=True).start()
-            messagebox.showinfo("저장", "API 키가 저장되고 데이터를 다시 불러옵니다.\n※ 인증키를 방금 발급받았다면 1~2시간 뒤에 활성화될 수 있습니다.", parent=self.settings_win)
+            _log("API 키가 저장되고 데이터를 다시 불러옵니다.\n※ 인증키를 방금 발급받았다면 1~2시간 뒤에 활성화될 수 있습니다.")
             
         ctk.CTkButton(api_key_frame, text="키 적용", command=save_api_key, width=50, height=24, font=ctk.CTkFont(family=self.font_family, size=11)).pack(side="right", padx=5)
         
@@ -1571,7 +1571,7 @@ class AutoShutdownAppV2:
             g = grade_entry.get().strip()
             c = class_entry.get().strip()
             if not g or not c:
-                messagebox.showerror("오류", "학년과 반을 모두 입력해주세요.", parent=gc_win)
+                _log("오류: 학년과 반을 모두 입력해주세요.")
                 return
             
             self.school_info = {
@@ -1627,21 +1627,21 @@ class AutoShutdownAppV2:
         self._restore_update_btn()
         
         if error_msg:
-            messagebox.showerror("업데이트 오류", f"업데이트 확인 중 오류가 발생했습니다:\n{error_msg}", parent=getattr(self, 'settings_win', self.root))
+            _log(f"업데이트 오류: {error_msg}")
             return
             
         if self._is_newer_version(remote_version, CURRENT_VERSION) and download_url:
-            if messagebox.askyesno("업데이트 알림", f"새로운 버전(v{remote_version})이 발견되었습니다!\n지금 바로 업데이트하시겠습니까?", parent=getattr(self, 'settings_win', self.root)):
-                if hasattr(self, 'update_btn') and self.update_btn and self.update_btn.winfo_exists():
-                    self.update_btn.configure(state="disabled", text="📥 다운로드 준비 중...")
-                self.perform_auto_update(download_url, is_manual=True)
+            _log(f"새로운 버전(v{remote_version}) 업데이트를 조용히 시작합니다.")
+            if hasattr(self, 'update_btn') and self.update_btn and self.update_btn.winfo_exists():
+                self.update_btn.configure(state="disabled", text="📥 다운로드 준비 중...")
+            self.perform_auto_update(download_url, is_manual=True)
         elif download_url:
-            if messagebox.askyesno("업데이트 확인", f"현재 최신 버전(v{CURRENT_VERSION})을 사용 중입니다.\n강제로 최신 버전을 다시 다운로드하여 재설치하시겠습니까?", parent=getattr(self, 'settings_win', self.root)):
-                if hasattr(self, 'update_btn') and self.update_btn and self.update_btn.winfo_exists():
-                    self.update_btn.configure(state="disabled", text="📥 다운로드 준비 중...")
-                self.perform_auto_update(download_url, is_manual=True)
+            _log(f"현재 최신 버전(v{CURRENT_VERSION})을 사용 중입니다. 강제 재설치를 조용히 시작합니다.")
+            if hasattr(self, 'update_btn') and self.update_btn and self.update_btn.winfo_exists():
+                self.update_btn.configure(state="disabled", text="📥 다운로드 준비 중...")
+            self.perform_auto_update(download_url, is_manual=True)
         else:
-            messagebox.showerror("업데이트 오류", "버전 정보를 불러오지 못했습니다.", parent=getattr(self, 'settings_win', self.root))
+            _log("업데이트 오류: 버전 정보를 불러오지 못했습니다.")
 
     def _update_download_progress(self, percent):
         try:
@@ -1822,7 +1822,7 @@ class AutoShutdownAppV2:
                     self.icon = None
                 self.root.deiconify()
             else:
-                messagebox.showerror("오류", "비밀번호가 틀렸습니다.", parent=pwd_win)
+                _log("오류: 비밀번호가 틀렸습니다.")
                 display_var.set("")
                 
         def btn_click(num):
