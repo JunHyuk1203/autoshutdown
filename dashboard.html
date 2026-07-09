@@ -2135,6 +2135,10 @@ function pollExplorerData() {
         if (data) {
             // Ignore stale data from previous path
             if (expectedExplorerPath && data.path !== expectedExplorerPath) {
+                const container = document.getElementById("explorer-list");
+                if (container && container.innerHTML.includes("로딩 중")) {
+                    container.innerHTML = `<div style="text-align: center; padding-top: 80px; font-size: 12px;">로딩 중...<br><br><span style="color:var(--text-muted); font-size:10px;">[Wait] expected: '${expectedExplorerPath}', got: '${data.path}'</span></div>`;
+                }
                 return;
             }
             renderExplorerList(data);
