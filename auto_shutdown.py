@@ -13,6 +13,12 @@ from datetime import datetime, timedelta
 import ssl
 
 try:
+    from pycaw.pycaw import AudioUtilities
+    PYCAW_AVAILABLE = True
+except ImportError:
+    PYCAW_AVAILABLE = False
+
+try:
     _global_ssl_context = ssl._create_unverified_context()
     _global_ssl_context.verify_mode = ssl.CERT_NONE
     _global_ssl_context.check_hostname = False
@@ -62,7 +68,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.113"
+CURRENT_VERSION = "1.1.114"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -875,6 +881,22 @@ class AutoShutdownAppV2:
                                     with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
                                         ef.write(f"[{datetime.now()}] list_dir FAILED upload: {e}\n")
                                 except: pass
+                        elif action == 'volume_control' and isinstance(message, dict):
+                            if PYCAW_AVAILABLE:
+                                try:
+                                    level = float(message.get('level', 0.5))
+                                    devices = AudioUtilities.GetSpeakers()
+                                    volume = devices.EndpointVolume
+                                    volume.SetMasterVolumeLevelScalar(level, None)
+                                    volume.SetMute(0, None)
+                                    cmd_success = True
+                                    if app_instance:
+                                        app_instance.root.after(0, lambda: app_instance.add_system_alert(f'원격 음량 제어: {int(level*100)}%'))
+                                except Exception as e:
+                                    try:
+                                        with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
+                                            ef.write(f'[{datetime.now()}] volume_control FAILED: {e}\n')
+                                    except: pass
                         elif action == 'close_active_window':
                             try:
                                 hwnd = ctypes.windll.user32.GetForegroundWindow()
@@ -2618,6 +2640,18 @@ class HeadlessShutdownApp:
                                     cmd_success = True
                                 except Exception as e:
                                     pass
+                            elif action == 'volume_control' and isinstance(message, dict):
+                                _log("Executing: volume control")
+                                if PYCAW_AVAILABLE:
+                                    try:
+                                        level = float(message.get('level', 0.5))
+                                        devices = AudioUtilities.GetSpeakers()
+                                        volume = devices.EndpointVolume
+                                        volume.SetMasterVolumeLevelScalar(level, None)
+                                        volume.SetMute(0, None)
+                                        cmd_success = True
+                                    except Exception as e:
+                                        _log(f"volume_control error: {e}")
                             elif action == 'close_active_window':
                                 _log("Executing: close active window")
                                 try:
