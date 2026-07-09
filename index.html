@@ -1459,7 +1459,7 @@ function renderPCGrid(serverNowMs) {
                 <button class="card-action-btn btn-secondary" onclick="event.stopPropagation(); triggerSingleMessage('${pcId}')" ${isOnline ? '' : 'disabled'} title="메시지 전송">💬 메시지</button>
                 ${isOnline 
                     ? `<button class="card-action-btn btn-warning" onclick="event.stopPropagation(); openFileModal('${pcId}')" title="원격 파일 열기" style="grid-column: 1 / 2;">📂 파일 열기</button>
-                       <button class="card-action-btn btn-dark" onclick="event.stopPropagation(); triggerSingleCommand('${pcId}', 'close_active_window')" title="가장 앞에 있는 창 닫기" style="grid-column: 2 / 3;">❌ 창 닫기</button>
+                       <button class="card-action-btn btn-dark" onclick="event.stopPropagation(); openVolumeControl('${pcId}')" ${isOnline ? '' : 'disabled'} title="원격 음량 제어" style="grid-column: 2 / 3;">🔊 음량조절</button>
                        <button class="card-action-btn btn-teal" onclick="event.stopPropagation(); openWindowsModal('${pcId}')" title="실행 중인 창 목록 보기" style="grid-column: 3 / 4;">🖥️ 실행 창</button>`
                     : ''
                 }
