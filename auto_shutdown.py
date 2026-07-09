@@ -68,7 +68,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.114"
+CURRENT_VERSION = "1.1.115"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -577,7 +577,17 @@ class AutoShutdownAppV2:
                     current_user = os.environ.get('USERNAME') or 'SYSTEM'
                 
                 # 1. 내 PC 상태 보고 (PATCH)
+                
+                current_vol = 50
+                if PYCAW_AVAILABLE:
+                    try:
+                        _devs = AudioUtilities.GetSpeakers()
+                        _vol_intf = _devs.EndpointVolume
+                        current_vol = int(_vol_intf.GetMasterVolumeLevelScalar() * 100)
+                    except:
+                        pass
                 status_payload = json.dumps({
+                    'volume': current_vol,
                     'ip': ip,
                     'mac': '',
                     'hostname': socket.gethostname(),
@@ -2507,7 +2517,17 @@ class HeadlessShutdownApp:
                     current_user = os.environ.get('USERNAME') or 'SYSTEM'
                 
                 # 1. 상태 보고 (PUT)
+                
+                current_vol = 50
+                if PYCAW_AVAILABLE:
+                    try:
+                        _devs = AudioUtilities.GetSpeakers()
+                        _vol_intf = _devs.EndpointVolume
+                        current_vol = int(_vol_intf.GetMasterVolumeLevelScalar() * 100)
+                    except:
+                        pass
                 status_payload = json.dumps({
+                    'volume': current_vol,
                     'ip': ip,
                     'mac': '',
                     'hostname': socket.gethostname(),

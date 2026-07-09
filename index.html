@@ -1178,9 +1178,13 @@ function openVolumeControl(pcId) {
     const label = pcId === "__ALL__" ? "전체 PC" : (pcs[pcId]?.hostname || pcId);
     document.getElementById("volume-target-label").innerText = label;
     
-    // 기본값 50으로 초기화
-    document.getElementById("volume-slider").value = 50;
-    document.getElementById("volume-value-display").innerText = "50%";
+    // 기본값 설정 (현재 음량 정보가 있으면 사용, 없으면 50)
+    let currentVol = 50;
+    if (pcId !== "__ALL__" && pcs[pcId] && typeof pcs[pcId].volume !== "undefined") {
+        currentVol = pcs[pcId].volume;
+    }
+    document.getElementById("volume-slider").value = currentVol;
+    document.getElementById("volume-value-display").innerText = currentVol + "%";
     
     document.getElementById("volume-modal").classList.add("show");
 }

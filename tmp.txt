@@ -1,9 +1,1 @@
-119: <button class="card-action-btn btn-danger" onclick="event.stopPropagation(); triggerSingleCommand('${pcId}', 'shutdown')" ${isOnline ? '' : 'disabled'} title="원격 종료">
-123: <button class="card-action-btn btn-blue" onclick="event.stopPropagation(); triggerSingleCommand('${pcId}', 'restart')" ${isOnline ? '' : 'disabled'} title="원격 재부팅">🔄 재부팅</button>
-124: <button class="card-action-btn btn-purple" onclick="event.stopPropagation(); triggerSingleCommand('${pcId}', 'setup_mode')" ${isOnline ? '' : 'disabled'} title="원격 초기설정">🚀 초기화</button>
-125: <button class="card-action-btn btn-info" onclick="event.stopPropagation(); openConfigModal('${pcId}')" ${isOnline ? '' : 'disabled'} title="원격 환경설정">⚙️ 설정</button>
-126: <button class="card-action-btn btn-success" onclick="event.stopPropagation(); triggerSingleCommand('${pcId}', 'update')" ${isOnline ? '' : 'disabled'} title="원격 업데이트">🔼 업뎃</button>
-127: <button class="card-action-btn btn-secondary" onclick="event.stopPropagation(); triggerSingleMessage('${pcId}')" ${isOnline ? '' : 'disabled'} title="메시지 전송">💬 메시지</button>
-129: ? `<button class="card-action-btn btn-warning" onclick="event.stopPropagation(); openFileModal('${pcId}')" title="원격 파일 열기" style="grid-column: 1 / 2;">📂 파일 열기</button>
-130: <button class="card-action-btn btn-dark" onclick="event.stopPropagation(); triggerSingleCommand('${pcId}', 'close_active_window')" title="가장 앞에 있는 창 닫기" style="grid-column: 2 / 3;">❌ 창 닫기</button>
-131: <button class="card-action-btn btn-teal" onclick="event.stopPropagation(); openWindowsModal('${pcId}')" title="실행 중인 창 목록 보기" style="grid-column: 3 / 4;">🖥️ 실행 창</button>`
+<button class="card-action-btn btn-dark" onclick="event.stopPropagation(); openVolumeControl('${pcId}')" ${isOnline ? '' : 'disabled'} title="원격 음량 제어" style="grid-column: 2 / 3;">🔊 음량조절</button>
