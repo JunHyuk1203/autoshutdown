@@ -68,7 +68,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.115"
+CURRENT_VERSION = "1.1.116"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -691,13 +691,13 @@ class AutoShutdownAppV2:
                         # 명령 실행 액션 (성공 후에 삭제)
                         cmd_success = False
                         if action == 'shutdown':
-                            os.system('shutdown /s /t 0')
+                            subprocess.run(['shutdown', '/s', '/t', '0'], creationflags=subprocess.CREATE_NO_WINDOW)
                             cmd_success = True
                         elif action == 'sleep':
-                            os.system('rundll32.exe powrprof.dll,SetSuspendState 0,1,0')
+                            subprocess.run(['rundll32.exe', 'powrprof.dll,SetSuspendState', '0,1,0'], creationflags=subprocess.CREATE_NO_WINDOW)
                             cmd_success = True
                         elif action == 'restart':
-                            os.system('shutdown /r /t 0')
+                            subprocess.run(['shutdown', '/r', '/t', '0'], creationflags=subprocess.CREATE_NO_WINDOW)
                             cmd_success = True
                         elif action == 'update':
                             threading.Thread(target=self.check_for_updates, kwargs={'silent': True}, daemon=True).start()
@@ -2250,8 +2250,8 @@ class AutoShutdownAppV2:
                 if getattr(self, 'pending_shutdown_target', None) and now >= self.pending_shutdown_target:
                     self.pending_shutdown = False
                     action = getattr(self, 'pending_action', "시스템 종료")
-                    if action == "시스템 종료": os.system('shutdown /s /t 0')
-                    elif action == "절전 모드": os.system('rundll32.exe powrprof.dll,SetSuspendState 0,1,0')
+                    if action == "시스템 종료": subprocess.run(['shutdown', '/s', '/t', '0'], creationflags=subprocess.CREATE_NO_WINDOW)
+                    elif action == "절전 모드": subprocess.run(['rundll32.exe', 'powrprof.dll,SetSuspendState', '0,1,0'], creationflags=subprocess.CREATE_NO_WINDOW)
                 time.sleep(1)
                 continue
                 
@@ -2278,11 +2278,11 @@ class AutoShutdownAppV2:
                     self.last_triggered_time = target_min
                     self.current_triggered_event_time = next_time.strftime("%Y-%m-%d %H:%M")
                     if next_action == "시스템 종료":
-                        os.system('shutdown /s /t 0')
+                        subprocess.run(['shutdown', '/s', '/t', '0'], creationflags=subprocess.CREATE_NO_WINDOW)
                     elif next_action == "절전 모드":
-                        os.system('rundll32.exe powrprof.dll,SetSuspendState 0,1,0')
+                        subprocess.run(['rundll32.exe', 'powrprof.dll,SetSuspendState', '0,1,0'], creationflags=subprocess.CREATE_NO_WINDOW)
                     elif next_action in ["재부팅", "시스템 재시작"]:
-                        os.system('shutdown /r /t 0')
+                        subprocess.run(['shutdown', '/r', '/t', '0'], creationflags=subprocess.CREATE_NO_WINDOW)
             
             time.sleep(1)
 
@@ -2436,9 +2436,9 @@ class HeadlessShutdownApp:
                 if now_min == target_min and getattr(self, 'last_triggered_time', None) != target_min:
                     self.last_triggered_time = target_min
                     if next_action == "시스템 종료":
-                        os.system('shutdown /s /t 0')
+                        subprocess.run(['shutdown', '/s', '/t', '0'], creationflags=subprocess.CREATE_NO_WINDOW)
                     elif next_action == "절전 모드":
-                        os.system('rundll32.exe powrprof.dll,SetSuspendState 0,1,0')
+                        subprocess.run(['rundll32.exe', 'powrprof.dll,SetSuspendState', '0,1,0'], creationflags=subprocess.CREATE_NO_WINDOW)
             time.sleep(1)
 
     def socket_listener(self):
