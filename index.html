@@ -1957,7 +1957,8 @@ function refreshPresetHighlight() {
 // ── 원격 파일 열기 기능 ──────────────────────────────────────────
 
 const FAV_STORAGE_KEY = "sp_file_favorites";
-let openFileTarget = null; // '__ALL__' 또는 특정 pcId
+let openFileTarget = null;
+let expectedExplorerPath = ""; // '__ALL__' 또는 특정 pcId
 
 /** 즐겨찾기 배열 읽기 */
 function loadFavorites() {
@@ -2115,9 +2116,12 @@ let currentExplorerPath = "";
 
 function loadExplorerPath(path = null) {
     const targetPath = path !== null ? path : document.getElementById("explorer-path").value.trim();
-    document.getElementById("explorer-list").innerHTML = '<div style="text-align: center; padding-top: 80px; font-size: 12px;">로딩 중...</div>';
+    const finalPath = targetPath || "DRIVES";
+    expectedExplorerPath = finalPath; // Set the expected path
     
-    writeCommandToDB(openFileTarget, "list_dir", { path: targetPath || "DRIVES" }).then(() => {
+    document.getElementById("explorer-list").innerHTML = '<div style="text-align: center; padding-top: 80px; font-size: 12px;">로딩 중...</div>';
+
+    writeCommandToDB(openFileTarget, "list_dir", { path: finalPath }).then(() => {
         if (!explorerInterval) {
             explorerInterval = setInterval(pollExplorerData, 1000);
         }
@@ -2128,7 +2132,13 @@ function pollExplorerData() {
     if (!openFileTarget || openFileTarget === "__ALL__") return;
     const url = `${config.databaseURL}/explorer/${openFileTarget}.json` + (config.authKey ? `?auth=${config.authKey}` : "");
     fetch(url).then(r => r.json()).then(data => {
-        if (data) renderExplorerList(data);
+        if (data) {
+            // Ignore stale data from previous path
+            if (expectedExplorerPath && data.path !== expectedExplorerPath) {
+                return;
+            }
+            renderExplorerList(data);
+        }
     }).catch(e => console.error("Explorer poll error:", e));
 }
 
