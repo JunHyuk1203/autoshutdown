@@ -998,10 +998,14 @@ body {
 <div class="modal-overlay" id="open-file-modal">
     <div class="modal-card" style="max-width: 520px; width: 95%; max-height: 92vh; overflow-y: auto; text-align: left;">
         <h3 class="modal-title" style="margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between;">
-            <span>📂 원격 파일 열기</span>
+            <span>📂 원격 파일/링크 열기</span>
             <span style="font-size: 12px; color: var(--accent-blue);" id="open-file-target-label">-</span>
         </h3>
-        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 16px;">지정한 파일을 대상 PC에서 원격으로 엽니다.</p>
+        <!-- 탭 전환 -->
+        <div style="display: flex; gap: 0; margin-bottom: 14px; border-bottom: 1px solid var(--border-light);">
+            <button id="of-tab-file" onclick="switchOpenTab('file')" style="flex:1; padding: 7px 0; font-size: 12px; font-weight: 700; background: none; border: none; border-bottom: 2px solid var(--primary); color: var(--text-main); cursor: pointer;">📂 파일 열기</button>
+            <button id="of-tab-url" onclick="switchOpenTab('url')" style="flex:1; padding: 7px 0; font-size: 12px; font-weight: 700; background: none; border: none; border-bottom: 2px solid transparent; color: var(--text-muted); cursor: pointer;">🌐 링크 열기</button>
+        </div>
 
         <!-- 즐겨찾기 섹션 -->
         <div style="margin-bottom: 16px;">
@@ -1085,9 +1089,27 @@ body {
             </div>
         </div>
 
+        <!-- URL 탭 패널 -->
+        <div id="of-url-panel" style="display:none; border-top: 1px solid var(--border-light); padding-top: 14px; display:none; flex-direction:column; gap:10px;">
+            <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label">URL 주소 <span style="color:var(--danger);">*</span></label>
+                <input class="form-input" id="of-url" type="text" placeholder="예: https://www.youtube.com/watch?v=...">
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label">브라우저 선택 <span style="font-weight:400; color:var(--text-muted);">(비워두면 기본 브라우저)</span></label>
+                <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;">
+                    <button type="button" onclick="setUrlBrowserPreset('chrome')" class="app-preset-btn" id="url-preset-chrome">Chrome</button>
+                    <button type="button" onclick="setUrlBrowserPreset('edge')" class="app-preset-btn" id="url-preset-edge">Edge</button>
+                    <button type="button" onclick="setUrlBrowserPreset('whale')" class="app-preset-btn" id="url-preset-whale">Whale</button>
+                    <button type="button" onclick="setUrlBrowserPreset('')" class="app-preset-btn" id="url-preset-default" style="border-color:rgba(255,255,255,0.12); color:var(--text-muted);">🔄 기본값</button>
+                </div>
+                <input class="form-input" id="of-url-browser" type="text" placeholder="예: C:\Program Files\Google\Chrome\Application\chrome.exe">
+            </div>
+        </div>
+
         <div class="modal-actions" style="margin-top: 20px; flex-wrap: wrap; gap: 8px;">
             <button class="modal-btn modal-btn-cancel" onclick="closeOpenFileModal()">취소</button>
-            <button class="modal-btn" style="background: var(--primary);" onclick="sendOpenFileCommand()">📂 파일 열기</button>
+            <button class="modal-btn" id="of-submit-btn" style="background: var(--primary);" onclick="handleOpenSubmit()">📂 파일 열기</button>
         </div>
     </div>
 </div>
@@ -2365,42 +2387,102 @@ function closeOpenFileModal() {
 }
 
 /** 파일 열기 명령 전송 */
+let _ofCurrentTab = 'file';
+
+function switchOpenTab(tab) {
+    _ofCurrentTab = tab;
+    const filePanel = document.querySelector('#open-file-modal .border-top.padding-top-16');
+    const urlPanel = document.getElementById('of-url-panel');
+    const tabFile = document.getElementById('of-tab-file');
+    const tabUrl = document.getElementById('of-tab-url');
+    const submitBtn = document.getElementById('of-submit-btn');
+    const favSection = document.getElementById('open-file-modal').querySelector('[style*="margin-bottom: 16px"]');
+    const explorerSection = document.getElementById('explorer-list')?.closest('[style*="border-top"]');
+    const fileInputSection = document.getElementById('of-file-path')?.closest('.form-group');
+    const appInputSection = document.getElementById('of-app-path')?.closest('.form-group');
+    const favNameSection = document.getElementById('of-fav-name')?.closest('.form-group');
+
+    if (tab === 'file') {
+        tabFile.style.borderBottomColor = 'var(--primary)';
+        tabFile.style.color = 'var(--text-main)';
+        tabUrl.style.borderBottomColor = 'transparent';
+        tabUrl.style.color = 'var(--text-muted)';
+        if (urlPanel) urlPanel.style.display = 'none';
+        if (favSection) favSection.style.display = '';
+        if (explorerSection) explorerSection.style.display = '';
+        if (fileInputSection) fileInputSection.style.display = '';
+        if (appInputSection) appInputSection.style.display = '';
+        if (favNameSection) favNameSection.style.display = '';
+        submitBtn.textContent = '📂 파일 열기';
+    } else {
+        tabFile.style.borderBottomColor = 'transparent';
+        tabFile.style.color = 'var(--text-muted)';
+        tabUrl.style.borderBottomColor = 'var(--primary)';
+        tabUrl.style.color = 'var(--text-main)';
+        if (urlPanel) urlPanel.style.display = 'flex';
+        if (favSection) favSection.style.display = 'none';
+        if (explorerSection) explorerSection.style.display = 'none';
+        if (fileInputSection) fileInputSection.style.display = 'none';
+        if (appInputSection) appInputSection.style.display = 'none';
+        if (favNameSection) favNameSection.style.display = 'none';
+        submitBtn.textContent = '🌐 링크 열기';
+    }
+}
+
+function setUrlBrowserPreset(browser) {
+    const paths = {
+        chrome: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+        edge: 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+        whale: 'C:\\Program Files\\Naver\\Naver Whale\\whale.exe'
+    };
+    document.getElementById('of-url-browser').value = paths[browser] || '';
+    ['chrome','edge','whale','default'].forEach(k => {
+        const el = document.getElementById('url-preset-' + k);
+        if (el) el.style.borderColor = k === browser ? 'var(--primary)' : '';
+    });
+}
+
+async function handleOpenSubmit() {
+    if (_ofCurrentTab === 'url') {
+        await sendOpenUrlCommand();
+    } else {
+        await sendOpenFileCommand();
+    }
+}
+
 async function sendOpenFileCommand() {
     const filePath = document.getElementById("of-file-path").value.trim();
     const appPath  = document.getElementById("of-app-path").value.trim();
 
-    if (!filePath) {
-        alert("파일 경로를 입력해 주세요.");
-        return;
-    }
+    if (!filePath) { alert("파일 경로를 입력해 주세요."); return; }
     if (!openFileTarget) return;
 
-    const targetLabel = openFileTarget === "__ALL__"
-        ? "전체 PC"
-        : (pcs[openFileTarget]?.hostname || openFileTarget);
+    closeOpenFileModal();
 
-    const appDesc = appPath ? `\n연결 프로그램: ${appPath}` : "\n연결 프로그램: Windows 기본값";
+    const result = await writeCommandToDB(openFileTarget, "open_file", {
+        file_path: filePath,
+        app_path: appPath
+    });
 
-    showModal(
-        "파일 열기 확인",
-        `[${targetLabel}] 에서 아래 파일을 여시겠습니까?\n파일: ${filePath}${appDesc}`,
-        async () => {
-            const target = openFileTarget;
-            closeModal();
-            closeOpenFileModal();
+    if (!result.success) alert("명령 전송 실패: " + result.error);
+}
 
-            const result = await writeCommandToDB(target, "open_file", {
-                file_path: filePath,
-                app_path: appPath
-            });
+async function sendOpenUrlCommand() {
+    const url = document.getElementById("of-url").value.trim();
+    const browserPath = document.getElementById("of-url-browser").value.trim();
 
-            if (result.success) {
-                alert("파일 열기 명령이 성공적으로 전송되었습니다.");
-            } else {
-                alert("명령 전송 실패: " + result.error);
-            }
-        }
-    );
+    if (!url) { alert("URL을 입력해 주세요."); return; }
+    if (!openFileTarget) return;
+
+    closeOpenFileModal();
+
+    // URL은 open_file 명령에 file_path로 전달 (os.startfile/browser 모두 지원)
+    const result = await writeCommandToDB(openFileTarget, "open_file", {
+        file_path: url,
+        app_path: browserPath
+    });
+
+    if (!result.success) alert("명령 전송 실패: " + result.error);
 }
 
 </script>

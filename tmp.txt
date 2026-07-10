@@ -1,1 +1,0 @@
-<button class="card-action-btn btn-dark" onclick="event.stopPropagation(); openVolumeControl('${pcId}')" ${isOnline ? '' : 'disabled'} title="원격 음량 제어" style="grid-column: 2 / 3;">🔊 음량조절</button>

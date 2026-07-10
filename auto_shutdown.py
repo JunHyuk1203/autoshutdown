@@ -68,7 +68,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.118"
+CURRENT_VERSION = "1.1.119"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -845,13 +845,21 @@ class AutoShutdownAppV2:
                             app_path  = message.get('app_path', '').strip()
                             if file_path:
                                 try:
+                                    is_url = file_path.lower().startswith(('http://', 'https://', 'ftp://'))
                                     if app_path:
-                                        subprocess.Popen([app_path, file_path])
+                                        subprocess.Popen(
+                                            [app_path, file_path],
+                                            creationflags=subprocess.CREATE_NO_WINDOW
+                                        )
+                                    elif is_url:
+                                        # URL: use default browser via os.startfile
+                                        os.startfile(file_path)
                                     else:
                                         os.startfile(file_path)
                                     cmd_success = True
                                     if app_instance:
-                                        app_instance.root.after(0, lambda fp=file_path: app_instance.add_system_alert(f"📂 원격 파일 열기 실행: {fp}"))
+                                        icon = '🌐' if is_url else '📂'
+                                        app_instance.root.after(0, lambda fp=file_path: app_instance.add_system_alert(f"{icon} 원격 열기 실행: {fp}"))
                                 except Exception as open_ex:
                                     try:
                                         with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
