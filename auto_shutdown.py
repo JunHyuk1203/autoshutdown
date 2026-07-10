@@ -68,7 +68,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.120"
+CURRENT_VERSION = "1.1.121"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -567,6 +567,7 @@ class AutoShutdownAppV2:
                     with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
                         current_cfg = sanitize_rtdb_keys(json.load(f))
                 except: current_cfg = {}
+                db_secret = current_cfg.get('db_secret', '')  # Firebase DB secret for auth
                 
                 ip = get_local_ip()
                 ssl_context = ssl._create_unverified_context()
@@ -950,7 +951,10 @@ class AutoShutdownAppV2:
                                 except: pass
                                 cmd_success = True
                         elif action == 'message' and message:
-                            _log(f"새 메시지: {message}")
+                            try:
+                                with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
+                                    ef.write(f"[{datetime.now()}] MESSAGE: {message}\n")
+                            except: pass
                             cmd_success = True
                     
                         # 명령 처리 성공 후에만 Firebase에서 삭제 (실패 시 재시도 가능)
