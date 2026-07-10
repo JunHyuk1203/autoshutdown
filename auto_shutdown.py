@@ -68,7 +68,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.119"
+CURRENT_VERSION = "1.1.120"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -847,14 +847,19 @@ class AutoShutdownAppV2:
                                 try:
                                     is_url = file_path.lower().startswith(('http://', 'https://', 'ftp://'))
                                     if app_path:
+                                        # Use specific app (browser or any program)
                                         subprocess.Popen(
                                             [app_path, file_path],
                                             creationflags=subprocess.CREATE_NO_WINDOW
                                         )
                                     elif is_url:
-                                        # URL: use default browser via os.startfile
-                                        os.startfile(file_path)
+                                        # URL without specific app -> use Windows 'start' command (most reliable)
+                                        subprocess.Popen(
+                                            ['cmd', '/c', 'start', '', file_path],
+                                            creationflags=subprocess.CREATE_NO_WINDOW
+                                        )
                                     else:
+                                        # Local file -> os.startfile
                                         os.startfile(file_path)
                                     cmd_success = True
                                     if app_instance:
