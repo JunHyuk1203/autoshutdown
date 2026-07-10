@@ -2457,14 +2457,28 @@ async function sendOpenFileCommand() {
     if (!filePath) { alert("파일 경로를 입력해 주세요."); return; }
     if (!openFileTarget) return;
 
-    closeOpenFileModal();
+    // 값을 미리 저장 (모달 닫힌 후에도 유지)
+    const target = openFileTarget;
+    const targetLabel = target === "__ALL__"
+        ? "전체 PC"
+        : (pcs[target]?.hostname || target);
+    const appDesc = appPath ? `\n연결 프로그램: ${appPath}` : "\n연결 프로그램: Windows 기본값";
 
-    const result = await writeCommandToDB(openFileTarget, "open_file", {
-        file_path: filePath,
-        app_path: appPath
-    });
+    showModal(
+        "파일 열기 확인",
+        `[${targetLabel}] 에서 아래 파일을 여시겠습니까?\n파일: ${filePath}${appDesc}`,
+        async () => {
+            closeModal();
+            closeOpenFileModal();
 
-    if (!result.success) alert("명령 전송 실패: " + result.error);
+            const result = await writeCommandToDB(target, "open_file", {
+                file_path: filePath,
+                app_path: appPath
+            });
+
+            if (!result.success) alert("명령 전송 실패: " + result.error);
+        }
+    );
 }
 
 async function sendOpenUrlCommand() {
@@ -2474,15 +2488,28 @@ async function sendOpenUrlCommand() {
     if (!url) { alert("URL을 입력해 주세요."); return; }
     if (!openFileTarget) return;
 
-    closeOpenFileModal();
+    // 값을 미리 저장
+    const target = openFileTarget;
+    const targetLabel = target === "__ALL__"
+        ? "전체 PC"
+        : (pcs[target]?.hostname || target);
+    const browserDesc = browserPath ? `\n브라우저: ${browserPath}` : "\n브라우저: 기본 브라우저";
 
-    // URL은 open_file 명령에 file_path로 전달 (os.startfile/browser 모두 지원)
-    const result = await writeCommandToDB(openFileTarget, "open_file", {
-        file_path: url,
-        app_path: browserPath
-    });
+    showModal(
+        "링크 열기 확인",
+        `[${targetLabel}] 에서 아래 링크를 여시겠습니까?\n링크: ${url}${browserDesc}`,
+        async () => {
+            closeModal();
+            closeOpenFileModal();
 
-    if (!result.success) alert("명령 전송 실패: " + result.error);
+            const result = await writeCommandToDB(target, "open_file", {
+                file_path: url,
+                app_path: browserPath
+            });
+
+            if (!result.success) alert("명령 전송 실패: " + result.error);
+        }
+    );
 }
 
 </script>
