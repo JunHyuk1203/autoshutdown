@@ -68,7 +68,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.116"
+CURRENT_VERSION = "1.1.118"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -858,7 +858,13 @@ class AutoShutdownAppV2:
                                             ef.write(f"[{datetime.now()}] open_file FAILED: file={file_path!r} app={app_path!r} err={open_ex}\n")
                                     except: pass
                         elif action == 'list_dir' and isinstance(message, dict):
-                            target_path = message.get('path', '')
+                            target_path = message.get('path', '') or ''
+                            # Normalize: forward-slash -> backslash
+                            target_path = target_path.replace('/', '\\')
+                            # Ensure trailing backslash for root drives (e.g., "C:" -> "C:\")
+                            if len(target_path) == 2 and target_path[1] == ':':
+                                target_path = target_path + '\\'
+                            result = None
                             try:
                                 if target_path == "DRIVES" or not target_path:
                                     drives = [chr(x) + ":\\" for x in range(65, 91) if os.path.exists(chr(x) + ":")]
@@ -879,18 +885,23 @@ class AutoShutdownAppV2:
                                     result = {"path": target_path, "items": items}
                             except Exception as e:
                                 result = {"path": target_path, "error": str(e), "items": []}
-                            try:
-                                exp_url = f"{central_url.rstrip('/')}/explorer/{pc_id}.json"
-                                if db_secret: exp_url += f"?auth={db_secret}"
-                                exp_payload = json.dumps(result).encode('utf-8')
-                                exp_req = urllib.request.Request(exp_url, data=exp_payload, method="PUT", headers={'Content-Type': 'application/json'})
-                                with urllib.request.urlopen(exp_req, timeout=5, context=ssl_context) as _: pass
-                                cmd_success = True
-                            except Exception as e:
                                 try:
                                     with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
-                                        ef.write(f"[{datetime.now()}] list_dir FAILED upload: {e}\n")
+                                        ef.write(f"[{datetime.now()}] list_dir scandir FAILED path={target_path!r}: {e}\n")
                                 except: pass
+                            if result is not None:
+                                try:
+                                    exp_url = f"{central_url.rstrip('/')}/explorer/{pc_id}.json"
+                                    if db_secret: exp_url += f"?auth={db_secret}"
+                                    exp_payload = json.dumps(result, ensure_ascii=False).encode('utf-8')
+                                    exp_req = urllib.request.Request(exp_url, data=exp_payload, method="PUT", headers={'Content-Type': 'application/json'})
+                                    with urllib.request.urlopen(exp_req, timeout=10, context=ssl_context) as _: pass
+                                    cmd_success = True
+                                except Exception as e:
+                                    try:
+                                        with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
+                                            ef.write(f"[{datetime.now()}] list_dir FAILED upload path={target_path!r}: {e}\n")
+                                    except: pass
                         elif action == 'volume_control' and isinstance(message, dict):
                             if PYCAW_AVAILABLE:
                                 try:
@@ -2629,7 +2640,13 @@ class HeadlessShutdownApp:
                                 cmd_success = True
 
                             elif action == 'list_dir' and isinstance(message, dict):
-                                target_path = message.get('path', '')
+                                target_path = message.get('path', '') or ''
+                                # Normalize: forward-slash -> backslash
+                                target_path = target_path.replace('/', '\\')
+                                # Ensure trailing backslash for root drives (e.g., "C:" -> "C:\")
+                                if len(target_path) == 2 and target_path[1] == ':':
+                                    target_path = target_path + '\\'
+                                result = None
                                 try:
                                     if target_path == "DRIVES" or not target_path:
                                         drives = [chr(x) + ":\\" for x in range(65, 91) if os.path.exists(chr(x) + ":")]
@@ -2650,16 +2667,17 @@ class HeadlessShutdownApp:
                                         result = {"path": target_path, "items": items}
                                 except Exception as e:
                                     result = {"path": target_path, "error": str(e), "items": []}
-                                try:
-                                    db_secret = current_cfg.get('db_secret', '')
-                                    exp_url = f"{central_url.rstrip('/')}/explorer/{pc_id}.json"
-                                    if db_secret: exp_url += f"?auth={db_secret}"
-                                    exp_payload = json.dumps(result).encode('utf-8')
-                                    exp_req = urllib.request.Request(exp_url, data=exp_payload, method="PUT", headers={'Content-Type': 'application/json'})
-                                    with urllib.request.urlopen(exp_req, timeout=5, context=ssl_context) as _: pass
-                                    cmd_success = True
-                                except Exception as e:
-                                    pass
+                                if result is not None:
+                                    try:
+                                        db_secret = current_cfg.get('db_secret', '')
+                                        exp_url = f"{central_url.rstrip('/')}/explorer/{pc_id}.json"
+                                        if db_secret: exp_url += f"?auth={db_secret}"
+                                        exp_payload = json.dumps(result, ensure_ascii=False).encode('utf-8')
+                                        exp_req = urllib.request.Request(exp_url, data=exp_payload, method="PUT", headers={'Content-Type': 'application/json'})
+                                        with urllib.request.urlopen(exp_req, timeout=10, context=ssl_context) as _: pass
+                                        cmd_success = True
+                                    except Exception as e:
+                                        pass
                             elif action == 'volume_control' and isinstance(message, dict):
                                 _log("Executing: volume control")
                                 if PYCAW_AVAILABLE:

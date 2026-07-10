@@ -2128,13 +2128,20 @@ function loadExplorerPath(path = null) {
     });
 }
 
+function normalizePath(p) {
+    if (!p) return p;
+    return p.replace(/\//g, '\\').toUpperCase();
+}
+
 function pollExplorerData() {
     if (!openFileTarget || openFileTarget === "__ALL__") return;
     const url = `${config.databaseURL}/explorer/${openFileTarget}.json` + (config.authKey ? `?auth=${config.authKey}` : "");
     fetch(url).then(r => r.json()).then(data => {
         if (data) {
-            // Ignore stale data from previous path
-            if (expectedExplorerPath && data.path !== expectedExplorerPath) {
+            // Ignore stale data from previous path (compare normalized)
+            const gotNorm = normalizePath(data.path);
+            const expNorm = normalizePath(expectedExplorerPath);
+            if (expectedExplorerPath && gotNorm !== expNorm) {
                 const container = document.getElementById("explorer-list");
                 if (container && container.innerHTML.includes("로딩 중")) {
                     container.innerHTML = `<div style="text-align: center; padding-top: 80px; font-size: 12px;">로딩 중...<br><br><span style="color:var(--text-muted); font-size:10px;">[Wait] expected: '${expectedExplorerPath}', got: '${data.path}'</span></div>`;
