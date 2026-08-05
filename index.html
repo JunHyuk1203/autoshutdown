@@ -3155,16 +3155,26 @@ function loadApprovedUsers() {
                     const safeUid = escapeHtml(uid);
                     const row = document.createElement("div");
                     row.className = "pending-user-row";
-                    row.innerHTML = `
-                        <div class="pending-user-info">
-                            <div class="pending-user-email">
-                                ${safeEmail}
-                                <span style="background:#10b981; color:white; font-size:10px; padding:2px 6px; border-radius:4px; margin-left:4px;">승인됨</span>
-                            </div>
-                            <div class="pending-user-time">승인 일시 ${escapeHtml(time)}</div>
+                    const revokeBtn = document.createElement("button");
+                    revokeBtn.className = "btn-reject";
+                    revokeBtn.textContent = "🔴 박탈";
+                    revokeBtn.dataset.uid = uid;
+                    revokeBtn.dataset.email = info.email || "";
+                    revokeBtn.addEventListener("click", function() {
+                        revokeUser(this.dataset.uid, this.dataset.email);
+                    });
+                    
+                    const infoDiv = document.createElement("div");
+                    infoDiv.className = "pending-user-info";
+                    infoDiv.innerHTML = `
+                        <div class="pending-user-email">
+                            ${safeEmail}
+                            <span style="background:#10b981; color:white; font-size:10px; padding:2px 6px; border-radius:4px; margin-left:4px;">승인됨</span>
                         </div>
-                        <button class="btn-reject" onclick="revokeUser('${safeUid}','${safeEmail.replace(/'/g, &quot;\\&quot;+&quot;'&quot;)}')">🔴 박탈</button>
+                        <div class="pending-user-time">승인 일시 ${escapeHtml(time)}</div>
                     `;
+                    row.appendChild(infoDiv);
+                    row.appendChild(revokeBtn);
                     listEl.appendChild(row);
                 }
             }
