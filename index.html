@@ -2743,7 +2743,7 @@ async function reRequestApproval() {
         });
         await fetch(FB_PROJECT.databaseURL + "/pending_users/" + user.uid + ".json", {
             method: "PUT", headers: {"Content-Type":"application/json"},
-            body: JSON.stringify({ email: user.email, displayName: user.displayName || user.email.split("@")[0], requestedAt: Date.now(), requestType: "reactivation" })
+            body: JSON.stringify({ email: user.email, displayName: user.displayName || user.email.split("@")[0], requestedAt: Date.now(), requestType: "re-request" })
         });
         alert("승인을 다시 요청했습니다.");
         
