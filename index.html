@@ -1423,9 +1423,12 @@ body {
    JAVASCRIPT LOGIC (Firebase SDK & REST Hybrid)
    ───────────────────────────────────────────────────────────── -->
 <!-- Firebase Auth SDK (Compat v10) -->
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js" integrity="sha384-sEVIly94UBRLKWdkYoPpSG7GD/e79YHMrxVyZaOk712Ga7+EAw6w1EFi+xBzBdd+" crossorigin="anonymous"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js" integrity="sha384-EkqK+ezBWJuvO3hfrSx2iVqr3YQbhmnzn8kPhOpBZ+0GMVU5oGSgptwIu8D84HjE" crossorigin="anonymous"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js" integrity="sha384-1/m+A1jVWbD3yiK3/vtFvm1+LjK1WLpSoDY+Kaxppwn/yP9BVSgdHTNQVOjrzUO5" crossorigin="anonymous"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js" integrity="sha384-sEVIly94UBRLKWdkYoPpSG7GD/e79YHMrxVyZaOk712Ga7+EAw6w1EFi+xBzBdd+" crossorigin="anonymous">
+</script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js" integrity="sha384-EkqK+ezBWJuvO3hfrSx2iVqr3YQbhmnzn8kPhOpBZ+0GMVU5oGSgptwIu8D84HjE" crossorigin="anonymous">
+</script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js" integrity="sha384-1/m+A1jVWbD3yiK3/vtFvm1+LjK1WLpSoDY+Kaxppwn/yP9BVSgdHTNQVOjrzUO5" crossorigin="anonymous">
+</script>
 
 <script>
 let config = {
@@ -3341,6 +3344,66 @@ async function rejectUser(uid, email) {
         await firebase.database().ref("/pending_users/" + uid).remove();
         alert("❌ " + email + " 가입 요청이 거부되었습니다.");
     } catch(e) { alert("오류: " + e.message); }
+}
+
+
+
+// --- 계정 관리 로직 ---
+function openAccountModal() {
+    const user = _fbAuth ? _fbAuth.currentUser : null;
+    if (user) {
+        document.getElementById("account-email-display").textContent = user.email || "이메일 정보 없음";
+    }
+    document.getElementById("account-error-msg").style.display = "none";
+    document.getElementById("account-new-pw").value = "";
+    document.getElementById("account-new-pw-confirm").value = "";
+    
+    const modal = document.getElementById("account-modal");
+    if(modal) {
+        modal.classList.add("show");
+    }
+}
+
+function closeAccountModal() {
+    const modal = document.getElementById("account-modal");
+    if(modal) {
+        modal.classList.remove("show");
+    }
+}
+
+async function addPasswordToAccount() {
+    const user = _fbAuth ? _fbAuth.currentUser : null;
+    if (!user) return;
+    
+    const pw1 = document.getElementById("account-new-pw").value;
+    const pw2 = document.getElementById("account-new-pw-confirm").value;
+    const msg = document.getElementById("account-error-msg");
+    
+    if (!pw1 || pw1.length < 6) {
+        msg.textContent = "비밀번호는 6자리 이상이어야 합니다.";
+        msg.style.display = "block";
+        return;
+    }
+    if (pw1 !== pw2) {
+        msg.textContent = "비밀번호 확인이 일치하지 않습니다.";
+        msg.style.display = "block";
+        return;
+    }
+    
+    msg.style.display = "none";
+    try {
+        await user.updatePassword(pw1);
+        closeAccountModal();
+        alert("이메일 로그인용 비밀번호가 성공적으로 설정되었습니다!\n이제 구글 버튼을 누르지 않아도 이메일과 비밀번호로 로그인할 수 있습니다.");
+    } catch(err) {
+        console.error(err);
+        if (err.code === 'auth/requires-recent-login') {
+            msg.textContent = "보안을 위해 다시 로그인한 후 비밀번호를 설정해주세요.";
+        } else {
+            msg.textContent = err.message || "비밀번호 설정 중 오류가 발생했습니다.";
+        }
+        msg.style.display = "block";
+    }
 }
 
 </script>
