@@ -3165,16 +3165,11 @@ async function revokeUser(uid, email) {
 }
 
 async function restoreUser(uid, email) {
-    if (!confirm(email + " 사용자의 권한을 복구하시겠습니까?")) return;
+    if (!confirm(email + " 사용자를 복구하시겠습니까?")) return;
     try {
-        await fetch(FB_PROJECT.databaseURL + "/users/" + uid + ".json", {
-            method: "PUT",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({ email: email, approved: true, approvedAt: Date.now() }) // revokedAt은 덮어쓰기됨
-        });
-        await fetch(FB_PROJECT.databaseURL + "/pending_users/" + uid + ".json", { method: "DELETE" }); // 대기열에서 삭제
-        alert("🟢 " + email + " 권한이 복구되었습니다.");
-        loadApprovedUsers(); // UI 갱신
+        await firebase.database().ref("/users/" + uid).set({ email: email, approved: true, approvedAt: Date.now() });
+        await firebase.database().ref("/pending_users/" + uid).remove();
+        alert("🟢 " + email + " 복구되었습니다.");
     } catch(e) { alert("오류: " + e.message); }
 }
 
@@ -3261,30 +3256,20 @@ function loadPendingUsers() {
 }
 
 async function approveUser(uid, email) {
-    if (!confirm(email + " 사용자를 최종 승인하시겠습니까?")) return;
+    if (!confirm(email + " 사용자를 승인하시겠습니까?")) return;
     try {
-        await fetch(FB_PROJECT.databaseURL + "/users/" + uid + ".json", {
-            method: "PUT", headers: {"Content-Type":"application/json"},
-            body: JSON.stringify({ email, approved: true, role: "user", approvedAt: Date.now() })
-        });
-        await fetch(FB_PROJECT.databaseURL + "/pending_users/" + uid + ".json", { method: "DELETE" });
+        await firebase.database().ref("/users/" + uid).set({ email, approved: true, role: "user", approvedAt: Date.now() });
+        await firebase.database().ref("/pending_users/" + uid).remove();
         alert("✅ " + email + " 사용자가 승인되었습니다.");
-        // UI 갱신은 실시간 리스너가 자동 처리합니다.
     } catch(e) { alert("오류: " + e.message); }
 }
 
 async function rejectUser(uid, email) {
-    if (!confirm(email + " 사용자의 가입을 거부하시겠습니까?")) return;
+    if (!confirm(email + " 가입 요청을 거부하시겠습니까?")) return;
     try {
-        // 거부 상태를 DB에 영구 저장 (재접속 시에도 거부됨 표시)
-        await fetch(FB_PROJECT.databaseURL + "/users/" + uid + ".json", {
-            method: "PUT",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({ email: email, approved: false, rejectedAt: Date.now() })
-        });
-        await fetch(FB_PROJECT.databaseURL + "/pending_users/" + uid + ".json", { method: "DELETE" });
+        await firebase.database().ref("/users/" + uid).set({ email: email, approved: false, rejectedAt: Date.now() });
+        await firebase.database().ref("/pending_users/" + uid).remove();
         alert("❌ " + email + " 가입 요청이 거부되었습니다.");
-        // UI 갱신은 실시간 리스너가 자동 처리합니다.
     } catch(e) { alert("오류: " + e.message); }
 }
 
