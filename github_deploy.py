@@ -117,6 +117,15 @@ except Exception:
 time.sleep(1)
 
 # ── auto_shutdown.exe 빌드 ───────────────────────────────────────────────────
+print("\n[2.5단계] 클라이언트 코드 암호화(Obfuscation) 적용...")
+try:
+    subprocess.run([sys.executable, "build_obf.py"], check=True, cwd=BASE_DIR)
+    import shutil
+    shutil.copy(app_path, app_path + ".bak")
+    shutil.copy(os.path.join(BASE_DIR, "auto_shutdown_runner.py"), app_path)
+    print("암호화 적용 완료.")
+except Exception as e:
+    print(f"[Error] 암호화 실패: {e}")
 print("\n[3단계] auto_shutdown.exe PyInstaller 빌드 중... (시간이 걸릴 수 있습니다)")
 try:
     subprocess.run(["pyinstaller", "--noconfirm", spec_path],
@@ -142,6 +151,12 @@ else:
     print("[WARN] 스마트_전원_관리자_설치파일.spec 없음 - 설치파일 빌드 건너뜀")
 
 # ── GitHub Releases API로 exe 업로드 ─────────────────────────────────────────
+print("\n[3-3단계] 원본 클라이언트 코드 복구...")
+try:
+    import shutil
+    shutil.move(app_path + ".bak", app_path)
+except Exception as e:
+    pass
 print("\n[4단계] GitHub Release 생성 및 exe 업로드 중...")
 token = _get_github_token()
 if not token:
