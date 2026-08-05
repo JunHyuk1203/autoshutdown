@@ -1621,7 +1621,7 @@ function initializeDashboard() {
 async function fetchPCData() {
     let url = `${config.databaseURL}/pcs.json?_t=` + Date.now();
     if (config.authKey) {
-        url += `&auth=${config.authKey}`;
+        url += (url.includes("?") ? "&" : "?") + `auth=${config.authKey}`;
     }
     
     try {
@@ -2106,7 +2106,7 @@ async function writeCommandToDB(target, action, message = "") {
     }
     
     if (config.authKey) {
-        url += `&auth=${config.authKey}`;
+        url += (url.includes("?") ? "&" : "?") + `auth=${config.authKey}`;
     }
     
     try {
@@ -2202,7 +2202,7 @@ async function clearSelectedDevices() {
     for (const pcId of toDelete) {
         let url = `${config.databaseURL}/pcs/${pcId}.json`;
         if (config.authKey) {
-            url += `&auth=${config.authKey}`;
+            url += (url.includes("?") ? "&" : "?") + `auth=${config.authKey}`;
         }
         try {
             await fetch(url, { method: "DELETE" });
@@ -2231,7 +2231,7 @@ async function clearOfflineDevices() {
     for (const pcId of toDelete) {
         let url = `${config.databaseURL}/pcs/${pcId}.json`;
         if (config.authKey) {
-            url += `&auth=${config.authKey}`;
+            url += (url.includes("?") ? "&" : "?") + `auth=${config.authKey}`;
         }
         try {
             await fetch(url, { method: "DELETE" });
@@ -2375,7 +2375,7 @@ async function syncFavoritesToFirebase(favs) {
     if (!config.databaseURL) return;
     let url = `${config.databaseURL}/file_favorites.json`;
     if (config.authKey) {
-        url += `&auth=${config.authKey}`;
+        url += (url.includes("?") ? "&" : "?") + `auth=${config.authKey}`;
     }
     try {
         await fetch(url, {
@@ -2393,7 +2393,7 @@ async function loadFavoritesFromServer() {
     if (!config.databaseURL) return;
     let url = `${config.databaseURL}/file_favorites.json`;
     if (config.authKey) {
-        url += `&auth=${config.authKey}`;
+        url += (url.includes("?") ? "&" : "?") + `auth=${config.authKey}`;
     }
     try {
         const response = await fetch(url);
@@ -2532,7 +2532,7 @@ function normalizePath(p) {
 
 function pollExplorerData() {
     if (!openFileTarget || openFileTarget === "__ALL__") return;
-    const url = `${config.databaseURL}/explorer/${openFileTarget}.json` + (config.authKey ? `?auth=${config.authKey}` : "");
+    const url = `${config.databaseURL}/explorer/${openFileTarget}.json` + (config.authKey ? (url.includes("?") ? `&auth=${config.authKey}` : `?auth=${config.authKey}`) : "");
     fetch(url).then(r => r.json()).then(data => {
         if (data) {
             // Ignore stale data from previous path (compare normalized)
