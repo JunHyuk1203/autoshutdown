@@ -3167,7 +3167,7 @@ async function revokeUser(uid, email) {
             body: JSON.stringify({ email: email, approved: false, revokedAt: Date.now() })
         });
         alert("🔴 " + email + " 권한이 박탈되었습니다.");
-        loadApprovedUsers(); // UI 갱신
+        // UI 갱신은 실시간 리스너가 자동 처리합니다.
     } catch(e) { alert("오류: " + e.message); }
 }
 
@@ -3261,7 +3261,7 @@ async function approveUser(uid, email) {
         });
         await fetch(FB_PROJECT.databaseURL + "/pending_users/" + uid + ".json", { method: "DELETE" });
         alert("✅ " + email + " 사용자가 승인되었습니다.");
-        loadPendingUsers();
+        // UI 갱신은 실시간 리스너가 자동 처리합니다.
     } catch(e) { alert("오류: " + e.message); }
 }
 
@@ -3276,7 +3276,7 @@ async function rejectUser(uid, email) {
         });
         await fetch(FB_PROJECT.databaseURL + "/pending_users/" + uid + ".json", { method: "DELETE" });
         alert("❌ " + email + " 가입 요청이 거부되었습니다.");
-        loadPendingUsers();
+        // UI 갱신은 실시간 리스너가 자동 처리합니다.
     } catch(e) { alert("오류: " + e.message); }
 }
 
