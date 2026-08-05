@@ -928,8 +928,8 @@ body {
       <p style="color:var(--text-muted); font-size:13px;">원격 PC 관리 시스템에 로그인하세요</p>
     </div>
     <div class="auth-error" id="auth-error-msg"></div>
-    <input class="auth-input" id="auth-email-input" type="email" placeholder="이메일" autocomplete="email">
-    <input class="auth-input" id="auth-pw-input" type="password" placeholder="비밀번호 (6자리 이상)" autocomplete="current-password">
+    <input class="auth-input" id="auth-email-input" type="email" name="email" placeholder="이메일" autocomplete="email">
+    <input class="auth-input" id="auth-pw-input" type="password" name="password" placeholder="비밀번호 (6자리 이상)" autocomplete="current-password">
     <button class="auth-btn auth-btn-primary" id="auth-submit-btn" onclick="handleEmailAuth()">로그인 / 회원가입</button>
     <div class="auth-divider">또는</div>
     <button class="auth-btn auth-btn-google" onclick="handleGoogleAuth()">
