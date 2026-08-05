@@ -1990,6 +1990,17 @@ function closeConfigModal() {
 }
 
 
+// 승인 여부만 확인하는 헬퍼 함수 (관리자 승인 체크용)
+async function _isApproved(uid) {
+    try {
+        const snap = await firebase.database().ref("/users/" + uid + "/approved").once("value");
+        return snap.val() === true;
+    } catch(e) {
+        console.error("_isApproved error:", e);
+        return false;
+    }
+}
+
 async function _checkAuthPermission() {
     if (!_fbAuth || !_fbAuth.currentUser) {
         alert("로그인이 필요합니다.");
@@ -3135,10 +3146,13 @@ function loadApprovedUsers() {
             let count = 0;
             
             for (const [uid, info] of Object.entries(usersData)) {
-                if (info.approved === true && info.role !== "master") {
+                // 마스터 계정 제외, 승인된 사용자 모두 표시 (role 필드 없어도 됨)
+                const isMaster = info.email === MASTER_EMAIL || info.role === "master";
+                if (info.approved === true && !isMaster) {
                     count++;
                     const time = info.approvedAt ? new Date(info.approvedAt).toLocaleString("ko-KR") : "시간 미상";
                     const safeEmail = escapeHtml(info.email || "알 수 없음");
+                    const safeUid = escapeHtml(uid);
                     const row = document.createElement("div");
                     row.className = "pending-user-row";
                     row.innerHTML = `
@@ -3149,7 +3163,7 @@ function loadApprovedUsers() {
                             </div>
                             <div class="pending-user-time">승인 일시 ${escapeHtml(time)}</div>
                         </div>
-                        <button class="btn-reject" onclick="revokeUser('${escapeHtml(uid)}','${safeEmail.replace(/'/g, "\'")}')">🔴 박탈</button>
+                        <button class="btn-reject" onclick="revokeUser('${safeUid}','${safeEmail.replace(/'/g, &quot;\\&quot;+&quot;'&quot;)}')">🔴 박탈</button>
                     `;
                     listEl.appendChild(row);
                 }
@@ -3173,7 +3187,8 @@ async function revokeUser(uid, email) {
     showModal("권한 박탈", `<b>${escapeHtml(email)}</b>의 권한을 박탈하시겠습니까?`, async () => {
         closeModal();
         try {
-            await firebase.database().ref("/users/" + uid).set({ email: email, approved: false, revokedAt: Date.now() });
+            // 기존 데이터를 유지하면서 approved만 변경
+            await firebase.database().ref("/users/" + uid).update({ approved: false, revokedAt: Date.now() });
         } catch(e) { alert("에러: " + e.message); }
     });
 }
@@ -3183,7 +3198,8 @@ async function restoreUser(uid, email) {
     showModal("권한 복구", `<b>${escapeHtml(email)}</b> 사용자를 다시 승인하시겠습니까?`, async () => {
         closeModal();
         try {
-            await firebase.database().ref("/users/" + uid).set({ email: email, approved: true, approvedAt: Date.now() });
+            // 기존 데이터를 유지하면서 approved만 변경
+            await firebase.database().ref("/users/" + uid).update({ approved: true, approvedAt: Date.now() });
             await firebase.database().ref("/pending_users/" + uid).remove();
             alert("✅ " + email + " 승인되었습니다.");
         } catch(e) { alert("에러: " + e.message); }
