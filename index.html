@@ -1519,15 +1519,20 @@ function _startAuth(apiKey) {
             }
 
             // ── 3단계: 가입 승인 상태 ──
-            const status = await _getApprovalStatus(user.uid);
+            const statusObj = await _getApprovalStatus(user.uid);
+            const status = statusObj ? statusObj.approved : null;
             if (status === true) {
                 _enterDashboard(user);
             } else if (status === false) {
-                document.getElementById("pending-email-label").textContent = user.email;
-                document.getElementById("pending-title").textContent = "가입 거부됨";
-                document.getElementById("pending-desc").innerHTML = "관리자가 가입을 거부했습니다.";
-                document.getElementById("pending-rerequest-btn").style.display = "block";
-                _showScreen("pending-view");
+                if (statusObj.revokedAt) {
+                    _showScreen("revoked-view");
+                } else {
+                    document.getElementById("pending-email-label").textContent = user.email;
+                    document.getElementById("pending-title").textContent = "가입 거부됨";
+                    document.getElementById("pending-desc").innerHTML = "관리자가 가입을 거부했습니다.";
+                    document.getElementById("pending-rerequest-btn").style.display = "block";
+                    _showScreen("pending-view");
+                }
             } else {
                 await _savePending(user);
                 document.getElementById("pending-email-label").textContent = user.email;
@@ -1581,9 +1586,9 @@ function _enterDashboard(user) {
 
 async function _getApprovalStatus(uid) {
     try {
-        const r = await fetch(FB_PROJECT.databaseURL + "/users/" + uid + "/approved.json");
+        const r = await fetch(FB_PROJECT.databaseURL + "/users/" + uid + ".json");
         const val = await r.json();
-        return val; // Returns true, false, or null
+        return val; // Returns object { approved, revokedAt, rejectedAt } or null
     } catch { return null; }
 }
 
