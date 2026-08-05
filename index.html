@@ -3163,6 +3163,7 @@ async function restoreUser(uid, email) {
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify({ email: email, approved: true, approvedAt: Date.now() }) // revokedAt은 덮어쓰기됨
         });
+        await fetch(FB_PROJECT.databaseURL + "/pending_users/" + uid + ".json", { method: "DELETE" }); // 대기열에서 삭제
         alert("🟢 " + email + " 권한이 복구되었습니다.");
         loadApprovedUsers(); // UI 갱신
     } catch(e) { alert("오류: " + e.message); }
