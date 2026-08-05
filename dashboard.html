@@ -2918,11 +2918,13 @@ function initAuthWithApiKey() {
 }
 
 function resetApiKeySetup() {
-    if (!confirm("API 키 설정을 초기화하시겠습니까?")) return;
-    localStorage.removeItem("sp_fb_apikey");
-    if (_fbAuth) { _fbAuth.signOut().catch(()=>{}); _fbAuth = null; }
-    try { if (firebase.apps && firebase.apps.length) firebase.app().delete(); } catch(e) {}
-    _showScreen("setup-view");
+    showModal("API 키 초기화", "저장된 API 키와 설정 정보를 초기화하시겠습니까?", () => {
+        closeModal();
+        localStorage.removeItem("sp_fb_apikey");
+        if (_fbAuth) { _fbAuth.signOut().catch(()=>{}); _fbAuth = null; }
+        try { if (firebase.apps && firebase.apps.length) firebase.app().delete(); } catch(e) {}
+        _showScreen("setup-view");
+    });
 }
 
 // ─ 탭 전환 ───────────────────────────────────────────────
@@ -3168,21 +3170,24 @@ function loadApprovedUsers() {
 
 async function revokeUser(uid, email) {
     if (!(await _checkAdminPermission())) return;
-    if (!confirm(email + " 사용자의 권한을 즉시 박탈하시겠습니까?")) return;
-    try {
-        await firebase.database().ref("/users/" + uid).set({ email: email, approved: false, revokedAt: Date.now() });
-        // UI 갱신은 실시간 리스너가 자동 처리합니다.
-    } catch(e) { alert("오류: " + e.message); }
+    showModal("권한 박탈", `<b>${escapeHtml(email)}</b>의 권한을 박탈하시겠습니까?`, async () => {
+        closeModal();
+        try {
+            await firebase.database().ref("/users/" + uid).set({ email: email, approved: false, revokedAt: Date.now() });
+        } catch(e) { alert("에러: " + e.message); }
+    });
 }
 
 async function restoreUser(uid, email) {
     if (!(await _checkAdminPermission())) return;
-    if (!confirm(email + " 사용자를 복구하시겠습니까?")) return;
-    try {
-        await firebase.database().ref("/users/" + uid).set({ email: email, approved: true, approvedAt: Date.now() });
-        await firebase.database().ref("/pending_users/" + uid).remove();
-        alert("🟢 " + email + " 복구되었습니다.");
-    } catch(e) { alert("오류: " + e.message); }
+    showModal("권한 복구", `<b>${escapeHtml(email)}</b> 사용자를 다시 승인하시겠습니까?`, async () => {
+        closeModal();
+        try {
+            await firebase.database().ref("/users/" + uid).set({ email: email, approved: true, approvedAt: Date.now() });
+            await firebase.database().ref("/pending_users/" + uid).remove();
+            alert("✅ " + email + " 승인되었습니다.");
+        } catch(e) { alert("에러: " + e.message); }
+    });
 }
 
 async function reRequestReactivation() {
@@ -3274,22 +3279,26 @@ function loadPendingUsers() {
 
 async function approveUser(uid, email) {
     if (!(await _checkAdminPermission())) return;
-    if (!confirm(email + " 사용자를 승인하시겠습니까?")) return;
-    try {
-        await firebase.database().ref("/users/" + uid).set({ email, approved: true, role: "user", approvedAt: Date.now() });
-        await firebase.database().ref("/pending_users/" + uid).remove();
-        alert("✅ " + email + " 사용자가 승인되었습니다.");
-    } catch(e) { alert("오류: " + e.message); }
+    showModal("가입 승인", `<b>${escapeHtml(email)}</b> 가입을 승인하시겠습니까?`, async () => {
+        closeModal();
+        try {
+            await firebase.database().ref("/users/" + uid).set({ email, approved: true, role: "user", approvedAt: Date.now() });
+            await firebase.database().ref("/pending_users/" + uid).remove();
+            alert("✅ " + email + " 승인되었습니다.");
+        } catch(e) { alert("에러: " + e.message); }
+    });
 }
 
 async function rejectUser(uid, email) {
     if (!(await _checkAdminPermission())) return;
-    if (!confirm(email + " 가입 요청을 거부하시겠습니까?")) return;
-    try {
-        await firebase.database().ref("/users/" + uid).set({ email: email, approved: false, rejectedAt: Date.now() });
-        await firebase.database().ref("/pending_users/" + uid).remove();
-        alert("❌ " + email + " 가입 요청이 거부되었습니다.");
-    } catch(e) { alert("오류: " + e.message); }
+    showModal("가입 거절", `<b>${escapeHtml(email)}</b> 가입 요청을 거절하시겠습니까?`, async () => {
+        closeModal();
+        try {
+            await firebase.database().ref("/users/" + uid).set({ email: email, approved: false, rejectedAt: Date.now() });
+            await firebase.database().ref("/pending_users/" + uid).remove();
+            alert("❌ " + email + " 요청이 거절되었습니다.");
+        } catch(e) { alert("에러: " + e.message); }
+    });
 }
 
 
