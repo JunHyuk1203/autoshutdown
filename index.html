@@ -3044,6 +3044,12 @@ async function approveUser(uid, email) {
 async function rejectUser(uid, email) {
     if (!confirm(email + " 사용자의 가입을 거부하시겠습니까?")) return;
     try {
+        // 거부 상태를 DB에 영구 저장 (재접속 시에도 거부됨 표시)
+        await fetch(FB_PROJECT.databaseURL + "/users/" + uid + ".json", {
+            method: "PUT",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({ email: email, approved: false, rejectedAt: Date.now() })
+        });
         await fetch(FB_PROJECT.databaseURL + "/pending_users/" + uid + ".json", { method: "DELETE" });
         alert("❌ " + email + " 가입 요청이 거부되었습니다.");
         loadPendingUsers();
