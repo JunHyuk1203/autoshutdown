@@ -3135,10 +3135,10 @@ function _revokeAccess() {
 
 function loadApprovedUsers() {
     const listEl = document.getElementById("approved-user-list");
-    listEl.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:20px 0;">⏳ 실시간 데이터 로딩 중...</p>';
     
     if (adminUsersListener) return;
     
+    listEl.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:20px 0;">⏳ 실시간 데이터 로딩 중...</p>';
     adminUsersListener = firebase.database().ref("/users").on("value", async snapshot => {
         try {
             const usersData = snapshot.val() || {};
@@ -3243,10 +3243,10 @@ function closeAdminPanel() {
 
 function loadPendingUsers() {
     const listEl = document.getElementById("pending-user-list");
-    listEl.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:20px 0;">⏳ 실시간 데이터 로딩 중...</p>';
     
     if (adminPendingListener) return;
     
+    listEl.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:20px 0;">⏳ 실시간 데이터 로딩 중...</p>';
     adminPendingListener = firebase.database().ref("/pending_users").on("value", async snapshot => {
         try {
             const data = snapshot.val() || {};
