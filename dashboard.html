@@ -3057,7 +3057,23 @@ async function signOutAndReset() {
 
 let _revokedListener = null;
 
+let adminPendingListener = null;
+let adminUsersListener = null;
+
+function detachAdminListeners() {
+    if (adminPendingListener && window.firebase && firebase.database) {
+        firebase.database().ref("/pending_users").off("value", adminPendingListener);
+        adminPendingListener = null;
+    }
+    if (adminUsersListener && window.firebase && firebase.database) {
+        firebase.database().ref("/users").off("value", adminUsersListener);
+        adminUsersListener = null;
+    }
+}
+
 function switchAdminTab(tab) {
+    detachAdminListeners();
+    
     const btnPending = document.getElementById('tab-btn-pending');
     const btnApproved = document.getElementById('tab-btn-approved');
     const viewPending = document.getElementById('admin-tab-pending');
@@ -3093,21 +3109,20 @@ function _revokeAccess() {
     _showScreen("revoked-view");
 }
 
-async function loadApprovedUsers() {
+function loadApprovedUsers() {
     const listEl = document.getElementById("approved-user-list");
-    listEl.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:20px 0;">⏳ 불러오는 중...</p>';
-    try {
-        const resp = await fetch(FB_PROJECT.databaseURL + "/users.json");
-        const data = await resp.json();
-        
-        let hasUsers = false;
-        listEl.innerHTML = "";
-        
-        if (data) {
+    listEl.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:20px 0;">⏳ 실시간 연동 중...</p>';
+    
+    if (adminUsersListener) return;
+    adminUsersListener = firebase.database().ref("/users").on("value", snapshot => {
+        try {
+            const data = snapshot.val() || {};
+            let hasUsers = false;
+            listEl.innerHTML = "";
+            
             for (const [uid, info] of Object.entries(data)) {
-                if (info.email === MASTER_EMAIL) continue; // 마스터는 안보이게
+                if (info.email === MASTER_EMAIL) continue;
                 
-                // approved === true 이거나 (approved === false 이고 revokedAt 이 있는 경우: 박탈됨)
                 if (info.approved === true || (info.approved === false && info.revokedAt)) {
                     hasUsers = true;
                     const isRevoked = info.approved === false;
@@ -3118,7 +3133,7 @@ async function loadApprovedUsers() {
                     const row = document.createElement("div");
                     row.className = "pending-user-row";
                     if (isRevoked) {
-                        row.style.opacity = "0.5"; // 박탈된 유저는 반투명
+                        row.style.opacity = "0.5";
                     }
                     
                     row.innerHTML = `
@@ -3136,14 +3151,14 @@ async function loadApprovedUsers() {
                     listEl.appendChild(row);
                 }
             }
+            
+            if (!hasUsers) {
+                listEl.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:28px 0;">✅ 승인된 사용자(또는 박탈된 계정)가 없습니다.</p>';
+            }
+        } catch(e) {
+            listEl.innerHTML = `<p style="color:#fca5a5;text-align:center;padding:20px 0;">오류: ${e.message}</p>`;
         }
-        
-        if (!hasUsers) {
-            listEl.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:28px 0;">✅ 승인된 사용자(또는 박탈된 계정)가 없습니다.</p>';
-        }
-    } catch(e) {
-        listEl.innerHTML = `<p style="color:#fca5a5;text-align:center;padding:20px 0;">오류: ${e.message}</p>`;
-    }
+    });
 }
 
 async function revokeUser(uid, email) {
