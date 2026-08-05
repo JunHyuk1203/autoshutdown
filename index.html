@@ -1017,109 +1017,7 @@ body {
 <!-- ─────────────────────────────────────────────────────────────
    1단계: Firebase 설정 화면 (Onboarding)
    ───────────────────────────────────────────────────────────── -->
-<div class="onboarding-container" id="onboarding-view">
-    <div class="glass-card">
-        <h2 class="onboarding-title">⚡ <span class="gradient-text">SmartPower</span></h2>
-        <p class="onboarding-desc">원격 PC 제어를 위한 Firebase Realtime Database 연동 설정을 입력해 주세요. 이 설정은 브라우저 로컬 저장소에 안전하게 유지됩니다.</p>
-        
-        <div class="form-group">
-            <label class="form-label" for="input-db-url">Firebase Database URL</label>
-            <input class="form-input" id="input-db-url" type="text" value="https://atss-a1f9e-default-rtdb.firebaseio.com/" placeholder="https://[프로젝트ID]-default-rtdb.firebaseio.com" required>
-        </div>
-        
-        <div class="form-group">
-            <label class="form-label" for="input-db-secret">Database Secret / Auth Key (선택)</label>
-            <input class="form-input" id="input-db-secret" type="password" placeholder="비밀키 또는 빈 칸 유지 (공개 규칙 시)">
-        </div>
-        
-        <button class="btn-submit" onclick="saveConfiguration()">대시보드 연결하기</button>
-    </div>
-</div>
 
-<!-- ─────────────────────────────────────────────────────────────
-   2단계: 실시간 관리 대시보드 화면
-   ───────────────────────────────────────────────────────────── -->
-<div class="dashboard-layout" id="dashboard-view" style="display:none;">
-    <!-- 헤더 -->
-    <header class="top-header">
-        <div class="logo-section">
-            <h1>⚡ <span class="gradient-text">SmartPower Admin</span></h1>
-            <span id="label-connected-db">연결 중...</span>
-        </div>
-        <div class="header-actions">
-            <!-- 설정 변경 버튼 -->
-            <button class="btn-icon" id="admin-panel-btn" onclick="openAdminPanel()" title="신규 가입 검토 (관리자)" style="display:none">&#x1F6E1;&#xFE0F;</button>
-            <button class="btn-icon" id="logout-header-btn" onclick="signOutAndReset()" title="로그아웃" style="display:none">&#x1F6AA;</button>
-            <button class="btn-icon" onclick="resetConfiguration()" title="서버 설정 변경">&#x2699;&#xFE0F;</button>
-        </div>
-    </header>
-
-    <!-- 메인 콘텐츠 -->
-    <main class="main-content">
-        <!-- 상단 연결 현황 바 -->
-        <div class="top-status-bar">
-            <div class="status-panel">
-                <span class="status-title">연결 현황:</span>
-                <span class="status-chip">전체 <strong id="stat-total">0</strong></span>
-                <span class="status-chip active">온라인 <strong id="stat-online">0</strong></span>
-                <span class="status-chip inactive">오프라인 <strong id="stat-offline">0</strong></span>
-            </div>
-            <div style="display: flex; gap: 8px;">
-                <button class="btn-clear-offline" onclick="clearSelectedDevices()">🗑 선택된 PC 삭제</button>
-                <button class="btn-clear-offline" onclick="clearOfflineDevices()">🗑 오프라인 일괄 삭제</button>
-            </div>
-        </div>
-
-        <!-- 가로 제어 행 (전체 원격 제어) -->
-        <div class="control-row" style="grid-template-columns: 1fr;">
-            <!-- 전체 원격 제어 -->
-            <div class="control-panel">
-                <h3 class="panel-title">⚡ 전체 PC 제어</h3>
-                <div class="btn-row">
-                    <button class="action-btn action-btn-danger" onclick="triggerCommandAll('shutdown')">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle;"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
-                        전체 종료
-                    </button>
-                    <button class="action-btn action-btn-blue" onclick="triggerCommandAll('restart')">🔄 전체 재부팅</button>
-                    <button class="action-btn action-btn-secondary" onclick="triggerCommandAll('setup_mode')">🚀 전체 초기설정</button>
-                    <button class="action-btn action-btn-warning" onclick="openFileModal('__ALL__')">📂 전체 파일 열기</button>
-                    <button class="action-btn action-btn-dark" onclick="triggerCommandAll('close_active_window')">❌ 전체 창 닫기</button>
-                    <button class="action-btn action-btn-secondary" onclick="openVolumeControl('__ALL__')">🔊 전체 음량제어</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- 우측 PC 모니터링 그리드 -->
-        <section class="grid-container">
-            <div class="grid-header">
-                <h2 class="grid-title">모니터링 대상 기기</h2>
-            </div>
-            
-            <div class="pc-grid" id="pc-grid-area">
-                <!-- 동적으로 기기 추가됨 -->
-                <div class="empty-state">
-                    <div class="empty-icon">📡</div>
-                    <div class="empty-title">연결 대기 중</div>
-                    <div class="empty-desc">학생 PC에서 스마트 전원 관리자가 실행되면 자동으로 여기에 나타납니다.</div>
-                </div>
-            </div>
-        </section>
-    </main>
-</div>
-
-<!-- ─────────────────────────────────────────────────────────────
-   공용 다이얼로그 모달
-   ───────────────────────────────────────────────────────────── -->
-<div class="modal-overlay" id="confirm-modal">
-    <div class="modal-card">
-        <h3 class="modal-title" id="modal-title">확인</h3>
-        <p class="modal-msg" id="modal-msg">정말 진행하시겠습니까?</p>
-        <div class="modal-actions">
-            <button class="modal-btn modal-btn-cancel" onclick="closeModal()">취소</button>
-            <button class="modal-btn modal-btn-confirm" id="modal-ok-btn">실행</button>
-        </div>
-    </div>
-</div>
 
 <!-- ─────────────────────────────────────────────────────────────
    원격 설정 모달
@@ -1571,14 +1469,6 @@ async function _savePending(user) {
     } catch(e) { console.error(e); }
 }
 
-function saveConfiguration() {
-    let url = document.getElementById("input-db-url").value.trim();
-    let secret = document.getElementById("input-db-secret").value.trim();
-    
-    if (!url) {
-        alert("데이터베이스 URL을 입력해 주세요.");
-        return;
-    }
     
     if (!url.startsWith("http")) {
         url = "https://" + url;
@@ -1598,19 +1488,6 @@ function saveConfiguration() {
     initializeDashboard();
 }
 
-function resetConfiguration() {
-    if (confirm("연결 설정을 재구성하시겠습니까?")) {
-        localStorage.removeItem("sp_db_url");
-        localStorage.removeItem("sp_db_secret");
-        
-        if (pollerInterval) clearInterval(pollerInterval);
-        
-        document.getElementById("onboarding-view").style.display = "flex";
-        document.getElementById("dashboard-view").style.display = "none";
-        
-        document.getElementById("input-db-url").value = config.databaseURL;
-        document.getElementById("input-db-secret").value = config.authKey;
-    }
 }
 
 // ── 실시간 데이터 모니터링 폴링 ──
