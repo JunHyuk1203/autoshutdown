@@ -872,14 +872,14 @@ body {
 }
 .admin-panel-card {
     background: #0d0d22; border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 20px; padding: 32px; width: 100%; max-width: 560px;
+    border-radius: 20px; padding: 32px 10px; width: 100%; max-width: 600px;
     max-height: 80vh; overflow-y: auto; box-shadow: 0 24px 60px rgba(0,0,0,0.6);
     animation: fadeIn 0.3s ease;
 }
 .pending-user-row {
-    display: flex; align-items: center; padding: 14px 16px;
+    display: flex; align-items: center; padding: 14px 4px;
     background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07);
-    border-radius: 12px; margin-bottom: 8px; gap: 12px;
+    border-radius: 12px; margin-bottom: 8px; gap: 6px;
 }
 .pending-user-avatar {
     width: 36px; height: 36px; border-radius: 50%;
@@ -888,7 +888,7 @@ body {
     font-weight: 700; font-size: 14px; color: white; flex-shrink: 0;
 }
 .pending-user-info { flex: 1; min-width: 0; }
-.pending-user-email { font-size: 13px; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pending-user-email { font-size: 13px; color: var(--text-main); white-space: normal; word-break: break-all; }
 .pending-user-time { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
 .btn-approve {
     background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.4);
@@ -3014,7 +3014,6 @@ async function loadPendingUsers() {
             const row = document.createElement("div");
             row.className = "pending-user-row";
             row.innerHTML = `
-                <div class="pending-user-avatar">${init}</div>
                 <div class="pending-user-info">
                     <div class="pending-user-email">${info.email || "알 수 없음"}</div>
                     <div class="pending-user-time">이메일인증 완료 / 관리자승인 대기 · ${time}</div>
