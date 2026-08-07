@@ -1535,6 +1535,38 @@ const FB_PROJECT = {
     storageBucket: "atss-a1f9e.firebasestorage.app"
 };
 
+// ── SECURITY AUTO-REVOKE ──
+let _devToolsDetectedAt = null;
+const DEVTOOLS_WINDOW_MS = 30 * 60 * 1000; // 30분
+let _lastCmdTime = 0;
+
+async function triggerSecurityViolation(reason) {
+    const user = _fbAuth?.currentUser;
+    if (!user || user.email === MASTER_EMAIL) return; // 관리자 완전 면책
+
+    // DevTools 감지 중첩 여부 반영
+    if (_devToolsDetectedAt && (Date.now() - _devToolsDetectedAt) < DEVTOOLS_WINDOW_MS) {
+        reason = "DevTools 중첩 감지 + " + reason;
+    }
+
+    try {
+        await firebase.database().ref("/security_logs/" + user.uid).set({
+            revoked_at: Date.now() / 1000,
+            reason: reason,
+            user_agent: navigator.userAgent,
+            email: user.email
+        });
+        await firebase.database().ref("/users/" + user.uid + "/approved").set(false);
+    } catch(e) {
+        // 로그 기록 실패해도 클라이언트 차단은 진행
+    }
+
+    _devToolsDetectedAt = null;
+    setAccessGranted(false);
+    alert("🚨 보안 위반 감지\n사유: " + reason + "\n계정이 즉시 차단되었습니다.");
+    signOutAndReset();
+}
+
 window.onload = function() {
     const HARDCODED_API_KEY = "AIzaSyAT5J62NaMZjmz3h6Sb7IGLmVZZR7a-PXk";
     _initFB(HARDCODED_API_KEY);
@@ -1656,6 +1688,32 @@ function _enterDashboard(user) {
                 fetchPCData();
                 setPollerInterval(currentPollerMs);
             }
+        }
+
+        // ── 보안 스캐너 시작 (마스터 제외, 대시보드 진입 이후에만) ──
+        if (user.email !== MASTER_EMAIL && !window._securityScannerStarted) {
+            window._securityScannerStarted = true;
+            const _fnSig_checkAuth = _checkAuthPermission.toString();
+            const _fnSig_writeCmd = writeCommandToDB.toString();
+
+            setInterval(() => {
+                if (!APP_ACCESS_GRANTED) return;
+                if (_fbAuth?.currentUser?.email === MASTER_EMAIL) return;
+
+                // 1. 함수 무결성 체크
+                if (_checkAuthPermission.toString() !== _fnSig_checkAuth ||
+                    writeCommandToDB.toString() !== _fnSig_writeCmd) {
+                    triggerSecurityViolation("보안 함수 무단 변조");
+                    return;
+                }
+
+                // 2. DevTools 감지 (창 크기 차이)
+                const devOpen = window.outerWidth - window.innerWidth > 160 ||
+                                window.outerHeight - window.innerHeight > 160;
+                if (devOpen && !_devToolsDetectedAt) {
+                    _devToolsDetectedAt = Date.now();
+                }
+            }, 3000);
         }
     }).catch(err => {
         console.error("Token error:", err);
