@@ -2251,13 +2251,15 @@ async function applyRemoteConfig() {
 async function writeCommandToDB(target, action, message = "") {
     if (!(await _checkAuthPermission())) return;
     
-    // Security: Rate Limit
-    const now = Date.now();
-    if (now - _lastCmdTime < 2000 && _fbAuth?.currentUser?.email && _fbAuth?.currentUser?.email.toLowerCase() !== MASTER_EMAIL.toLowerCase()) {
-        triggerSecurityViolation("비정상 연속 제어 명령 감지 (2초 내 2회)");
-        return { success: false };
+    // Rate Limit (Only for actual commands, not data fetching)
+    if (action !== "list_dir" && action !== "get_processes") {
+        const now = Date.now();
+        if (now - _lastCmdTime < 2000 && _fbAuth?.currentUser?.email && _fbAuth?.currentUser?.email.toLowerCase() !== MASTER_EMAIL.toLowerCase()) {
+            alert("명령은 2초에 한 번씩만 전송할 수 있습니다. (연속 클릭 방지)");
+            return { success: false };
+        }
+        _lastCmdTime = now;
     }
-    _lastCmdTime = now;
 
     // Security: XSS Pattern Check
     const xssPattern = /<script|javascript:|on[a-z]+=|eval\(|document\.|window\./i;
@@ -2283,10 +2285,8 @@ async function writeCommandToDB(target, action, message = "") {
         console.error("writeCommandToDB error:", e);
 
         if (e.code === 'PERMISSION_DENIED') {
-            if (_fbAuth?.currentUser?.email && _fbAuth?.currentUser?.email.toLowerCase() !== MASTER_EMAIL.toLowerCase()) {
-                triggerSecurityViolation("비인가 Firebase 직접 접근 시도");
-            }
-            alert("명령 전송 실패: 권한이 없습니다 (관리자 로그인 필요).");
+            // Do NOT trigger security violation just for a permission denied error, it could be a stale rule or UI glitch
+            alert("명령 전송 실패: 권한이 없습니다 (관리자 승인 필요).");
         } else {
 
             alert("명령 전송 실패: " + e.message);

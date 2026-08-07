@@ -6,7 +6,7 @@
     },
     "commands": {
       ".read": "true",
-      ".write": "auth != null && auth.token.email === 'tntgame1203@gmail.com'",
+      ".write": "auth != null && (root.child('users').child(auth.uid).child('approved').val() === true || auth.token.email === 'tntgame1203@gmail.com')",
       "$pc_id": {
         ".write": "newData.val() === null",
         "$cmd_id": {
