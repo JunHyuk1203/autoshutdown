@@ -1431,16 +1431,6 @@ body {
 </script>
 
 <script>
-function escapeHtml(str) {
-    if (!str) return "";
-    return String(str)
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-}
-
 let config = {
     databaseURL: "",
     authKey: ""
@@ -1601,10 +1591,12 @@ function _enterDashboard(user) {
     if (lb) lb.style.display = "flex";
     const actb = document.getElementById("account-header-btn");
     if (actb) actb.style.display = "flex";
-    if (ab && user.email && user.email.toLowerCase() === MASTER_EMAIL.toLowerCase()) {
+    if (ab && user.email === MASTER_EMAIL) {
         ab.style.display = "flex";
     } else {
-        if (ab) ab.style.display = "none";
+        if (ab) ab.remove();
+        const overlay = document.getElementById("admin-panel-overlay");
+        if (overlay) overlay.remove();
     }
 
     config.databaseURL = FB_PROJECT.databaseURL;
@@ -1656,23 +1648,29 @@ function initializeDashboard() {
 
 // REST API로 Firebase DB의 pcs 노드 동기화
 async function fetchPCData() {
-    if (!config.databaseURL) return;
-    
-    // Only fetch if admin
-    if (!_fbAuth || !_fbAuth.currentUser || _fbAuth.currentUser.email !== MASTER_EMAIL) {
-        return;
+    let url = `${config.databaseURL}/pcs.json?_t=` + Date.now();
+    if (config.authKey) {
+        url += (url.includes("?") ? "&" : "?") + `auth=${config.authKey}`;
     }
     
     try {
-        const snapshot = await firebase.database().ref("/pcs").once("value");
-        const data = snapshot.val() || {};
+        const response = await fetch(url);
+        if (response.status === 401) {
+            throw new Error("권한 없음(401): Firebase Realtime Database 규칙을 확인해주세요. (auth != null 필요)");
+        }
+        if (!response.ok) throw new Error("네트워크 응답 이상: " + response.status);
         
-        const serverNowMs = Date.now() + serverTimeOffset;
-        pcs = data;
+        // Firebase 서버 시간 획득 (Date 헤더 파싱)
+        const serverDateStr = response.headers.get("Date");
+        const serverNowMs = serverDateStr ? new Date(serverDateStr).getTime() : Date.now();
+        serverTimeOffset = serverNowMs - Date.now();
         
+        const data = await response.json();
+        pcs = data || {};
         renderPCGrid(serverNowMs);
         updateStatistics(serverNowMs);
-        
+
+        // 창 목록 모달이 열려있으면 자동 갱신
         if (_wmPcId && document.getElementById('windows-modal').classList.contains('show')) {
             const pc = pcs[_wmPcId];
             if (pc) {
@@ -1692,6 +1690,7 @@ async function fetchPCData() {
             }
         }
     } catch (e) {
+        document.getElementById("label-connected-db").innerText = `⚠️ 연결 오류: ${e.message}`;
         console.error("fetchPCData error:", e);
     }
 }
@@ -1998,17 +1997,6 @@ function closeConfigModal() {
 }
 
 
-// 승인 여부만 확인하는 헬퍼 함수 (관리자 승인 체크용)
-async function _isApproved(uid) {
-    try {
-        const snap = await firebase.database().ref("/users/" + uid + "/approved").once("value");
-        return snap.val() === true;
-    } catch(e) {
-        console.error("_isApproved error:", e);
-        return false;
-    }
-}
-
 async function _checkAuthPermission() {
     if (!_fbAuth || !_fbAuth.currentUser) {
         alert("로그인이 필요합니다.");
@@ -2115,28 +2103,59 @@ async function applyRemoteConfig() {
 // ── 전원 제어 명령 작성 기능 ──
 async function writeCommandToDB(target, action, message = "") {
     if (!(await _checkAuthPermission())) return;
+    let url = "";
+    let method = "PUT";
+    let bodyData = {};
     
-    const bodyData = {
-        action: action,
-        message: message,
-        timestamp: Date.now() / 1000.0
-    };
+    if (target === "__ALL__") {
+        url = `${config.databaseURL}/commands/__ALL__.json`;
+        bodyData = {
+            action: action,
+            message: message,
+            timestamp: Date.now() / 1000.0
+        };
+    } else {
+        url = `${config.databaseURL}/commands/${target}.json`;
+        method = "POST";
+        bodyData = {
+            action: action,
+            message: message
+        };
+    }
+    
+    // 항상 최신 ID Token을 가져와서 사용
+    try {
+        const currentUser = firebase.auth().currentUser;
+        if (currentUser) {
+            const token = await currentUser.getIdToken();
+            config.authKey = token;
+        }
+    } catch (e) {
+        console.warn("Failed to refresh token:", e);
+    }
+    
+    if (config.authKey) {
+        url += (url.includes("?") ? "&" : "?") + `auth=${config.authKey}`;
+    }
     
     try {
-        if (target === "__ALL__") {
-            await firebase.database().ref("/commands/__ALL__").set(bodyData);
-        } else {
-            await firebase.database().ref("/commands/" + target).push(bodyData);
+        const response = await fetch(url, {
+            method: method,
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(bodyData)
+        });
+        if (response.status === 401) {
+            throw new Error("권한 없음(401): Firebase Realtime Database 규칙을 확인해주세요. (auth != null 필요)");
+        }
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
         return { success: true };
-    } catch (e) {
-        console.error("writeCommandToDB error:", e);
-        if (e.code === 'PERMISSION_DENIED') {
-            alert("명령 전송 실패: 권한이 없습니다 (관리자 로그인 필요).");
-        } else {
-            alert("명령 전송 실패: " + e.message);
-        }
-        return { success: false };
+    } catch(e) {
+        console.error("전원 명령 쓰기 실패:", e);
+        return { success: false, error: e.message || String(e) };
     }
 }
 
@@ -2382,25 +2401,40 @@ function saveFavorites(favs) {
 /** Firebase RTDB로 즐겨찾기 업로드 */
 async function syncFavoritesToFirebase(favs) {
     if (!(await _checkAuthPermission())) return;
+    if (!config.databaseURL) return;
+    let url = `${config.databaseURL}/file_favorites.json`;
+    if (config.authKey) {
+        url += (url.includes("?") ? "&" : "?") + `auth=${config.authKey}`;
+    }
     try {
-        await firebase.database().ref("/file_favorites").set(favs);
+        await fetch(url, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(favs)
+        });
     } catch(e) {
-        console.error("즐겨찾기 저장 실패:", e);
+        console.error("Firebase 즐겨찾기 동기화 실패:", e);
     }
 }
 
 /** Firebase RTDB로부터 즐겨찾기 다운로드 및 로컬 갱신 */
 async function loadFavoritesFromServer() {
-    if (!openFileTarget || openFileTarget === "__ALL__") return;
+    if (!config.databaseURL) return;
+    let url = `${config.databaseURL}/file_favorites.json`;
+    if (config.authKey) {
+        url += (url.includes("?") ? "&" : "?") + `auth=${config.authKey}`;
+    }
     try {
-        const snap = await firebase.database().ref("/explorer_favorites/" + openFileTarget).once("value");
-        const favs = snap.val();
-        if (favs && Array.isArray(favs)) {
-            localStorage.setItem(FAV_STORAGE_KEY, JSON.stringify(favs));
-            renderFavorites();
+        const response = await fetch(url);
+        if (response.ok) {
+            const favs = await response.json();
+            if (favs && Array.isArray(favs)) {
+                localStorage.setItem(FAV_STORAGE_KEY, JSON.stringify(favs));
+                renderFavorites();
+            }
         }
-    } catch (e) {
-        console.error("즐겨찾기 로드 실패:", e);
+    } catch(e) {
+        console.error("Firebase 즐겨찾기 수신 실패:", e);
     }
 }
 
@@ -2527,16 +2561,16 @@ function normalizePath(p) {
 
 function pollExplorerData() {
     if (!openFileTarget || openFileTarget === "__ALL__") return;
-    
-    firebase.database().ref("/explorer/" + openFileTarget).once("value").then(snap => {
-        const data = snap.val();
+    const url = `${config.databaseURL}/explorer/${openFileTarget}.json` + (config.authKey ? (url.includes("?") ? `&auth=${config.authKey}` : `?auth=${config.authKey}`) : "");
+    fetch(url).then(r => r.json()).then(data => {
         if (data) {
+            // Ignore stale data from previous path (compare normalized)
             const gotNorm = normalizePath(data.path);
             const expNorm = normalizePath(expectedExplorerPath);
             if (expectedExplorerPath && gotNorm !== expNorm) {
                 const container = document.getElementById("explorer-list");
                 if (container && container.innerHTML.includes("로딩 중")) {
-                    container.innerHTML = `<div style="text-align: center; padding-top: 80px; font-size: 12px;">데이터 수집 중...<br><br><span style="color:var(--text-muted); font-size:10px;">[Wait] expected: '${escapeHtml(expectedExplorerPath)}', got: '${escapeHtml(data.path)}'</span></div>`;
+                    container.innerHTML = `<div style="text-align: center; padding-top: 80px; font-size: 12px;">로딩 중...<br><br><span style="color:var(--text-muted); font-size:10px;">[Wait] expected: '${expectedExplorerPath}', got: '${data.path}'</span></div>`;
                 }
                 return;
             }
@@ -2553,7 +2587,7 @@ function renderExplorerList(data) {
     }
     
     if (data.error) {
-        container.innerHTML = `<div style="color:var(--danger); padding:10px; font-size:12px;">오류: ${escapeHtml(data.error)}</div>`;
+        container.innerHTML = `<div style="color:var(--danger); padding:10px; font-size:12px;">오류: ${data.error}</div>`;
         return;
     }
     
@@ -2937,13 +2971,11 @@ function initAuthWithApiKey() {
 }
 
 function resetApiKeySetup() {
-    showModal("API 키 초기화", "저장된 API 키와 설정 정보를 초기화하시겠습니까?", () => {
-        closeModal();
-        localStorage.removeItem("sp_fb_apikey");
-        if (_fbAuth) { _fbAuth.signOut().catch(()=>{}); _fbAuth = null; }
-        try { if (firebase.apps && firebase.apps.length) firebase.app().delete(); } catch(e) {}
-        _showScreen("setup-view");
-    });
+    if (!confirm("API 키 설정을 초기화하시겠습니까?")) return;
+    localStorage.removeItem("sp_fb_apikey");
+    if (_fbAuth) { _fbAuth.signOut().catch(()=>{}); _fbAuth = null; }
+    try { if (firebase.apps && firebase.apps.length) firebase.app().delete(); } catch(e) {}
+    _showScreen("setup-view");
 }
 
 // ─ 탭 전환 ───────────────────────────────────────────────
@@ -3143,108 +3175,73 @@ function _revokeAccess() {
 
 function loadApprovedUsers() {
     const listEl = document.getElementById("approved-user-list");
+    listEl.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:20px 0;">⏳ 실시간 연동 중...</p>';
     
     if (adminUsersListener) return;
-    
-    listEl.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:20px 0;">⏳ 실시간 데이터 로딩 중...</p>';
-    adminUsersListener = firebase.database().ref("/users").on("value", async snapshot => {
+    adminUsersListener = firebase.database().ref("/users").on("value", snapshot => {
         try {
-            const usersData = snapshot.val() || {};
+            const data = snapshot.val() || {};
+            let hasUsers = false;
             listEl.innerHTML = "";
-            let count = 0;
             
-            for (const [uid, info] of Object.entries(usersData)) {
-                // Show all users in the account management tab, including revoked ones
-                const isMaster = info.email === MASTER_EMAIL || info.role === "master";
+            for (const [uid, info] of Object.entries(data)) {
+                if (info.email === MASTER_EMAIL) continue;
                 
-                count++;
-                const time = info.approvedAt ? new Date(info.approvedAt).toLocaleString("ko-KR") : 
-                             (info.revokedAt ? new Date(info.revokedAt).toLocaleString("ko-KR") : "시간 미상");
-                const safeEmail = escapeHtml(info.email || "알 수 없음");
-                const safeUid = escapeHtml(uid);
-                const row = document.createElement("div");
-                row.className = "pending-user-row";
-                
-                if (isMaster) {
-                    const masterBadge = document.createElement("span");
-                    masterBadge.style.cssText = "color:#f59e0b; font-size:12px; font-weight:bold; padding:6px 12px;";
-                    masterBadge.textContent = "마스터 계정";
-                    row.appendChild(masterBadge);
-                } else if (info.approved === true) {
-                    const revokeBtn = document.createElement("button");
-                    revokeBtn.className = "btn-reject";
-                    revokeBtn.textContent = "🔴 박탈";
-                    revokeBtn.dataset.uid = uid;
-                    revokeBtn.dataset.email = info.email || "";
-                    revokeBtn.addEventListener("click", function() {
-                        revokeUser(this.dataset.uid, this.dataset.email);
-                    });
-                    row.appendChild(revokeBtn);
-                } else {
-                    const restoreBtn = document.createElement("button");
-                    restoreBtn.className = "btn-approve";
-                    restoreBtn.textContent = "✅ 복구";
-                    restoreBtn.dataset.uid = uid;
-                    restoreBtn.dataset.email = info.email || "";
-                    restoreBtn.addEventListener("click", function() {
-                        restoreUser(this.dataset.uid, this.dataset.email);
-                    });
-                    row.appendChild(restoreBtn);
+                if (info.approved === true || (info.approved === false && info.revokedAt)) {
+                    hasUsers = true;
+                    const isRevoked = info.approved === false;
+                    const timeLabel = isRevoked ? 
+                        `박탈일시 · ${new Date(info.revokedAt).toLocaleString("ko-KR")}` : 
+                        `가입일시 · ${info.approvedAt ? new Date(info.approvedAt).toLocaleString("ko-KR") : "시간 미상"}`;
+                    
+                    const row = document.createElement("div");
+                    row.className = "pending-user-row";
+                    if (isRevoked) {
+                        row.style.opacity = "0.5";
+                    }
+                    
+                    row.innerHTML = `
+                        <div class="pending-user-info">
+                            <div class="pending-user-email">${info.email || "알 수 없음"} 
+                                ${isRevoked ? '<span style="background:#ef4444; color:white; font-size:10px; padding:2px 6px; border-radius:4px; margin-left:4px;">박탈됨</span>' : ''}
+                            </div>
+                            <div class="pending-user-time">${timeLabel}</div>
+                        </div>
+                        ${isRevoked 
+                            ? `<button class="btn-approve" onclick="restoreUser('${uid}','${info.email.replace(/'/g, "\'")}')">🟢 복구</button>`
+                            : `<button class="btn-reject" onclick="revokeUser('${uid}','${info.email.replace(/'/g, "\'")}')">🔴 박탈</button>`
+                        }
+                    `;
+                    listEl.appendChild(row);
                 }
-                
-                const infoDiv = document.createElement("div");
-                infoDiv.className = "pending-user-info";
-                const badgeHtml = info.approved === true 
-                    ? '<span style="background:#10b981; color:white; font-size:10px; padding:2px 6px; border-radius:4px; margin-left:4px;">승인됨</span>'
-                    : '<span style="background:#ef4444; color:white; font-size:10px; padding:2px 6px; border-radius:4px; margin-left:4px;">박탈됨</span>';
-                const timeLabel = info.approved === true ? "승인 일시" : "박탈 일시";
-                
-                infoDiv.innerHTML = `
-                    <div class="pending-user-email">
-                        ${safeEmail} ${badgeHtml}
-                    </div>
-                    <div class="pending-user-time">${timeLabel} ${escapeHtml(time)}</div>
-                `;
-                row.insertBefore(infoDiv, row.firstChild);
-                
-                listEl.appendChild(row);
             }
-            if (count === 0) {
-                listEl.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:28px 0;">✅ 승인된 일반 사용자가 없습니다.</p>';
+            
+            if (!hasUsers) {
+                listEl.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:28px 0;">✅ 승인된 사용자(또는 박탈된 계정)가 없습니다.</p>';
             }
         } catch(e) {
-            console.error("loadApprovedUsers 에러:", e);
-            if (e.code === 'PERMISSION_DENIED') {
-                listEl.innerHTML = '<p style="color:#fca5a5;text-align:center;padding:20px 0;">에러: 관리자 권한이 없습니다.</p>';
-            } else {
-                listEl.innerHTML = `<p style="color:#fca5a5;text-align:center;padding:20px 0;">에러: ${escapeHtml(e.message)}</p>`;
-            }
+            listEl.innerHTML = `<p style="color:#fca5a5;text-align:center;padding:20px 0;">오류: ${e.message}</p>`;
         }
     });
 }
 
 async function revokeUser(uid, email) {
     if (!(await _checkAdminPermission())) return;
-    showModal("권한 박탈", `<b>${escapeHtml(email)}</b>의 권한을 박탈하시겠습니까?`, async () => {
-        closeModal();
-        try {
-            // 기존 데이터를 유지하면서 approved만 변경
-            await firebase.database().ref("/users/" + uid).update({ approved: false, revokedAt: Date.now() });
-        } catch(e) { alert("에러: " + e.message); }
-    });
+    if (!confirm(email + " 사용자의 권한을 즉시 박탈하시겠습니까?")) return;
+    try {
+        await firebase.database().ref("/users/" + uid).set({ email: email, approved: false, revokedAt: Date.now() });
+        // UI 갱신은 실시간 리스너가 자동 처리합니다.
+    } catch(e) { alert("오류: " + e.message); }
 }
 
 async function restoreUser(uid, email) {
     if (!(await _checkAdminPermission())) return;
-    showModal("권한 복구", `<b>${escapeHtml(email)}</b> 사용자를 다시 승인하시겠습니까?`, async () => {
-        closeModal();
-        try {
-            // 기존 데이터를 유지하면서 approved만 변경
-            await firebase.database().ref("/users/" + uid).update({ approved: true, approvedAt: Date.now() });
-            await firebase.database().ref("/pending_users/" + uid).remove();
-            alert("✅ " + email + " 승인되었습니다.");
-        } catch(e) { alert("에러: " + e.message); }
-    });
+    if (!confirm(email + " 사용자를 복구하시겠습니까?")) return;
+    try {
+        await firebase.database().ref("/users/" + uid).set({ email: email, approved: true, approvedAt: Date.now() });
+        await firebase.database().ref("/pending_users/" + uid).remove();
+        alert("🟢 " + email + " 복구되었습니다.");
+    } catch(e) { alert("오류: " + e.message); }
 }
 
 async function reRequestReactivation() {
@@ -3274,15 +3271,15 @@ function closeAdminPanel() {
 
 function loadPendingUsers() {
     const listEl = document.getElementById("pending-user-list");
+    listEl.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:20px 0;">⏳ 실시간 연동 중...</p>';
     
     if (adminPendingListener) return;
     
-    listEl.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:20px 0;">⏳ 실시간 데이터 로딩 중...</p>';
     adminPendingListener = firebase.database().ref("/pending_users").on("value", async snapshot => {
         try {
             const data = snapshot.val() || {};
-            const usersSnap = await firebase.database().ref("/users").once("value");
-            const usersData = usersSnap.val() || {};
+            const usersResp = await fetch(FB_PROJECT.databaseURL + "/users.json?_t=" + Date.now());
+            const usersData = await usersResp.json() || {};
             
             if (Object.keys(data).length === 0) {
                 listEl.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:28px 0;">✅ 대기 중인 가입 요청이 없습니다.</p>';
@@ -3299,23 +3296,23 @@ function loadPendingUsers() {
                 
                 hasPending = true;
                 const time = info.requestedAt ? new Date(info.requestedAt).toLocaleString("ko-KR") : "시간 미상";
-                const safeEmail = escapeHtml(info.email || "알 수 없음");
+                const safeEmail = (info.email || "").replace(/'/g, "\'");
                 const row = document.createElement("div");
                 row.className = "pending-user-row";
                 row.innerHTML = `
                     <div class="pending-user-info">
                         <div class="pending-user-email">
-                            ${safeEmail}
+                            ${info.email || "알 수 없음"}
                             ${info.requestType === 'reactivation' 
-                                ? '<span style="background:#f59e0b; color:white; font-size:10px; padding:2px 6px; border-radius:4px; margin-left:4px;">복구 요청</span>'
+                                ? '<span style="background:#f59e0b; color:white; font-size:10px; padding:2px 6px; border-radius:4px; margin-left:4px;">권한 복구 요청</span>'
                                 : (info.requestType === 're-request'
-                                    ? '<span style="background:#10b981; color:white; font-size:10px; padding:2px 6px; border-radius:4px; margin-left:4px;">재가입 요청</span>'
+                                    ? '<span style="background:#10b981; color:white; font-size:10px; padding:2px 6px; border-radius:4px; margin-left:4px;">가입 재요청</span>'
                                     : '<span style="background:#3b82f6; color:white; font-size:10px; padding:2px 6px; border-radius:4px; margin-left:4px;">신규 가입</span>')}
                         </div>
-                        <div class="pending-user-time">최초 요청 일시 ${escapeHtml(time)}</div>
+                        <div class="pending-user-time">관리자승인 대기 · ${time}</div>
                     </div>
-                    <button class="btn-approve" onclick="approveUser('${escapeHtml(uid)}','${safeEmail.replace(/'/g, "\'")}')">✅ 승인</button>
-                    <button class="btn-reject" onclick="rejectUser('${escapeHtml(uid)}','${safeEmail.replace(/'/g, "\'")}')">❌ 거절</button>
+                    <button class="btn-approve" onclick="approveUser('${uid}','${safeEmail}')">✅ 승인</button>
+                    <button class="btn-reject" onclick="rejectUser('${uid}','${safeEmail}')">❌ 거부</button>
                 `;
                 listEl.appendChild(row);
             }
@@ -3324,38 +3321,29 @@ function loadPendingUsers() {
                 listEl.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:28px 0;">✅ 대기 중인 가입 요청이 없습니다.</p>';
             }
         } catch(e) {
-            console.error("loadPendingUsers 에러:", e);
-            if (e.code === 'PERMISSION_DENIED') {
-                listEl.innerHTML = '<p style="color:#fca5a5;text-align:center;padding:20px 0;">에러: 관리자 권한이 없습니다.</p>';
-            } else {
-                listEl.innerHTML = `<p style="color:#fca5a5;text-align:center;padding:20px 0;">에러: ${escapeHtml(e.message)}</p>`;
-            }
+            listEl.innerHTML = `<p style="color:#fca5a5;text-align:center;padding:20px 0;">오류: ${e.message}</p>`;
         }
     });
 }
 
 async function approveUser(uid, email) {
     if (!(await _checkAdminPermission())) return;
-    showModal("가입 승인", `<b>${escapeHtml(email)}</b> 가입을 승인하시겠습니까?`, async () => {
-        closeModal();
-        try {
-            await firebase.database().ref("/users/" + uid).set({ email, approved: true, role: "user", approvedAt: Date.now() });
-            await firebase.database().ref("/pending_users/" + uid).remove();
-            alert("✅ " + email + " 승인되었습니다.");
-        } catch(e) { alert("에러: " + e.message); }
-    });
+    if (!confirm(email + " 사용자를 승인하시겠습니까?")) return;
+    try {
+        await firebase.database().ref("/users/" + uid).set({ email, approved: true, role: "user", approvedAt: Date.now() });
+        await firebase.database().ref("/pending_users/" + uid).remove();
+        alert("✅ " + email + " 사용자가 승인되었습니다.");
+    } catch(e) { alert("오류: " + e.message); }
 }
 
 async function rejectUser(uid, email) {
     if (!(await _checkAdminPermission())) return;
-    showModal("가입 거절", `<b>${escapeHtml(email)}</b> 가입 요청을 거절하시겠습니까?`, async () => {
-        closeModal();
-        try {
-            await firebase.database().ref("/users/" + uid).set({ email: email, approved: false, rejectedAt: Date.now() });
-            await firebase.database().ref("/pending_users/" + uid).remove();
-            alert("❌ " + email + " 요청이 거절되었습니다.");
-        } catch(e) { alert("에러: " + e.message); }
-    });
+    if (!confirm(email + " 가입 요청을 거부하시겠습니까?")) return;
+    try {
+        await firebase.database().ref("/users/" + uid).set({ email: email, approved: false, rejectedAt: Date.now() });
+        await firebase.database().ref("/pending_users/" + uid).remove();
+        alert("❌ " + email + " 가입 요청이 거부되었습니다.");
+    } catch(e) { alert("오류: " + e.message); }
 }
 
 
@@ -3419,22 +3407,5 @@ async function addPasswordToAccount() {
 }
 
 </script>
-    <div id="global-error-display" style="display:none; position:fixed; bottom:0; left:0; right:0; background:rgba(220,38,38,0.9); color:white; padding:15px; z-index:9999; font-size:14px; max-height:30vh; overflow-y:auto; word-wrap:break-word;"></div>
-    <script>
-        window.addEventListener('error', function(e) {
-            const errDiv = document.getElementById('global-error-display');
-            if(errDiv) {
-                errDiv.style.display = 'block';
-                errDiv.innerHTML += `<div><b>Error:</b> ${e.message} <br><small>at ${e.filename}:${e.lineno}</small></div><hr>`;
-            }
-        });
-        window.addEventListener('unhandledrejection', function(e) {
-            const errDiv = document.getElementById('global-error-display');
-            if(errDiv) {
-                errDiv.style.display = 'block';
-                errDiv.innerHTML += `<div><b>Promise Rejection:</b> ${e.reason}</div><hr>`;
-            }
-        });
-    </script>
 </body>
 </html>

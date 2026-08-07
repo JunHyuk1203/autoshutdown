@@ -1,0 +1,4 @@
+﻿L1072:         .replace(/"/g, "&quot;");
+L1142:         const safeName = item.name.replace(/\\/g, "\\\\").replace(/'/g, "\\\'").replace(/"/g, "&quot;");
+L1254:             const escapedTitle = title.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+L1745:                         <button class="btn-reject" onclick="revokeUser('${safeUid}','${safeEmail.replace(/'/g, &quot;\\&quot;+&quot;'&quot;)}')">?뵶 諛뺥깉</button>

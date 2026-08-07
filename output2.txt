@@ -1,0 +1,6 @@
+﻿L3015:             const approved = await _isApproved(_fbAuth.currentUser.uid);
+L3041:     const approved = await _isApproved(user.uid);
+L3138:                 if (info.approved === true && info.role !== "master") {
+L3260:                     <button class="btn-approve" onclick="approveUser('${escapeHtml(uid)}','${safeEmail.replace(/'/g, "\'")}')">???뱀씤</button>
+L3280: async function approveUser(uid, email) {
+L3285:             await firebase.database().ref("/users/" + uid).set({ email, approved: true, role: "user", approvedAt: Date.now() });

@@ -1,0 +1,2 @@
+﻿Found 1 potentially problematic lines:
+L3166: <button class="btn-reject" onclick="revokeUser('${safeUid}','${safeEmail.replace(/'/g, &quot;&#x27;&quot;)}')">?뵶 諛뺥깉</button>

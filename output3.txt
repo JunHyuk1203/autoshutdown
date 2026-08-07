@@ -1,0 +1,7 @@
+﻿MISSING: function _isApproved - not defined anywhere!
+Role values used: {'master', 'user'}
+WRITE TO /users: email: user.email, displayName: user.displayName || user.email.split("@")[0], requestedAt: Date.now(), requestType: "re-request"
+WRITE TO /users: email: email, approved: false, revokedAt: Date.now()
+WRITE TO /users: email: email, approved: true, approvedAt: Date.now()
+WRITE TO /users: email, approved: true, role: "user", approvedAt: Date.now()
+WRITE TO /users: email: email, approved: false, rejectedAt: Date.now()

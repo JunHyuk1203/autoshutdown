@@ -1431,16 +1431,6 @@ body {
 </script>
 
 <script>
-function escapeHtml(str) {
-    if (!str) return "";
-    return String(str)
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-}
-
 let config = {
     databaseURL: "",
     authKey: ""
@@ -1601,10 +1591,12 @@ function _enterDashboard(user) {
     if (lb) lb.style.display = "flex";
     const actb = document.getElementById("account-header-btn");
     if (actb) actb.style.display = "flex";
-    if (ab && user.email && user.email.toLowerCase() === MASTER_EMAIL.toLowerCase()) {
+    if (ab && user.email === MASTER_EMAIL) {
         ab.style.display = "flex";
     } else {
-        if (ab) ab.style.display = "none";
+        if (ab) ab.remove();
+        const overlay = document.getElementById("admin-panel-overlay");
+        if (overlay) overlay.remove();
     }
 
     config.databaseURL = FB_PROJECT.databaseURL;
@@ -1997,17 +1989,6 @@ function closeConfigModal() {
     document.getElementById("config-modal").classList.remove("show");
 }
 
-
-// 승인 여부만 확인하는 헬퍼 함수 (관리자 승인 체크용)
-async function _isApproved(uid) {
-    try {
-        const snap = await firebase.database().ref("/users/" + uid + "/approved").once("value");
-        return snap.val() === true;
-    } catch(e) {
-        console.error("_isApproved error:", e);
-        return false;
-    }
-}
 
 async function _checkAuthPermission() {
     if (!_fbAuth || !_fbAuth.currentUser) {
@@ -3143,10 +3124,10 @@ function _revokeAccess() {
 
 function loadApprovedUsers() {
     const listEl = document.getElementById("approved-user-list");
+    listEl.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:20px 0;">⏳ 실시간 데이터 로딩 중...</p>';
     
     if (adminUsersListener) return;
     
-    listEl.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:20px 0;">⏳ 실시간 데이터 로딩 중...</p>';
     adminUsersListener = firebase.database().ref("/users").on("value", async snapshot => {
         try {
             const usersData = snapshot.val() || {};
@@ -3154,60 +3135,24 @@ function loadApprovedUsers() {
             let count = 0;
             
             for (const [uid, info] of Object.entries(usersData)) {
-                // Show all users in the account management tab, including revoked ones
-                const isMaster = info.email === MASTER_EMAIL || info.role === "master";
-                
-                count++;
-                const time = info.approvedAt ? new Date(info.approvedAt).toLocaleString("ko-KR") : 
-                             (info.revokedAt ? new Date(info.revokedAt).toLocaleString("ko-KR") : "시간 미상");
-                const safeEmail = escapeHtml(info.email || "알 수 없음");
-                const safeUid = escapeHtml(uid);
-                const row = document.createElement("div");
-                row.className = "pending-user-row";
-                
-                if (isMaster) {
-                    const masterBadge = document.createElement("span");
-                    masterBadge.style.cssText = "color:#f59e0b; font-size:12px; font-weight:bold; padding:6px 12px;";
-                    masterBadge.textContent = "마스터 계정";
-                    row.appendChild(masterBadge);
-                } else if (info.approved === true) {
-                    const revokeBtn = document.createElement("button");
-                    revokeBtn.className = "btn-reject";
-                    revokeBtn.textContent = "🔴 박탈";
-                    revokeBtn.dataset.uid = uid;
-                    revokeBtn.dataset.email = info.email || "";
-                    revokeBtn.addEventListener("click", function() {
-                        revokeUser(this.dataset.uid, this.dataset.email);
-                    });
-                    row.appendChild(revokeBtn);
-                } else {
-                    const restoreBtn = document.createElement("button");
-                    restoreBtn.className = "btn-approve";
-                    restoreBtn.textContent = "✅ 복구";
-                    restoreBtn.dataset.uid = uid;
-                    restoreBtn.dataset.email = info.email || "";
-                    restoreBtn.addEventListener("click", function() {
-                        restoreUser(this.dataset.uid, this.dataset.email);
-                    });
-                    row.appendChild(restoreBtn);
+                if (info.approved === true && info.role !== "master") {
+                    count++;
+                    const time = info.approvedAt ? new Date(info.approvedAt).toLocaleString("ko-KR") : "시간 미상";
+                    const safeEmail = escapeHtml(info.email || "알 수 없음");
+                    const row = document.createElement("div");
+                    row.className = "pending-user-row";
+                    row.innerHTML = `
+                        <div class="pending-user-info">
+                            <div class="pending-user-email">
+                                ${safeEmail}
+                                <span style="background:#10b981; color:white; font-size:10px; padding:2px 6px; border-radius:4px; margin-left:4px;">승인됨</span>
+                            </div>
+                            <div class="pending-user-time">승인 일시 ${escapeHtml(time)}</div>
+                        </div>
+                        <button class="btn-reject" onclick="revokeUser('${escapeHtml(uid)}','${safeEmail.replace(/'/g, "\'")}')">🔴 박탈</button>
+                    `;
+                    listEl.appendChild(row);
                 }
-                
-                const infoDiv = document.createElement("div");
-                infoDiv.className = "pending-user-info";
-                const badgeHtml = info.approved === true 
-                    ? '<span style="background:#10b981; color:white; font-size:10px; padding:2px 6px; border-radius:4px; margin-left:4px;">승인됨</span>'
-                    : '<span style="background:#ef4444; color:white; font-size:10px; padding:2px 6px; border-radius:4px; margin-left:4px;">박탈됨</span>';
-                const timeLabel = info.approved === true ? "승인 일시" : "박탈 일시";
-                
-                infoDiv.innerHTML = `
-                    <div class="pending-user-email">
-                        ${safeEmail} ${badgeHtml}
-                    </div>
-                    <div class="pending-user-time">${timeLabel} ${escapeHtml(time)}</div>
-                `;
-                row.insertBefore(infoDiv, row.firstChild);
-                
-                listEl.appendChild(row);
             }
             if (count === 0) {
                 listEl.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:28px 0;">✅ 승인된 일반 사용자가 없습니다.</p>';
@@ -3228,8 +3173,7 @@ async function revokeUser(uid, email) {
     showModal("권한 박탈", `<b>${escapeHtml(email)}</b>의 권한을 박탈하시겠습니까?`, async () => {
         closeModal();
         try {
-            // 기존 데이터를 유지하면서 approved만 변경
-            await firebase.database().ref("/users/" + uid).update({ approved: false, revokedAt: Date.now() });
+            await firebase.database().ref("/users/" + uid).set({ email: email, approved: false, revokedAt: Date.now() });
         } catch(e) { alert("에러: " + e.message); }
     });
 }
@@ -3239,8 +3183,7 @@ async function restoreUser(uid, email) {
     showModal("권한 복구", `<b>${escapeHtml(email)}</b> 사용자를 다시 승인하시겠습니까?`, async () => {
         closeModal();
         try {
-            // 기존 데이터를 유지하면서 approved만 변경
-            await firebase.database().ref("/users/" + uid).update({ approved: true, approvedAt: Date.now() });
+            await firebase.database().ref("/users/" + uid).set({ email: email, approved: true, approvedAt: Date.now() });
             await firebase.database().ref("/pending_users/" + uid).remove();
             alert("✅ " + email + " 승인되었습니다.");
         } catch(e) { alert("에러: " + e.message); }
@@ -3274,10 +3217,10 @@ function closeAdminPanel() {
 
 function loadPendingUsers() {
     const listEl = document.getElementById("pending-user-list");
+    listEl.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:20px 0;">⏳ 실시간 데이터 로딩 중...</p>';
     
     if (adminPendingListener) return;
     
-    listEl.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:20px 0;">⏳ 실시간 데이터 로딩 중...</p>';
     adminPendingListener = firebase.database().ref("/pending_users").on("value", async snapshot => {
         try {
             const data = snapshot.val() || {};
@@ -3419,22 +3362,5 @@ async function addPasswordToAccount() {
 }
 
 </script>
-    <div id="global-error-display" style="display:none; position:fixed; bottom:0; left:0; right:0; background:rgba(220,38,38,0.9); color:white; padding:15px; z-index:9999; font-size:14px; max-height:30vh; overflow-y:auto; word-wrap:break-word;"></div>
-    <script>
-        window.addEventListener('error', function(e) {
-            const errDiv = document.getElementById('global-error-display');
-            if(errDiv) {
-                errDiv.style.display = 'block';
-                errDiv.innerHTML += `<div><b>Error:</b> ${e.message} <br><small>at ${e.filename}:${e.lineno}</small></div><hr>`;
-            }
-        });
-        window.addEventListener('unhandledrejection', function(e) {
-            const errDiv = document.getElementById('global-error-display');
-            if(errDiv) {
-                errDiv.style.display = 'block';
-                errDiv.innerHTML += `<div><b>Promise Rejection:</b> ${e.reason}</div><hr>`;
-            }
-        });
-    </script>
 </body>
 </html>
