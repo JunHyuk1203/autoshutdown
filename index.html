@@ -3601,6 +3601,14 @@ function bindStaticEvents() {
     if (el_admin_panel_overlay) el_admin_panel_overlay.addEventListener("click", function(e) { if(e.target===this) closeAdminPanel(); });
     const el_admin_close_btn = document.getElementById("admin-close-btn");
     if (el_admin_close_btn) el_admin_close_btn.addEventListener("click", function(e) { closeAdminPanel(); });
+    const el_tab_btn_pending = document.getElementById("tab-btn-pending");
+    const el_tab_btn_approved = document.getElementById("tab-btn-approved");
+    const el_tab_btn_security = document.getElementById("tab-btn-security");
+    
+    if (el_tab_btn_pending) el_tab_btn_pending.addEventListener("click", () => { switchAdminTab('pending'); });
+    if (el_tab_btn_approved) el_tab_btn_approved.addEventListener("click", () => { switchAdminTab('approved'); });
+    if (el_tab_btn_security) el_tab_btn_security.addEventListener("click", () => { switchAdminTab('security'); });
+
     const el_account_close_btn = document.getElementById("account-close-btn");
     if (el_account_close_btn) el_account_close_btn.addEventListener("click", function(e) { closeAccountModal(); });
     const el_account_cancel_btn = document.getElementById("account-cancel-btn");
