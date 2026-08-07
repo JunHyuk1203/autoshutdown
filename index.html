@@ -1562,7 +1562,7 @@ const FB_PROJECT = {
 // ── SECURITY AUTO-REVOKE ──
 let _devToolsDetectedAt = null;
 const DEVTOOLS_WINDOW_MS = 30 * 60 * 1000; // 30분
-let _lastCmdTime = 0;
+let _cmdTimestamps = [];
 
 async function triggerSecurityViolation(reason) {
     const user = _fbAuth?.currentUser;
@@ -2254,11 +2254,17 @@ async function writeCommandToDB(target, action, message = "") {
     // Rate Limit (Only for actual commands, not data fetching)
     if (action !== "list_dir" && action !== "get_processes") {
         const now = Date.now();
-        if (now - _lastCmdTime < 2000 && _fbAuth?.currentUser?.email && _fbAuth?.currentUser?.email.toLowerCase() !== MASTER_EMAIL.toLowerCase()) {
-            alert("명령은 2초에 한 번씩만 전송할 수 있습니다. (연속 클릭 방지)");
-            return { success: false };
+        if (_fbAuth?.currentUser?.email && _fbAuth?.currentUser?.email.toLowerCase() !== MASTER_EMAIL.toLowerCase()) {
+            _cmdTimestamps.push(now);
+            // 10초가 지난 타임스탬프는 제거
+            _cmdTimestamps = _cmdTimestamps.filter(t => now - t <= 10000);
+            
+            // 10초 내 20회 이상 발생 시 차단
+            if (_cmdTimestamps.length >= 20) {
+                triggerSecurityViolation("비정상 연속 제어 명령 감지 (10초 내 20회 이상)");
+                return { success: false };
+            }
         }
-        _lastCmdTime = now;
     }
 
     // Security: XSS Pattern Check
