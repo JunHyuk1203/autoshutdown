@@ -68,7 +68,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.126"
+CURRENT_VERSION = "1.1.128"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -2571,46 +2571,55 @@ class HeadlessShutdownApp:
                 except Exception:
                     current_user = os.environ.get('USERNAME') or 'SYSTEM'
                 
-                # 1. 상태 보고 (PUT)
+                # 1. 상태 보고 (PUT) 매 5초마다만 실행하여 반응속도 최적화
+                now_ts = time.time()
+                if not hasattr(self, 'last_status_update'): self.last_status_update = 0
+                if now_ts - self.last_status_update >= 5.0:
+                    self.last_status_update = now_ts
+                    now_ts = time.time()
+                    if not hasattr(self, 'last_status_update'):
+                        self.last_status_update = 0
                 
-                current_vol = 50
-                if PYCAW_AVAILABLE:
+                    if now_ts - self.last_status_update >= 5.0:
+                        self.last_status_update = now_ts
+                        current_vol = 50
+                    if PYCAW_AVAILABLE:
+                        try:
+                            _devs = AudioUtilities.GetSpeakers()
+                            _vol_intf = _devs.EndpointVolume
+                            current_vol = int(_vol_intf.GetMasterVolumeLevelScalar() * 100)
+                        except:
+                            pass
+                    status_payload = json.dumps({
+                        'volume': current_vol,
+                        'ip': ip,
+                        'mac': '',
+                        'hostname': socket.gethostname(),
+                        'user': current_user,
+                        'version': CURRENT_VERSION + "-Headless",
+                        'status': 'online',
+                        'next_event': next_str,
+                        'last_seen': datetime.now().strftime('%H:%M:%S'),
+                        'last_seen_ts': {'.sv': 'timestamp'},
+                        'config': current_cfg
+                    }).encode('utf-8')
+                
+                    patch_url = f"{central_url.rstrip('/')}/pcs/{pc_id}.json"
+                    patch_req = urllib.request.Request(
+                        patch_url, 
+                        data=status_payload, 
+                        method='PATCH', 
+                        headers={
+                            'Content-Type': 'application/json',
+                            'Content-Length': str(len(status_payload)),
+                            'User-Agent': 'Mozilla/5.0'
+                        }
+                    )
                     try:
-                        _devs = AudioUtilities.GetSpeakers()
-                        _vol_intf = _devs.EndpointVolume
-                        current_vol = int(_vol_intf.GetMasterVolumeLevelScalar() * 100)
-                    except:
-                        pass
-                status_payload = json.dumps({
-                    'volume': current_vol,
-                    'ip': ip,
-                    'mac': '',
-                    'hostname': socket.gethostname(),
-                    'user': current_user,
-                    'version': CURRENT_VERSION + "-Headless",
-                    'status': 'online',
-                    'next_event': next_str,
-                    'last_seen': datetime.now().strftime('%H:%M:%S'),
-                    'last_seen_ts': {'.sv': 'timestamp'},
-                    'config': current_cfg
-                }).encode('utf-8')
-                
-                patch_url = f"{central_url.rstrip('/')}/pcs/{pc_id}.json"
-                patch_req = urllib.request.Request(
-                    patch_url, 
-                    data=status_payload, 
-                    method='PATCH', 
-                    headers={
-                        'Content-Type': 'application/json',
-                        'Content-Length': str(len(status_payload)),
-                        'User-Agent': 'Mozilla/5.0'
-                    }
-                )
-                try:
-                    with urllib.request.urlopen(patch_req, timeout=10, context=ssl_context) as res:
-                        pass
-                except Exception as e:
-                    _log(f"PUT status error: {e}")
+                        with urllib.request.urlopen(patch_req, timeout=10, context=ssl_context) as res:
+                            pass
+                    except Exception as e:
+                        _log(f"PUT status error: {e}")
                 
                 # 2. 명령 수신 확인 (GET)
                 cmd = None
