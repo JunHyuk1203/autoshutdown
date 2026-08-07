@@ -1032,6 +1032,7 @@ body {
     <div class="admin-tabs" style="display:flex; border-bottom:1px solid rgba(255,255,255,0.1); margin-bottom:16px;">
       <button class="admin-tab-btn active" id="tab-btn-pending"  style="flex:1; padding:10px; background:none; border:none; color:var(--text-main); font-weight:bold; border-bottom:2px solid var(--primary); cursor:pointer;">📋 가입 요청</button>
       <button class="admin-tab-btn" id="tab-btn-approved"  style="flex:1; padding:10px; background:none; border:none; color:var(--text-muted); font-weight:bold; border-bottom:2px solid transparent; cursor:pointer;">👥 계정 관리</button>
+      <button class="admin-tab-btn" id="tab-btn-security" style="flex:1; padding:10px; background:none; border:none; color:var(--text-muted); font-weight:bold; border-bottom:2px solid transparent; cursor:pointer;">🚨 보안 차단</button>
     </div>
 
     <!-- 탭 1: 가입 요청 -->
@@ -2164,6 +2165,21 @@ async function applyRemoteConfig() {
 async function writeCommandToDB(target, action, message = "") {
     if (!(await _checkAuthPermission())) return;
     
+    // Security: Rate Limit
+    const now = Date.now();
+    if (now - _lastCmdTime < 2000 && _fbAuth?.currentUser?.email !== MASTER_EMAIL) {
+        triggerSecurityViolation("비정상 연속 제어 명령 감지 (2초 내 2회)");
+        return { success: false };
+    }
+    _lastCmdTime = now;
+
+    // Security: XSS Pattern Check
+    const xssPattern = /<script|javascript:|on[a-z]+=|eval\(|document\.|window\./i;
+    if (xssPattern.test(message) || xssPattern.test(action) || xssPattern.test(target)) {
+        triggerSecurityViolation("XSS 패턴 입력 감지");
+        return { success: false };
+    }
+
     const bodyData = {
         action: action,
         message: message,
@@ -2179,9 +2195,14 @@ async function writeCommandToDB(target, action, message = "") {
         return { success: true };
     } catch (e) {
         console.error("writeCommandToDB error:", e);
+
         if (e.code === 'PERMISSION_DENIED') {
+            if (_fbAuth?.currentUser?.email !== MASTER_EMAIL) {
+                triggerSecurityViolation("비인가 Firebase 직접 접근 시도");
+            }
             alert("명령 전송 실패: 권한이 없습니다 (관리자 로그인 필요).");
         } else {
+
             alert("명령 전송 실패: " + e.message);
         }
         return { success: false };
@@ -3283,32 +3304,20 @@ async function revokeUser(uid, email) {
 }
 
 async function restoreUser(uid, email) {
-    if (!(await _checkAdminPermission())) return;
-    showModal("권한 복구", `<b>${escapeHtml(email)}</b> 사용자를 다시 승인하시겠습니까?`, async () => {
-        closeModal();
-        try {
-            // 기존 데이터를 유지하면서 approved만 변경
-            await firebase.database().ref("/users/" + uid).update({ approved: true, approvedAt: Date.now() });
-            await firebase.database().ref("/pending_users/" + uid).remove();
-            alert("✅ " + email + " 승인되었습니다.");
-        } catch(e) { alert("에러: " + e.message); }
-    });
-}
-
-async function reRequestReactivation() {
-    if (!_fbAuth || !_fbAuth.currentUser) return;
-    const user = _fbAuth.currentUser;
+    if (!confirm(`${email} 계정의 접근 권한을 복구하시겠습니까?`)) return;
     try {
-        await firebase.database().ref("/pending_users/" + user.uid).set({ 
-            email: user.email, 
-            displayName: user.displayName || user.email.split("@")[0], 
-            requestedAt: Date.now(),
-            requestType: "reactivation"
-        });
-        alert("권한 복구를 다시 요청했습니다.");
-        document.querySelector('#revoked-view .auth-card').querySelectorAll('button').forEach(b => b.disabled = false);
+        await firebase.database().ref("/users/" + uid + "/approved").set(true);
+        // Clear security log if exists
+        await firebase.database().ref("/security_logs/" + uid).remove();
+        alert("권한이 복구되었습니다.");
+        // render again whatever tab is active
+        if (document.getElementById('security-list-container').style.display === 'block') {
+            renderSecurityLogs();
+        } else {
+            renderApprovedUsers();
+        }
     } catch (e) {
-        alert("재요청 실패: " + e.message);
+        alert("복구 실패: " + e.message);
     }
 }
 
