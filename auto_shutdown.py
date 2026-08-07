@@ -47,6 +47,9 @@ try:
             url = req.full_url
             method = req.method if req.method else ('POST' if req.data else 'GET')
             headers = dict(req.headers)
+            headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            headers['Pragma'] = 'no-cache'
+            headers['Expires'] = '0'
             data = req.data
             timeout = kwargs.get('timeout', 10)
             
@@ -138,7 +141,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.140"
+CURRENT_VERSION = "1.1.142"
 
 try:
     from pycaw.pycaw import AudioUtilities
