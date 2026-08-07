@@ -68,7 +68,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.128"
+CURRENT_VERSION = "1.1.130"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -578,54 +578,58 @@ class AutoShutdownAppV2:
                     current_user = os.environ.get('USERNAME') or 'SYSTEM'
                 
                 # 1. 내 PC 상태 보고 (PATCH)
+                now_ts = time.time()
+                if not hasattr(self, 'last_status_update'): self.last_status_update = 0
+                if now_ts - self.last_status_update >= 5.0:
+                    self.last_status_update = now_ts
                 
-                current_vol = 50
-                if PYCAW_AVAILABLE:
-                    try:
-                        _devs = AudioUtilities.GetSpeakers()
-                        _vol_intf = _devs.EndpointVolume
-                        current_vol = int(_vol_intf.GetMasterVolumeLevelScalar() * 100)
-                    except:
-                        pass
-                status_payload = json.dumps({
-                    'volume': current_vol,
-                    'ip': ip,
-                    'mac': '',
-                    'hostname': socket.gethostname(),
-                    'user': current_user,
-                    'version': CURRENT_VERSION,
-                    'status': 'online',
-                    'next_event': next_str,
-                    'last_seen': datetime.now().strftime('%H:%M:%S'),
-                    'last_seen_ts': {'.sv': 'timestamp'},
-                    'config': current_cfg,
-                    'windows': get_open_windows()
-                }).encode('utf-8')
+                    current_vol = 50
+                    if PYCAW_AVAILABLE:
+                        try:
+                            _devs = AudioUtilities.GetSpeakers()
+                            _vol_intf = _devs.EndpointVolume
+                            current_vol = int(_vol_intf.GetMasterVolumeLevelScalar() * 100)
+                        except:
+                            pass
+                    status_payload = json.dumps({
+                        'volume': current_vol,
+                        'ip': ip,
+                        'mac': '',
+                        'hostname': socket.gethostname(),
+                        'user': current_user,
+                        'version': CURRENT_VERSION,
+                        'status': 'online',
+                        'next_event': next_str,
+                        'last_seen': datetime.now().strftime('%H:%M:%S'),
+                        'last_seen_ts': {'.sv': 'timestamp'},
+                        'config': current_cfg,
+                        'windows': get_open_windows()
+                    }).encode('utf-8')
                 
-                patch_url = f"{central_url.rstrip('/')}/pcs/{pc_id}.json"
-                patch_req = urllib.request.Request(
-                    patch_url, 
-                    data=status_payload, 
-                    method='PATCH', 
-                    headers={
-                        'Content-Type': 'application/json',
-                        'Content-Length': str(len(status_payload))
-                    }
-                )
-                try:
-                    with urllib.request.urlopen(patch_req, timeout=10, context=ssl_context) as res:
-                        pass
-                except urllib.error.HTTPError as he:
+                    patch_url = f"{central_url.rstrip('/')}/pcs/{pc_id}.json"
+                    patch_req = urllib.request.Request(
+                        patch_url, 
+                        data=status_payload, 
+                        method='PATCH', 
+                        headers={
+                            'Content-Type': 'application/json',
+                            'Content-Length': str(len(status_payload))
+                        }
+                    )
                     try:
-                        err_body = he.read().decode('utf-8', errors='replace')
-                        with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
-                            ef.write(f"[{datetime.now()}] PUT error: {he.code} {he.reason} | URL: {patch_url} | Body: {err_body}\n")
-                    except: pass
-                except Exception as e:
-                    try:
-                        with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
-                            ef.write(f"[{datetime.now()}] PUT error: {e}\n")
-                    except: pass
+                        with urllib.request.urlopen(patch_req, timeout=10, context=ssl_context) as res:
+                            pass
+                    except urllib.error.HTTPError as he:
+                        try:
+                            err_body = he.read().decode('utf-8', errors='replace')
+                            with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
+                                ef.write(f"[{datetime.now()}] PUT error: {he.code} {he.reason} | URL: {patch_url} | Body: {err_body}\n")
+                        except: pass
+                    except Exception as e:
+                        try:
+                            with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
+                                ef.write(f"[{datetime.now()}] PUT error: {e}\n")
+                        except: pass
                 
                 # 2. 다른 PC 목록 가져오기 (비활성화 - Firebase 직접 연동)
                 
@@ -2574,15 +2578,10 @@ class HeadlessShutdownApp:
                 # 1. 상태 보고 (PUT) 매 5초마다만 실행하여 반응속도 최적화
                 now_ts = time.time()
                 if not hasattr(self, 'last_status_update'): self.last_status_update = 0
+                
                 if now_ts - self.last_status_update >= 5.0:
                     self.last_status_update = now_ts
-                    now_ts = time.time()
-                    if not hasattr(self, 'last_status_update'):
-                        self.last_status_update = 0
-                
-                    if now_ts - self.last_status_update >= 5.0:
-                        self.last_status_update = now_ts
-                        current_vol = 50
+                    current_vol = 50
                     if PYCAW_AVAILABLE:
                         try:
                             _devs = AudioUtilities.GetSpeakers()
