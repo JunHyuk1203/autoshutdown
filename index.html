@@ -1482,8 +1482,8 @@ let config = {
 
 let pcs = {};
 let selectedPcs = new Set();
-let pollerInterval = null;
-let currentPollerMs = 5000;
+
+
 let APP_ACCESS_GRANTED = null;
 
 function setAccessGranted(value) {
@@ -1494,7 +1494,7 @@ function setAccessGranted(value) {
     }
 }
 
-function setPollerInterval(ms) {
+function setPollerInterval(ms) { return; // Deprecated
     if (currentPollerMs === ms && pollerInterval) return;
     currentPollerMs = ms;
     if (pollerInterval) clearInterval(pollerInterval);
@@ -1714,7 +1714,7 @@ function _enterDashboard(user) {
         } else {
             if (!pollerInterval) {
                 fetchPCData();
-                setPollerInterval(currentPollerMs);
+                
             }
         }
 
@@ -1771,15 +1771,12 @@ async function _savePending(user) {
 function initializeDashboard() {
     document.getElementById("label-connected-db").innerText = `연결 주소: ${config.databaseURL}`;
     
-    // 첫 조회 실행
-    fetchPCData();
-    
-    // 기본적으로 5초마다 REST API 호출 (트래픽 절약), 창 관리 시 1초로 가속
-    setPollerInterval(5000);
+    // Real-time synchronization
+    startRealtimeSync();
 }
 
-// REST API로 Firebase DB의 pcs 노드 동기화
-async function fetchPCData() {
+// Realtime Firebase DB sync
+function startRealtimeSync() {
     if (!config.databaseURL) return;
     
     // 이중 가드: 인증 실패 상태면 즉시 차단
@@ -1791,8 +1788,11 @@ async function fetchPCData() {
         return;
     }
     
-    try {
-        const snapshot = await firebase.database().ref("/pcs").once("value");
+    if (window._pcsListener) {
+        firebase.database().ref("/pcs").off("value", window._pcsListener);
+    }
+    
+    window._pcsListener = firebase.database().ref("/pcs").on("value", snapshot => {
         const data = snapshot.val() || {};
         
         const serverNowMs = Date.now() + serverTimeOffset;
@@ -1819,9 +1819,21 @@ async function fetchPCData() {
                 }
             }
         }
-    } catch (e) {
-        console.error("fetchPCData error:", e);
-    }
+    }, error => {
+        console.error("Firebase sync error:", error);
+    });
+    
+    // Also set an interval just to re-render the time tags "X seconds ago" without fetching new data
+    if (window._renderInterval) clearInterval(window._renderInterval);
+    window._renderInterval = setInterval(() => {
+        if (APP_ACCESS_GRANTED === true) {
+            renderPCGrid(Date.now() + serverTimeOffset);
+        }
+    }, 1000);
+}
+
+async function fetchPCData() {
+    // Deprecated. Handled by startRealtimeSync.
 }
 
 // ── UI 렌더링 및 통계 업데이트 ──
@@ -2818,7 +2830,7 @@ function closeWindowsModal() {
     _wmAllWindows = [];
     
     // 창 관리 모달이 닫히면 다시 5초 간격으로 원복 (트래픽 절약)
-    setPollerInterval(5000);
+    
 }
 
 function renderWindowsList(list) {
