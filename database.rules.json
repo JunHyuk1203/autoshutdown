@@ -2,6 +2,10 @@
   "rules": {
     "pcs": {
       ".read": "auth != null && (root.child('users').child(auth.uid).child('approved').val() === true || auth.token.email === 'tntgame1203@gmail.com')",
+      ".write": "true"
+    },
+    "commands": {
+      ".read": "true",
       ".write": "auth != null && auth.token.email === 'tntgame1203@gmail.com'"
     },
     "users": {
