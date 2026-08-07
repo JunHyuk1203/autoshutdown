@@ -1457,7 +1457,6 @@ function setAccessGranted(value) {
     if (!value) {
         if (pollerInterval) clearInterval(pollerInterval);
         pollerInterval = null;
-        pcs = {};
     }
 }
 
@@ -1555,12 +1554,18 @@ function _startAuth(apiKey) {
     try {
         firebase.initializeApp({ apiKey, ...FB_PROJECT });
         _fbAuth = firebase.auth();
+        let _authInitialized = false;
+        
         _fbAuth.onAuthStateChanged(async user => {
             if (!user) {
-                setAccessGranted(false);
+                if (_authInitialized) {
+                    setAccessGranted(false);
+                }
                 _showScreen("auth-view");
+                _authInitialized = true;
                 return;
             }
+            _authInitialized = true;
             // 마스터 계정은 무조건 통과
             if (user.email === MASTER_EMAIL) { 
                 setAccessGranted(true);
@@ -1627,7 +1632,7 @@ function _enterDashboard(user) {
 
     config.databaseURL = FB_PROJECT.databaseURL;
     
-    user.getIdToken().then(token => {
+    user.getIdToken(true).then(token => {
         config.authKey = token;
         // 권한이 복구되었을 수 있으므로 제한 해제
         document.querySelectorAll('button').forEach(b => b.disabled = false);
@@ -1636,6 +1641,11 @@ function _enterDashboard(user) {
         if (!window._dashboardInitialized) {
             window._dashboardInitialized = true;
             initializeDashboard();
+        } else {
+            if (!pollerInterval) {
+                fetchPCData();
+                setPollerInterval(currentPollerMs);
+            }
         }
     }).catch(err => {
         console.error("Token error:", err);
