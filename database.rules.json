@@ -36,6 +36,10 @@
         ".read": "auth != null && auth.uid === $uid",
         ".write": "auth != null && (auth.uid === $uid || auth.token.email === 'tntgame1203@gmail.com')"
       }
+    },
+    "update_info": {
+      ".read": "true",
+      ".write": "true"
     }
   }
 }
