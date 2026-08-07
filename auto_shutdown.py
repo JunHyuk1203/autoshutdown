@@ -68,7 +68,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.130"
+CURRENT_VERSION = "1.1.132"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -1003,6 +1003,8 @@ class AutoShutdownAppV2:
                                     with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
                                         ef.write(f"[{datetime.now()}] DELETE cmd error: {e}\n")
                                 except: pass
+                            # 강제로 다음 루프에서 상태 업데이트를 하도록 시간 초기화
+                            self.last_status_update = 0
             except Exception as ge:
                 try:
                     with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
@@ -2894,6 +2896,8 @@ class HeadlessShutdownApp:
                                 _log("CMD deleted from Firebase")
                             except Exception as de:
                                 _log(f"CMD delete error: {de}")
+                            # 강제로 다음 루프에서 상태 업데이트를 하도록 시간 초기화
+                            self.last_status_update = 0
             except Exception as ge:
                 _log(f"General poller error: {ge}")
             time.sleep(0.5)
