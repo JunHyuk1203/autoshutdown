@@ -1008,6 +1008,19 @@ body {
 </div>
 
 
+
+<!-- [BANNED] 보안 위협 영구 차단 화면 -->
+<div id="banned-view" style="display:none">
+  <div class="auth-card" style="text-align:center;">
+    <div style="font-size:52px; margin-bottom:16px; animation:pulse-slow 2.5s infinite;">☠️</div>
+    <h2 style="font-size:22px; font-weight:800; margin-bottom:10px; color:#ef4444;">보안 위협 감지됨</h2>
+    <p style="color:var(--text-muted); font-size:14px; line-height:1.75; margin-bottom:18px;">
+      비정상적인 접근이 감지되어 시스템에 의해 영구 차단되었습니다.<br>이 계정으로는 더 이상 제어판을 이용할 수 없습니다.
+    </p>
+    <button class="auth-btn auth-btn-outline" id="signout-btn-banned">로그아웃</button>
+  </div>
+</div>
+
 <!-- [REVOKED] 권한 박탈 화면 -->
 <div id="revoked-view" style="display:none">
   <div class="auth-card" style="text-align:center;">
@@ -1630,15 +1643,19 @@ function _attachUserStatusListener(user) {
             _enterDashboard(user);
         } else if (status === false) {
             setAccessGranted(false);
-            if (statusObj.revokedAt) {
-                _revokeAccess();
-            } else {
-                document.getElementById("pending-email-label").textContent = user.email;
-                document.getElementById("pending-title").textContent = "가입 거부됨";
-                document.getElementById("pending-desc").innerHTML = "관리자가 가입을 거부했습니다.";
-                document.getElementById("pending-rerequest-btn").style.display = "block";
-                _showScreen("pending-view");
-            }
+            firebase.database().ref("/security_logs/" + user.uid).once("value").then(secSnap => {
+                if (secSnap.exists()) {
+                    _showScreen("banned-view");
+                } else if (statusObj.revokedAt) {
+                    _revokeAccess();
+                } else {
+                    document.getElementById("pending-email-label").textContent = user.email;
+                    document.getElementById("pending-title").textContent = "가입 거부됨";
+                    document.getElementById("pending-desc").innerHTML = "관리자가 가입을 거부했습니다.";
+                    document.getElementById("pending-rerequest-btn").style.display = "block";
+                    _showScreen("pending-view");
+                }
+            });
         } else {
             setAccessGranted(false);
             _savePending(user);
@@ -3585,6 +3602,8 @@ function bindStaticEvents() {
     if (el_verify_resend_btn) el_verify_resend_btn.addEventListener("click", function(e) { resendVerificationEmail(); });
     const el_signout_btn_1 = document.getElementById("signout-btn-1");
     if (el_signout_btn_1) el_signout_btn_1.addEventListener("click", function(e) { signOutAndReset(); });
+    const el_signout_btn_banned = document.getElementById("signout-btn-banned");
+    if (el_signout_btn_banned) el_signout_btn_banned.addEventListener("click", function(e) { signOutAndReset(); });
     const el_pending_check_btn = document.getElementById("pending-check-btn");
     if (el_pending_check_btn) el_pending_check_btn.addEventListener("click", function(e) { checkPendingApproval(); });
     const el_pending_rerequest_btn = document.getElementById("pending-rerequest-btn");
