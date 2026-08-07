@@ -138,7 +138,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.138"
+CURRENT_VERSION = "1.1.140"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -1065,7 +1065,7 @@ class AutoShutdownAppV2:
                             cmd_success = True
                     
                         # 명령 처리 성공 후에만 Firebase에서 삭제 (실패 시 재시도 가능)
-                        if cmd_success and cmd_type == 'individual':
+                        if cmd_type == 'individual':
                             if push_id:
                                 del_url = f"{central_url.rstrip('/')}/commands/{pc_id}/{push_id}.json"
                             else:
@@ -2963,7 +2963,7 @@ class HeadlessShutdownApp:
                             cmd_success = True  # 실패해도 명령 삭제하여 무한 재시도 방지
                     
                         # 4. 명령 삭제 (개별 명령일 때만)
-                        if cmd_success and cmd_type == 'individual':
+                        if cmd_type == 'individual':
                             if push_id:
                                 del_url = f"{central_url.rstrip('/')}/commands/{pc_id}/{push_id}.json"
                             else:
