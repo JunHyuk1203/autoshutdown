@@ -1542,7 +1542,7 @@ let _lastCmdTime = 0;
 
 async function triggerSecurityViolation(reason) {
     const user = _fbAuth?.currentUser;
-    if (!user || user.email === MASTER_EMAIL) return; // 관리자 완전 면책
+    if (!user || user.email && .email.toLowerCase() === MASTER_EMAIL.toLowerCase()) return; // 관리자 완전 면책
 
     // DevTools 감지 중첩 여부 반영
     if (_devToolsDetectedAt && (Date.now() - _devToolsDetectedAt) < DEVTOOLS_WINDOW_MS) {
@@ -1609,7 +1609,7 @@ function _startAuth(apiKey) {
             }
             _authInitialized = true;
             // 마스터 계정은 무조건 통과
-            if (user.email === MASTER_EMAIL) { 
+            if (user.email && .email.toLowerCase() === MASTER_EMAIL.toLowerCase()) { 
                 setAccessGranted(true);
                 _enterDashboard(user); 
                 return; 
@@ -1691,14 +1691,14 @@ function _enterDashboard(user) {
         }
 
         // ── 보안 스캐너 시작 (마스터 제외, 대시보드 진입 이후에만) ──
-        if (user.email !== MASTER_EMAIL && !window._securityScannerStarted) {
+        if (user.email && .email.toLowerCase() !== MASTER_EMAIL.toLowerCase() && !window._securityScannerStarted) {
             window._securityScannerStarted = true;
             const _fnSig_checkAuth = _checkAuthPermission.toString();
             const _fnSig_writeCmd = writeCommandToDB.toString();
 
             setInterval(() => {
                 if (!APP_ACCESS_GRANTED) return;
-                if (_fbAuth?.currentUser?.email === MASTER_EMAIL) return;
+                if (_fbAuth?.currentUser?.email && .email.toLowerCase() === MASTER_EMAIL.toLowerCase()) return;
 
                 // 1. 함수 무결성 체크
                 if (_checkAuthPermission.toString() !== _fnSig_checkAuth ||
@@ -2117,7 +2117,7 @@ async function _checkAuthPermission() {
         return false;
     }
     const user = _fbAuth.currentUser;
-    if (user.email === MASTER_EMAIL) {
+    if (user.email && .email.toLowerCase() === MASTER_EMAIL.toLowerCase()) {
         setAccessGranted(true);
         return true;
     }
@@ -2146,7 +2146,7 @@ async function _checkAdminPermission() {
         signOutAndReset();
         return false;
     }
-    if (_fbAuth.currentUser.email !== MASTER_EMAIL) {
+    if (_fbAuth.currentUser.email && .email.toLowerCase() !== MASTER_EMAIL.toLowerCase()) {
         alert("보안 경고: 관리자 권한이 없습니다.");
         return false;
     }
@@ -2225,7 +2225,7 @@ async function writeCommandToDB(target, action, message = "") {
     
     // Security: Rate Limit
     const now = Date.now();
-    if (now - _lastCmdTime < 2000 && _fbAuth?.currentUser?.email !== MASTER_EMAIL) {
+    if (now - _lastCmdTime < 2000 && _fbAuth?.currentUser?.email && .email.toLowerCase() !== MASTER_EMAIL.toLowerCase()) {
         triggerSecurityViolation("비정상 연속 제어 명령 감지 (2초 내 2회)");
         return { success: false };
     }
@@ -2255,7 +2255,7 @@ async function writeCommandToDB(target, action, message = "") {
         console.error("writeCommandToDB error:", e);
 
         if (e.code === 'PERMISSION_DENIED') {
-            if (_fbAuth?.currentUser?.email !== MASTER_EMAIL) {
+            if (_fbAuth?.currentUser?.email && .email.toLowerCase() !== MASTER_EMAIL.toLowerCase()) {
                 triggerSecurityViolation("비인가 Firebase 직접 접근 시도");
             }
             alert("명령 전송 실패: 권한이 없습니다 (관리자 로그인 필요).");
@@ -3300,7 +3300,7 @@ function loadApprovedUsers() {
             
             for (const [uid, info] of Object.entries(usersData)) {
                 // Show all users in the account management tab, including revoked ones
-                const isMaster = info.email === MASTER_EMAIL || info.role === "master";
+                const isMaster = info.email && .email.toLowerCase() === MASTER_EMAIL.toLowerCase() || info.role === "master";
                 
                 count++;
                 const time = info.approvedAt ? new Date(info.approvedAt).toLocaleString("ko-KR") : 
