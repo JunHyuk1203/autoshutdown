@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta http-equiv="Content-Security-Policy" content="
     default-src 'self';
-    script-src 'self' 'unsafe-inline' https://www.gstatic.com;
+    script-src 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com https://accounts.google.com;
     style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
     font-src 'self' https://fonts.gstatic.com;
-    connect-src 'self' https://*.firebaseio.com wss://*.firebaseio.com https://*.googleapis.com;
-    img-src 'self' data: https://www.gstatic.com;
-    frame-src 'self' https://*.firebaseapp.com;
+    connect-src 'self' https://*.firebaseio.com wss://*.firebaseio.com https://*.googleapis.com https://accounts.google.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com;
+    img-src 'self' data: https://www.gstatic.com https://*.googleusercontent.com;
+    frame-src 'self' https://*.firebaseapp.com https://accounts.google.com https://atss-a1f9e.firebaseapp.com;
 ">
 <title>SmartPower Serverless Dashboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -3235,25 +3235,43 @@ function switchAdminTab(tab) {
     
     const btnPending = document.getElementById('tab-btn-pending');
     const btnApproved = document.getElementById('tab-btn-approved');
+    const btnSecurity = document.getElementById('tab-btn-security');
     const viewPending = document.getElementById('admin-tab-pending');
     const viewApproved = document.getElementById('admin-tab-approved');
+    const viewSecurity = document.getElementById('security-list-container');
     
+    btnPending.style.borderBottomColor = 'transparent';
+    btnPending.style.color = 'var(--text-muted)';
+    btnApproved.style.borderBottomColor = 'transparent';
+    btnApproved.style.color = 'var(--text-muted)';
+    if (btnSecurity) {
+        btnSecurity.style.borderBottomColor = 'transparent';
+        btnSecurity.style.color = 'var(--text-muted)';
+    }
+    
+    viewPending.style.display = 'none';
+    viewApproved.style.display = 'none';
+    if (viewSecurity) viewSecurity.style.display = 'none';
+
     if (tab === 'pending') {
         btnPending.style.borderBottomColor = 'var(--primary)';
         btnPending.style.color = 'var(--text-main)';
-        btnApproved.style.borderBottomColor = 'transparent';
-        btnApproved.style.color = 'var(--text-muted)';
         viewPending.style.display = 'block';
-        viewApproved.style.display = 'none';
         loadPendingUsers();
-    } else {
+    } else if (tab === 'approved') {
         btnApproved.style.borderBottomColor = 'var(--primary)';
         btnApproved.style.color = 'var(--text-main)';
-        btnPending.style.borderBottomColor = 'transparent';
-        btnPending.style.color = 'var(--text-muted)';
-        viewPending.style.display = 'none';
         viewApproved.style.display = 'block';
         loadApprovedUsers();
+    } else if (tab === 'security') {
+        if (btnSecurity) {
+            btnSecurity.style.borderBottomColor = 'var(--danger)';
+            btnSecurity.style.color = 'var(--danger)';
+        }
+        if (viewSecurity) {
+            viewSecurity.style.display = 'block';
+            renderSecurityLogs();
+        }
     }
 }
 
