@@ -2257,7 +2257,7 @@ async function clearOfflineDevices() {
 // ── 다이얼로그 모달 제어 ──
 function showModal(title, msg, onOk) {
     document.getElementById("modal-title").innerText = title;
-    document.getElementById("modal-msg").innerText = msg;
+    document.getElementById("modal-msg").innerHTML = msg;
     pendingAction = onOk;
     
     document.getElementById("confirm-modal").classList.add("show");
