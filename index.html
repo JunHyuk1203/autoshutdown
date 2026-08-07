@@ -1450,6 +1450,16 @@ let pcs = {};
 let selectedPcs = new Set();
 let pollerInterval = null;
 let currentPollerMs = 5000;
+let APP_ACCESS_GRANTED = null;
+
+function setAccessGranted(value) {
+    APP_ACCESS_GRANTED = value;
+    if (!value) {
+        if (pollerInterval) clearInterval(pollerInterval);
+        pollerInterval = null;
+        pcs = {};
+    }
+}
 
 function setPollerInterval(ms) {
     if (currentPollerMs === ms && pollerInterval) return;
@@ -1547,11 +1557,16 @@ function _startAuth(apiKey) {
         _fbAuth = firebase.auth();
         _fbAuth.onAuthStateChanged(async user => {
             if (!user) {
+                setAccessGranted(false);
                 _showScreen("auth-view");
                 return;
             }
             // 마스터 계정은 무조건 통과
-            if (user.email === MASTER_EMAIL) { _enterDashboard(user); return; }
+            if (user.email === MASTER_EMAIL) { 
+                setAccessGranted(true);
+                _enterDashboard(user); 
+                return; 
+            }
 
             // ── 3단계: 가입 승인 상태 (실시간 연동) ──
             _attachUserStatusListener(user);
@@ -1564,8 +1579,10 @@ function _attachUserStatusListener(user) {
         const status = statusObj ? statusObj.approved : null;
         
         if (status === true) {
+            setAccessGranted(true);
             _enterDashboard(user);
         } else if (status === false) {
+            setAccessGranted(false);
             if (statusObj.revokedAt) {
                 _revokeAccess();
             } else {
@@ -1576,6 +1593,7 @@ function _attachUserStatusListener(user) {
                 _showScreen("pending-view");
             }
         } else {
+            setAccessGranted(false);
             _savePending(user);
             document.getElementById("pending-email-label").textContent = user.email;
             document.getElementById("pending-title").textContent = "관리자 확인 대기중";
@@ -1658,8 +1676,12 @@ function initializeDashboard() {
 async function fetchPCData() {
     if (!config.databaseURL) return;
     
-    // Only fetch if admin
-    if (!_fbAuth || !_fbAuth.currentUser || _fbAuth.currentUser.email !== MASTER_EMAIL) {
+    // 이중 가드: 인증 실패 상태면 즉시 차단
+    if (APP_ACCESS_GRANTED !== true) return;
+    
+    // Firebase Auth 체크
+    if (!_fbAuth || !_fbAuth.currentUser) {
+        setAccessGranted(false);
         return;
     }
     
@@ -2012,23 +2034,30 @@ async function _isApproved(uid) {
 async function _checkAuthPermission() {
     if (!_fbAuth || !_fbAuth.currentUser) {
         alert("로그인이 필요합니다.");
+        setAccessGranted(false);
         signOutAndReset();
         return false;
     }
     const user = _fbAuth.currentUser;
-    if (user.email === MASTER_EMAIL) return true;
+    if (user.email === MASTER_EMAIL) {
+        setAccessGranted(true);
+        return true;
+    }
     
     try {
         const snap = await firebase.database().ref("/users/" + user.uid + "/approved").once("value");
         const isApproved = snap.val();
         if (isApproved !== true) {
             alert("보안 경고: 계정의 접근 권한이 박탈되었습니다.");
+            setAccessGranted(false);
             _revokeAccess();
             return false;
         }
+        setAccessGranted(true);
         return true;
     } catch(e) {
         alert("권한 확인 중 오류가 발생했습니다.");
+        setAccessGranted(false);
         return false;
     }
 }

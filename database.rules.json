@@ -1,0 +1,20 @@
+﻿{
+  "rules": {
+    "pcs": {
+      ".read": "auth != null && (root.child('users').child(auth.uid).child('approved').val() === true || auth.token.email === 'tntgame1203@gmail.com')",
+      ".write": "auth != null && auth.token.email === 'tntgame1203@gmail.com'"
+    },
+    "users": {
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || auth.token.email === 'tntgame1203@gmail.com')",
+        ".write": "auth != null && auth.token.email === 'tntgame1203@gmail.com'"
+      }
+    },
+    "pending_users": {
+      ".read": "auth != null && auth.token.email === 'tntgame1203@gmail.com'",
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    }
+  }
+}
