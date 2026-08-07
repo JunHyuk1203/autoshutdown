@@ -54,15 +54,15 @@ try:
             if "firebaseio.com" in url:
                 try:
                     if method == 'GET':
-                        res = _global_session.get(url, headers=headers, timeout=timeout)
+                        res = _global_session.get(url, headers=headers, timeout=timeout, allow_redirects=True)
                     elif method == 'PATCH':
-                        res = _global_session.patch(url, data=data, headers=headers, timeout=timeout)
+                        res = _global_session.patch(url, data=data, headers=headers, timeout=timeout, allow_redirects=True)
                     elif method == 'PUT':
-                        res = _global_session.put(url, data=data, headers=headers, timeout=timeout)
+                        res = _global_session.put(url, data=data, headers=headers, timeout=timeout, allow_redirects=True)
                     elif method == 'POST':
-                        res = _global_session.post(url, data=data, headers=headers, timeout=timeout)
+                        res = _global_session.post(url, data=data, headers=headers, timeout=timeout, allow_redirects=True)
                     elif method == 'DELETE':
-                        res = _global_session.delete(url, headers=headers, timeout=timeout)
+                        res = _global_session.delete(url, headers=headers, timeout=timeout, allow_redirects=True)
                     else:
                         return _original_urlopen(url_or_req, *args, **kwargs)
                     
@@ -138,7 +138,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.134"
+CURRENT_VERSION = "1.1.136"
 
 try:
     from pycaw.pycaw import AudioUtilities
