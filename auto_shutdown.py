@@ -8,9 +8,79 @@ socket.setdefaulttimeout(15.0)  # 스쿨넷 방화벽망 등에서 urllib 무한
 import urllib.request
 import urllib.error
 import urllib.parse
+import requests
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 import re
 from datetime import datetime, timedelta
 import ssl
+
+import urllib.request
+import urllib.error
+import urllib.parse
+import json
+import time
+
+try:
+    import requests
+    import urllib3
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    _global_session = requests.Session()
+    _global_session.verify = False
+    _original_urlopen = urllib.request.urlopen
+    
+    class MockResponse:
+        def __init__(self, content, status):
+            self.content = content
+            self.status = status
+            self.code = status
+        def read(self):
+            return self.content
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+
+    def _fast_urlopen(url_or_req, *args, **kwargs):
+        req = url_or_req
+        if isinstance(req, urllib.request.Request):
+            url = req.full_url
+            method = req.method if req.method else ('POST' if req.data else 'GET')
+            headers = dict(req.headers)
+            data = req.data
+            timeout = kwargs.get('timeout', 10)
+            
+            # Only intercept Firebase realtime database requests
+            if "firebaseio.com" in url:
+                try:
+                    if method == 'GET':
+                        res = _global_session.get(url, headers=headers, timeout=timeout)
+                    elif method == 'PATCH':
+                        res = _global_session.patch(url, data=data, headers=headers, timeout=timeout)
+                    elif method == 'PUT':
+                        res = _global_session.put(url, data=data, headers=headers, timeout=timeout)
+                    elif method == 'POST':
+                        res = _global_session.post(url, data=data, headers=headers, timeout=timeout)
+                    elif method == 'DELETE':
+                        res = _global_session.delete(url, headers=headers, timeout=timeout)
+                    else:
+                        return _original_urlopen(url_or_req, *args, **kwargs)
+                    
+                    if res.status_code >= 400:
+                        from io import BytesIO
+                        raise urllib.error.HTTPError(url, res.status_code, res.reason, res.headers, BytesIO(res.content))
+                        
+                    return MockResponse(res.content, res.status_code)
+                except urllib.error.HTTPError:
+                    raise
+                except Exception as e:
+                    # If requests fails, just fallback to urllib
+                    pass
+        return _original_urlopen(url_or_req, *args, **kwargs)
+
+    urllib.request.urlopen = _fast_urlopen
+except ImportError:
+    pass
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -68,7 +138,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.132"
+CURRENT_VERSION = "1.1.134"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -993,16 +1063,11 @@ class AutoShutdownAppV2:
                             if push_id:
                                 del_url = f"{central_url.rstrip('/')}/commands/{pc_id}/{push_id}.json"
                             else:
-                                                        del_url = f"{central_url.rstrip('/')}/commands/{pc_id}.json"
-                            del_req = urllib.request.Request(del_url, method='DELETE')
+                                del_url = f"{central_url.rstrip('/')}/commands/{pc_id}.json"
                             try:
-                                with urllib.request.urlopen(del_req, timeout=6, context=ssl_context) as res:
-                                    pass
+                                self.http_session.delete(del_url, timeout=6)
                             except Exception as e:
-                                try:
-                                    with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
-                                        ef.write(f"[{datetime.now()}] DELETE cmd error: {e}\n")
-                                except: pass
+                                pass
                             # 강제로 다음 루프에서 상태 업데이트를 하도록 시간 초기화
                             self.last_status_update = 0
             except Exception as ge:
