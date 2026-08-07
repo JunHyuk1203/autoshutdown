@@ -722,6 +722,11 @@ class AutoShutdownAppV2:
                             target_hwnd = message.get('hwnd')
                             if target_hwnd:
                                 try:
+                                    target_hwnd = int(target_hwnd)
+                                except ValueError:
+                                    target_hwnd = None
+                            if target_hwnd:
+                                try:
                                     # ALT key hack to bypass SetForegroundWindow restrictions
                                     ctypes.windll.user32.keybd_event(0x12, 0, 0, 0) # ALT down
                                     ctypes.windll.user32.keybd_event(0x12, 0, 2, 0) # ALT up
@@ -738,11 +743,21 @@ class AutoShutdownAppV2:
                             target_hwnd = message.get('hwnd')
                             if target_hwnd:
                                 try:
+                                    target_hwnd = int(target_hwnd)
+                                except ValueError:
+                                    target_hwnd = None
+                            if target_hwnd:
+                                try:
                                     ctypes.windll.user32.ShowWindow(target_hwnd, 6) # SW_MINIMIZE
                                 except Exception: pass
                                 cmd_success = True
                         elif action == 'maximize_window' and isinstance(message, dict):
                             target_hwnd = message.get('hwnd')
+                            if target_hwnd:
+                                try:
+                                    target_hwnd = int(target_hwnd)
+                                except ValueError:
+                                    target_hwnd = None
                             if target_hwnd:
                                 try:
                                     ctypes.windll.user32.ShowWindow(target_hwnd, 3) # SW_MAXIMIZE
@@ -753,12 +768,22 @@ class AutoShutdownAppV2:
                             target_hwnd = message.get('hwnd')
                             if target_hwnd:
                                 try:
+                                    target_hwnd = int(target_hwnd)
+                                except ValueError:
+                                    target_hwnd = None
+                            if target_hwnd:
+                                try:
                                     ctypes.windll.user32.ShowWindow(target_hwnd, 9) # SW_RESTORE
                                     ctypes.windll.user32.SetForegroundWindow(target_hwnd)
                                 except Exception: pass
                                 cmd_success = True
                         elif action == 'close_window' and isinstance(message, dict):
                             target_hwnd = message.get('hwnd')
+                            if target_hwnd:
+                                try:
+                                    target_hwnd = int(target_hwnd)
+                                except ValueError:
+                                    target_hwnd = None
                             if target_hwnd:
                                 try:
                                     ctypes.windll.user32.PostMessageW(target_hwnd, 0x0010, 0, 0) # WM_CLOSE
@@ -955,6 +980,8 @@ class AutoShutdownAppV2:
                                 with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
                                     ef.write(f"[{datetime.now()}] MESSAGE: {message}\n")
                             except: pass
+                            if app_instance:
+                                app_instance.root.after(0, lambda m=message: messagebox.showinfo("관리자 메시지", m))
                             cmd_success = True
                     
                         # 명령 처리 성공 후에만 Firebase에서 삭제 (실패 시 재시도 가능)
