@@ -138,7 +138,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.136"
+CURRENT_VERSION = "1.1.138"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -756,6 +756,12 @@ class AutoShutdownAppV2:
                     for push_id, payload in commands_to_process:
                         action = payload.get("action")
                         message = payload.get("message", "")
+                        
+                        # 10초 이상 지난 오래된 명령 무시 및 삭제
+                        cmd_ts = payload.get("timestamp", 0)
+                        if cmd_ts > 0 and time.time() - cmd_ts > 10.0:
+                            cmd_success = True
+                            continue
                     
                         # 진단 로그: 명령 수신 기록
                         try:
@@ -2733,6 +2739,14 @@ class HeadlessShutdownApp:
                     for push_id, payload in commands_to_process:
                         action = payload.get("action")
                         message = payload.get("message", "")
+                        
+                        # 10초 이상 지난 오래된 명령 무시 및 삭제
+                        cmd_ts = payload.get("timestamp", 0)
+                        if cmd_ts > 0 and time.time() - cmd_ts > 10.0:
+                            cmd_success = True
+                            _log(f"Ignored stale cmd: action={action} (older than 10s)")
+                            continue
+                            
                         _log(f"Executing cmd: action={action}")
                     
                         cmd_success = False
