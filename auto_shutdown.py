@@ -197,7 +197,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.144"
+CURRENT_VERSION = "1.1.146"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -2014,11 +2014,103 @@ class AutoShutdownAppV2:
         self.pending_shutdown = False
         if self.icon: self.icon.notify("예약된 시스템 종료/절전이 취소되었습니다.", "종료 취소")
 
+    def restart_as_admin(self, icon=None, item=None):
+        if ctypes.windll.shell32.IsUserAnAdmin():
+            return
+        try:
+            import ctypes, sys
+            if getattr(sys, 'frozen', False):
+                ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, " ".join(sys.argv[1:]), None, 1)
+            else:
+                ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, " ".join([sys.argv[0]] + sys.argv[1:]), None, 1)
+            if self.icon:
+                self.icon.stop()
+            self.root.quit()
+        except Exception: pass
+
+    def open_autologin_settings(self, icon=None, item=None):
+        top = ctk.CTkToplevel(self.root)
+        top.title("자동 로그인 설정")
+        top.geometry("350x220")
+        top.resizable(False, False)
+        top.attributes("-topmost", True)
+        
+        frame = ctk.CTkFrame(top, fg_color="transparent")
+        frame.pack(fill="both", expand=True, padx=20, pady=20)
+
+        auto_unlock_var = ctk.BooleanVar(value=self.current_cfg.get('auto_unlock_enabled', False))
+        
+        def toggle_entry():
+            if auto_unlock_var.get():
+                password_entry.configure(state="normal")
+            else:
+                password_entry.configure(state="disabled")
+
+        chk = ctk.CTkSwitch(frame, text="부팅 시 자동으로 잠금 해제", variable=auto_unlock_var, command=toggle_entry)
+        chk.pack(anchor="w", pady=(0, 15))
+
+        ctk.CTkLabel(frame, text="Windows 비밀번호:").pack(anchor="w")
+        password_entry = ctk.CTkEntry(frame, show="*")
+        password_entry.pack(fill="x", pady=(0, 15))
+
+        saved_enc_pwd = self.current_cfg.get('encrypted_password', "")
+        if saved_enc_pwd:
+            password_entry.insert(0, decrypt_password(saved_enc_pwd))
+            
+        toggle_entry()
+
+        def apply_settings():
+            enabled = auto_unlock_var.get()
+            pwd = password_entry.get()
+            
+            if not ctypes.windll.shell32.IsUserAnAdmin():
+                # We can't use messagebox from tkinter here safely without root, so we can use CTkMessagebox or just normal messagebox
+                from tkinter import messagebox
+                messagebox.showwarning("권한 필요", "자동 로그인을 설정하려면 관리자 권한이 필요합니다.\\n트레이 메뉴에서 '관리자 권한으로 열기'를 사용해주세요.", parent=top)
+                return
+                
+            import getpass
+            username = getpass.getuser()
+            
+            from tkinter import messagebox
+            if enabled:
+                if not pwd:
+                    messagebox.showerror("오류", "비밀번호를 입력해주세요.", parent=top)
+                    return
+                if set_auto_logon(username, pwd):
+                    self.current_cfg['auto_unlock_enabled'] = True
+                    self.current_cfg['encrypted_password'] = encrypt_password(pwd)
+                    self.save_config()
+                    messagebox.showinfo("성공", "자동 로그인이 활성화되었습니다.\\n(다음 부팅 시부터 적용됩니다)", parent=top)
+                    top.destroy()
+                else:
+                    messagebox.showerror("오류", "레지스트리 설정에 실패했습니다.", parent=top)
+            else:
+                if disable_auto_logon():
+                    self.current_cfg['auto_unlock_enabled'] = False
+                    self.current_cfg['encrypted_password'] = ""
+                    self.save_config()
+                    messagebox.showinfo("성공", "자동 로그인이 비활성화되었습니다.", parent=top)
+                    top.destroy()
+                else:
+                    messagebox.showerror("오류", "레지스트리 설정에 실패했습니다.", parent=top)
+
+        btn_frame = ctk.CTkFrame(frame, fg_color="transparent")
+        btn_frame.pack(fill="x")
+        
+        apply_btn = ctk.CTkButton(btn_frame, text="적용 (관리자 권한 필요)", command=apply_settings)
+        apply_btn.pack(side="left", expand=True, padx=(0,5))
+        cancel_btn = ctk.CTkButton(btn_frame, text="닫기", fg_color="gray", command=top.destroy)
+        cancel_btn.pack(side="left", expand=True, padx=(5,0))
+
     def get_menu(self):
         menu_items = [
             pystray.MenuItem(f"버전: v{CURRENT_VERSION}", lambda icon, item: None),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("✅ Firebase 원격 제어 연동 중", lambda icon, item: None),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem('관리자 권한으로 열기', self.restart_as_admin, visible=lambda item: not ctypes.windll.shell32.IsUserAnAdmin()),
+            pystray.MenuItem('부팅 시 자동로그인 설정', self.open_autologin_settings),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem('오늘 하루 끄지 않기', self.toggle_skip_state, checked=self.get_skip_state),
             pystray.MenuItem('열기 (대시보드)', self.show_window),
