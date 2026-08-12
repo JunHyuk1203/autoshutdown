@@ -253,7 +253,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.148"
+CURRENT_VERSION = "1.1.150"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -2085,6 +2085,9 @@ class AutoShutdownAppV2:
         except Exception: pass
 
     def open_autologin_settings(self, icon=None, item=None):
+        self.root.after(0, self._open_autologin_settings_gui)
+
+    def _open_autologin_settings_gui(self):
         top = ctk.CTkToplevel(self.root)
         top.title("자동 로그인 설정")
         top.geometry("350x220")
