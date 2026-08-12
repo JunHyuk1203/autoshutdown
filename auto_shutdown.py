@@ -253,7 +253,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.152"
+CURRENT_VERSION = "1.1.154"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -2071,18 +2071,21 @@ class AutoShutdownAppV2:
         if self.icon: self.icon.notify("예약된 시스템 종료/절전이 취소되었습니다.", "종료 취소")
 
     def restart_as_admin(self, icon=None, item=None):
-        if ctypes.windll.shell32.IsUserAnAdmin():
-            return
-        try:
-            import ctypes, sys
-            if getattr(sys, 'frozen', False):
-                ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, " ".join(sys.argv[1:]), None, 1)
-            else:
-                ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, " ".join([sys.argv[0]] + sys.argv[1:]), None, 1)
-            if self.icon:
-                self.icon.stop()
-            self.root.quit()
-        except Exception: pass
+        def _do_restart():
+            import subprocess
+            exe = sys.executable
+            args = sys.argv[1:] if getattr(sys, 'frozen', False) else sys.argv
+            try:
+                ret = ctypes.windll.shell32.ShellExecuteW(None, "runas", exe, " ".join(args), None, 1)
+                if ret > 32:  # success
+                    self.root.after(500, lambda: (
+                        self.icon.stop() if self.icon else None,
+                        self.root.quit()
+                    ))
+            except Exception as e:
+                pass
+        import threading
+        threading.Thread(target=_do_restart, daemon=True).start()
 
     def open_autologin_settings(self, icon=None, item=None):
         self.root.after(0, self._open_autologin_settings_gui)
