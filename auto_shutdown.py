@@ -253,7 +253,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.150"
+CURRENT_VERSION = "1.1.152"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -2088,11 +2088,26 @@ class AutoShutdownAppV2:
         self.root.after(0, self._open_autologin_settings_gui)
 
     def _open_autologin_settings_gui(self):
+        # Workaround for CTkToplevel rendering blank when root is withdrawn
+        was_hidden = not self.root.winfo_viewable()
+        if was_hidden:
+            self.root.attributes('-alpha', 0.0)
+            self.root.deiconify()
+
         top = ctk.CTkToplevel(self.root)
         top.title("자동 로그인 설정")
         top.geometry("350x220")
         top.resizable(False, False)
         top.attributes("-topmost", True)
+        
+        def on_close():
+            on_close()
+            if was_hidden:
+                self.root.withdraw()
+                self.root.attributes('-alpha', 1.0)
+                
+        top.protocol("WM_DELETE_WINDOW", on_close)
+
         
         frame = ctk.CTkFrame(top, fg_color="transparent")
         frame.pack(fill="both", expand=True, padx=20, pady=20)
@@ -2141,7 +2156,7 @@ class AutoShutdownAppV2:
                     self.current_cfg['encrypted_password'] = encrypt_password(pwd)
                     self.save_config()
                     messagebox.showinfo("성공", "자동 로그인이 활성화되었습니다.\\n(다음 부팅 시부터 적용됩니다)", parent=top)
-                    top.destroy()
+                    on_close()
                 else:
                     messagebox.showerror("오류", "레지스트리 설정에 실패했습니다.", parent=top)
             else:
@@ -2150,7 +2165,7 @@ class AutoShutdownAppV2:
                     self.current_cfg['encrypted_password'] = ""
                     self.save_config()
                     messagebox.showinfo("성공", "자동 로그인이 비활성화되었습니다.", parent=top)
-                    top.destroy()
+                    on_close()
                 else:
                     messagebox.showerror("오류", "레지스트리 설정에 실패했습니다.", parent=top)
 
@@ -2159,7 +2174,7 @@ class AutoShutdownAppV2:
         
         apply_btn = ctk.CTkButton(btn_frame, text="적용 (관리자 권한 필요)", command=apply_settings)
         apply_btn.pack(side="left", expand=True, padx=(0,5))
-        cancel_btn = ctk.CTkButton(btn_frame, text="닫기", fg_color="gray", command=top.destroy)
+        cancel_btn = ctk.CTkButton(btn_frame, text="닫기", fg_color="gray", command=on_close)
         cancel_btn.pack(side="left", expand=True, padx=(5,0))
 
     def get_menu(self):
