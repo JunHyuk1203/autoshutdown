@@ -253,7 +253,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.156"
+CURRENT_VERSION = "1.1.158"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -2095,63 +2095,41 @@ class AutoShutdownAppV2:
         import tkinter as tk_mod
         from tkinter import messagebox
 
-        # Temporarily show root (alpha=0) so Toplevel renders correctly
+        # Move root offscreen so Toplevel can render (no alpha trick - causes black)
         was_withdrawn = not self.root.winfo_viewable()
         if was_withdrawn:
-            self.root.attributes('-alpha', 0.0)
+            self.root.geometry("1x1+-32000+-32000")
             self.root.deiconify()
+            self.root.update()
 
         top = tk_mod.Toplevel(self.root)
         top.title("부팅 시 자동 로그인 설정")
-        top.geometry("370x205")
         top.resizable(False, False)
-        top.configure(bg="#1a1a1a")
         top.attributes("-topmost", True)
-        top.update()  # force render before anything
-
-        # Center
-        x = (top.winfo_screenwidth() - 370) // 2
-        y = (top.winfo_screenheight() - 205) // 2
-        top.geometry(f"+{x}+{y}")
 
         def on_close():
             top.destroy()
             if was_withdrawn:
                 self.root.withdraw()
-                self.root.attributes('-alpha', 1.0)
 
         top.protocol("WM_DELETE_WINDOW", on_close)
 
-        # --- Widgets ---
-        pad = dict(padx=15, pady=4)
-
-        auto_unlock_var = tk_mod.BooleanVar(top, value=self.current_cfg.get('auto_unlock_enabled', False))
+        auto_unlock_var = tk_mod.BooleanVar(value=self.current_cfg.get('auto_unlock_enabled', False))
 
         def toggle_entry():
-            state = "normal" if auto_unlock_var.get() else "disabled"
-            password_entry.config(state=state)
+            password_entry.config(state="normal" if auto_unlock_var.get() else "disabled")
 
-        chk_frame = tk_mod.Frame(top, bg="#1a1a1a")
-        chk_frame.pack(fill="x", padx=15, pady=(15, 5))
-        chk = tk_mod.Checkbutton(chk_frame, text="  부팅 시 자동으로 잠금 해제 켜기",
-                                   variable=auto_unlock_var, command=toggle_entry,
-                                   bg="#1a1a1a", fg="white", selectcolor="#555",
-                                   activebackground="#1a1a1a", activeforeground="white",
-                                   font=("Segoe UI", 10))
-        chk.pack(anchor="w")
+        r1 = tk_mod.Frame(top)
+        r1.pack(fill="x", padx=15, pady=(15, 5))
+        tk_mod.Checkbutton(r1, text="부팅 시 자동으로 잠금 해제 켜기",
+                           variable=auto_unlock_var, command=toggle_entry,
+                           font=("Segoe UI", 10)).pack(anchor="w")
 
-        lbl_frame = tk_mod.Frame(top, bg="#1a1a1a")
-        lbl_frame.pack(fill="x", padx=15, pady=(8, 2))
-        tk_mod.Label(lbl_frame, text="Windows 비밀번호:", bg="#1a1a1a",
-                     fg="#aaaaaa", font=("Segoe UI", 9)).pack(anchor="w")
-
-        pwd_frame = tk_mod.Frame(top, bg="#1a1a1a")
-        pwd_frame.pack(fill="x", padx=15, pady=(0, 10))
-        password_entry = tk_mod.Entry(pwd_frame, show="*", bg="#333333", fg="white",
-                                       insertbackground="white", relief="flat",
-                                       disabledbackground="#222222",
-                                       font=("Segoe UI", 10))
-        password_entry.pack(fill="x", ipady=6)
+        r2 = tk_mod.Frame(top)
+        r2.pack(fill="x", padx=15, pady=4)
+        tk_mod.Label(r2, text="Windows 비밀번호:", font=("Segoe UI", 9)).pack(anchor="w")
+        password_entry = tk_mod.Entry(r2, show="*", font=("Segoe UI", 10))
+        password_entry.pack(fill="x", ipady=4, pady=(2, 0))
 
         saved_enc_pwd = self.current_cfg.get('encrypted_password', "")
         if saved_enc_pwd:
@@ -2193,21 +2171,19 @@ class AutoShutdownAppV2:
                 else:
                     messagebox.showerror("오류", "레지스트리 설정에 실패했습니다.", parent=top)
 
-        btn_frame = tk_mod.Frame(top, bg="#1a1a1a")
-        btn_frame.pack(fill="x", padx=15, pady=(0, 15))
+        r3 = tk_mod.Frame(top)
+        r3.pack(fill="x", padx=15, pady=(8, 15))
+        tk_mod.Button(r3, text="적용", command=apply_settings,
+                      font=("Segoe UI", 10), padx=12).pack(side="left")
+        tk_mod.Button(r3, text="닫기", command=on_close,
+                      font=("Segoe UI", 10), padx=12).pack(side="left", padx=(6, 0))
 
-        apply_btn = tk_mod.Button(btn_frame, text="적용", command=apply_settings,
-                                    bg="#3a7bd5", fg="white", relief="flat",
-                                    font=("Segoe UI", 10), padx=16, pady=5,
-                                    cursor="hand2")
-        apply_btn.pack(side="left")
-
-        cancel_btn = tk_mod.Button(btn_frame, text="닫기", command=on_close,
-                                     bg="#555555", fg="white", relief="flat",
-                                     font=("Segoe UI", 10), padx=16, pady=5,
-                                     cursor="hand2")
-        cancel_btn.pack(side="left", padx=(8, 0))
-
+        top.update_idletasks()
+        w = top.winfo_reqwidth()
+        h = top.winfo_reqheight()
+        x = (top.winfo_screenwidth() - w) // 2
+        y = (top.winfo_screenheight() - h) // 2
+        top.geometry(f"{w}x{h}+{x}+{y}")
         top.lift()
         top.focus_force()
 
