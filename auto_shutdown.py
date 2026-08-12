@@ -253,7 +253,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.158"
+CURRENT_VERSION = "1.1.160"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -2095,22 +2095,20 @@ class AutoShutdownAppV2:
         import tkinter as tk_mod
         from tkinter import messagebox
 
-        # Move root offscreen so Toplevel can render (no alpha trick - causes black)
-        was_withdrawn = not self.root.winfo_viewable()
-        if was_withdrawn:
-            self.root.geometry("1x1+-32000+-32000")
-            self.root.deiconify()
-            self.root.update()
-
         top = tk_mod.Toplevel(self.root)
         top.title("부팅 시 자동 로그인 설정")
+        top.geometry("370x205")
         top.resizable(False, False)
+        top.configure(bg="#1a1a1a")
         top.attributes("-topmost", True)
+
+        # Center explicitly using fixed dimensions
+        x = (top.winfo_screenwidth() - 370) // 2
+        y = (top.winfo_screenheight() - 205) // 2
+        top.geometry(f"370x205+{x}+{y}")
 
         def on_close():
             top.destroy()
-            if was_withdrawn:
-                self.root.withdraw()
 
         top.protocol("WM_DELETE_WINDOW", on_close)
 
@@ -2119,17 +2117,25 @@ class AutoShutdownAppV2:
         def toggle_entry():
             password_entry.config(state="normal" if auto_unlock_var.get() else "disabled")
 
-        r1 = tk_mod.Frame(top)
+        r1 = tk_mod.Frame(top, bg="#1a1a1a")
         r1.pack(fill="x", padx=15, pady=(15, 5))
-        tk_mod.Checkbutton(r1, text="부팅 시 자동으로 잠금 해제 켜기",
+        tk_mod.Checkbutton(r1, text="  부팅 시 자동으로 잠금 해제 켜기",
                            variable=auto_unlock_var, command=toggle_entry,
+                           bg="#1a1a1a", fg="white", selectcolor="#555",
+                           activebackground="#1a1a1a", activeforeground="white",
                            font=("Segoe UI", 10)).pack(anchor="w")
 
-        r2 = tk_mod.Frame(top)
+        r2 = tk_mod.Frame(top, bg="#1a1a1a")
         r2.pack(fill="x", padx=15, pady=4)
-        tk_mod.Label(r2, text="Windows 비밀번호:", font=("Segoe UI", 9)).pack(anchor="w")
-        password_entry = tk_mod.Entry(r2, show="*", font=("Segoe UI", 10))
-        password_entry.pack(fill="x", ipady=4, pady=(2, 0))
+        tk_mod.Label(r2, text="Windows 비밀번호:", font=("Segoe UI", 9),
+                     bg="#1a1a1a", fg="#aaaaaa").pack(anchor="w")
+        
+        pwd_frame = tk_mod.Frame(top, bg="#1a1a1a")
+        pwd_frame.pack(fill="x", padx=15, pady=(0, 10))
+        password_entry = tk_mod.Entry(pwd_frame, show="*", font=("Segoe UI", 10),
+                                      bg="#333333", fg="white", insertbackground="white",
+                                      relief="flat", disabledbackground="#222222")
+        password_entry.pack(fill="x", ipady=6, pady=(2, 0))
 
         saved_enc_pwd = self.current_cfg.get('encrypted_password', "")
         if saved_enc_pwd:
@@ -2171,19 +2177,15 @@ class AutoShutdownAppV2:
                 else:
                     messagebox.showerror("오류", "레지스트리 설정에 실패했습니다.", parent=top)
 
-        r3 = tk_mod.Frame(top)
+        r3 = tk_mod.Frame(top, bg="#1a1a1a")
         r3.pack(fill="x", padx=15, pady=(8, 15))
         tk_mod.Button(r3, text="적용", command=apply_settings,
-                      font=("Segoe UI", 10), padx=12).pack(side="left")
+                      bg="#3a7bd5", fg="white", relief="flat", cursor="hand2",
+                      font=("Segoe UI", 10), padx=16, pady=5).pack(side="left")
         tk_mod.Button(r3, text="닫기", command=on_close,
-                      font=("Segoe UI", 10), padx=12).pack(side="left", padx=(6, 0))
+                      bg="#555555", fg="white", relief="flat", cursor="hand2",
+                      font=("Segoe UI", 10), padx=16, pady=5).pack(side="left", padx=(8, 0))
 
-        top.update_idletasks()
-        w = top.winfo_reqwidth()
-        h = top.winfo_reqheight()
-        x = (top.winfo_screenwidth() - w) // 2
-        y = (top.winfo_screenheight() - h) // 2
-        top.geometry(f"{w}x{h}+{x}+{y}")
         top.lift()
         top.focus_force()
 
