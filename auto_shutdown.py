@@ -56,6 +56,62 @@ def disable_auto_logon():
         print(f"disable_auto_logon error: {e}")
         return False
 
+import base64
+import winreg
+import getpass
+
+def _get_encryption_key():
+    import uuid
+    mac = str(uuid.getnode())
+    return [ord(c) for c in mac]
+
+def encrypt_password(password):
+    if not password: return ""
+    key = _get_encryption_key()
+    encrypted = bytearray()
+    for i, c in enumerate(password.encode('utf-8')):
+        encrypted.append(c ^ key[i % len(key)])
+    return base64.b64encode(encrypted).decode('utf-8')
+
+def decrypt_password(encrypted_b64):
+    if not encrypted_b64: return ""
+    try:
+        key = _get_encryption_key()
+        encrypted = base64.b64decode(encrypted_b64)
+        decrypted = bytearray()
+        for i, c in enumerate(encrypted):
+            decrypted.append(c ^ key[i % len(key)])
+        return decrypted.decode('utf-8')
+    except Exception:
+        return ""
+
+def set_auto_logon(username, password):
+    try:
+        key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon", 0, winreg.KEY_SET_VALUE)
+        winreg.SetValueEx(key, "AutoAdminLogon", 0, winreg.REG_SZ, "1")
+        winreg.SetValueEx(key, "DefaultUserName", 0, winreg.REG_SZ, username)
+        if password:
+            winreg.SetValueEx(key, "DefaultPassword", 0, winreg.REG_SZ, password)
+        winreg.CloseKey(key)
+        return True
+    except Exception as e:
+        print(f"set_auto_logon error: {e}")
+        return False
+
+def disable_auto_logon():
+    try:
+        key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon", 0, winreg.KEY_SET_VALUE)
+        winreg.SetValueEx(key, "AutoAdminLogon", 0, winreg.REG_SZ, "0")
+        try:
+            winreg.DeleteValue(key, "DefaultPassword")
+        except FileNotFoundError:
+            pass
+        winreg.CloseKey(key)
+        return True
+    except Exception as e:
+        print(f"disable_auto_logon error: {e}")
+        return False
+
 import threading
 import time
 import json
@@ -197,7 +253,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.146"
+CURRENT_VERSION = "1.1.148"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -3269,62 +3325,6 @@ class HeadlessShutdownApp:
 
 if __name__ == "__main__":
     import sys
-import base64
-import winreg
-import getpass
-
-def _get_encryption_key():
-    import uuid
-    mac = str(uuid.getnode())
-    return [ord(c) for c in mac]
-
-def encrypt_password(password):
-    if not password: return ""
-    key = _get_encryption_key()
-    encrypted = bytearray()
-    for i, c in enumerate(password.encode('utf-8')):
-        encrypted.append(c ^ key[i % len(key)])
-    return base64.b64encode(encrypted).decode('utf-8')
-
-def decrypt_password(encrypted_b64):
-    if not encrypted_b64: return ""
-    try:
-        key = _get_encryption_key()
-        encrypted = base64.b64decode(encrypted_b64)
-        decrypted = bytearray()
-        for i, c in enumerate(encrypted):
-            decrypted.append(c ^ key[i % len(key)])
-        return decrypted.decode('utf-8')
-    except Exception:
-        return ""
-
-def set_auto_logon(username, password):
-    try:
-        key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon", 0, winreg.KEY_SET_VALUE)
-        winreg.SetValueEx(key, "AutoAdminLogon", 0, winreg.REG_SZ, "1")
-        winreg.SetValueEx(key, "DefaultUserName", 0, winreg.REG_SZ, username)
-        if password:
-            winreg.SetValueEx(key, "DefaultPassword", 0, winreg.REG_SZ, password)
-        winreg.CloseKey(key)
-        return True
-    except Exception as e:
-        print(f"set_auto_logon error: {e}")
-        return False
-
-def disable_auto_logon():
-    try:
-        key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon", 0, winreg.KEY_SET_VALUE)
-        winreg.SetValueEx(key, "AutoAdminLogon", 0, winreg.REG_SZ, "0")
-        try:
-            winreg.DeleteValue(key, "DefaultPassword")
-        except FileNotFoundError:
-            pass
-        winreg.CloseKey(key)
-        return True
-    except Exception as e:
-        print(f"disable_auto_logon error: {e}")
-        return False
-
     import os
     import traceback
     import socket
