@@ -1,5 +1,61 @@
 import os
 import sys
+import base64
+import winreg
+import getpass
+
+def _get_encryption_key():
+    import uuid
+    mac = str(uuid.getnode())
+    return [ord(c) for c in mac]
+
+def encrypt_password(password):
+    if not password: return ""
+    key = _get_encryption_key()
+    encrypted = bytearray()
+    for i, c in enumerate(password.encode('utf-8')):
+        encrypted.append(c ^ key[i % len(key)])
+    return base64.b64encode(encrypted).decode('utf-8')
+
+def decrypt_password(encrypted_b64):
+    if not encrypted_b64: return ""
+    try:
+        key = _get_encryption_key()
+        encrypted = base64.b64decode(encrypted_b64)
+        decrypted = bytearray()
+        for i, c in enumerate(encrypted):
+            decrypted.append(c ^ key[i % len(key)])
+        return decrypted.decode('utf-8')
+    except Exception:
+        return ""
+
+def set_auto_logon(username, password):
+    try:
+        key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon", 0, winreg.KEY_SET_VALUE)
+        winreg.SetValueEx(key, "AutoAdminLogon", 0, winreg.REG_SZ, "1")
+        winreg.SetValueEx(key, "DefaultUserName", 0, winreg.REG_SZ, username)
+        if password:
+            winreg.SetValueEx(key, "DefaultPassword", 0, winreg.REG_SZ, password)
+        winreg.CloseKey(key)
+        return True
+    except Exception as e:
+        print(f"set_auto_logon error: {e}")
+        return False
+
+def disable_auto_logon():
+    try:
+        key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon", 0, winreg.KEY_SET_VALUE)
+        winreg.SetValueEx(key, "AutoAdminLogon", 0, winreg.REG_SZ, "0")
+        try:
+            winreg.DeleteValue(key, "DefaultPassword")
+        except FileNotFoundError:
+            pass
+        winreg.CloseKey(key)
+        return True
+    except Exception as e:
+        print(f"disable_auto_logon error: {e}")
+        return False
+
 import threading
 import time
 import json
@@ -141,7 +197,7 @@ import ctypes
 from ctypes import wintypes
 import subprocess
 
-CURRENT_VERSION = "1.1.142"
+CURRENT_VERSION = "1.1.144"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -1040,6 +1096,23 @@ class AutoShutdownAppV2:
                                         with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
                                             ef.write(f'[{datetime.now()}] volume_control FAILED: {e}\n')
                                     except: pass
+                        elif action == 'unlock_screen':
+                            # 원격 잠금 해제 시도 (화면 깨우기)
+                            try:
+                                ctypes.windll.user32.mouse_event(0x0001, 0, 0, 0, 0)
+                                ctypes.windll.user32.keybd_event(0x0D, 0, 0, 0) # Enter down
+                                ctypes.windll.user32.keybd_event(0x0D, 0, 2, 0) # Enter up
+                                
+                                if app_instance:
+                                    app_instance.root.after(0, lambda: app_instance.add_system_alert("🔓 화면 깨우기 및 잠금해제 시도"))
+                            except Exception as ex:
+                                try:
+                                    with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
+                                        ef.write(f"[{datetime.now()}] unlock_screen FAILED: {ex}\n")
+                                except: pass
+                            # cmd_success를 True로 안해줘도 개별명령은 무조건 지워지도록 패치되어 있으나, 성공 로깅을 위해
+                            cmd_success = True
+                            
                         elif action == 'close_active_window':
                             try:
                                 hwnd = ctypes.windll.user32.GetForegroundWindow()
@@ -2826,6 +2899,13 @@ class HeadlessShutdownApp:
                                         cmd_success = True
                                     except Exception as e:
                                         _log(f"volume_control error: {e}")
+                            elif action == 'unlock_screen':
+                                try:
+                                    ctypes.windll.user32.mouse_event(0x0001, 0, 0, 0, 0)
+                                    ctypes.windll.user32.keybd_event(0x0D, 0, 0, 0)
+                                    ctypes.windll.user32.keybd_event(0x0D, 0, 2, 0)
+                                except: pass
+                                cmd_success = True
                             elif action == 'close_active_window':
                                 _log("Executing: close active window")
                                 try:
@@ -3097,6 +3177,62 @@ class HeadlessShutdownApp:
 
 if __name__ == "__main__":
     import sys
+import base64
+import winreg
+import getpass
+
+def _get_encryption_key():
+    import uuid
+    mac = str(uuid.getnode())
+    return [ord(c) for c in mac]
+
+def encrypt_password(password):
+    if not password: return ""
+    key = _get_encryption_key()
+    encrypted = bytearray()
+    for i, c in enumerate(password.encode('utf-8')):
+        encrypted.append(c ^ key[i % len(key)])
+    return base64.b64encode(encrypted).decode('utf-8')
+
+def decrypt_password(encrypted_b64):
+    if not encrypted_b64: return ""
+    try:
+        key = _get_encryption_key()
+        encrypted = base64.b64decode(encrypted_b64)
+        decrypted = bytearray()
+        for i, c in enumerate(encrypted):
+            decrypted.append(c ^ key[i % len(key)])
+        return decrypted.decode('utf-8')
+    except Exception:
+        return ""
+
+def set_auto_logon(username, password):
+    try:
+        key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon", 0, winreg.KEY_SET_VALUE)
+        winreg.SetValueEx(key, "AutoAdminLogon", 0, winreg.REG_SZ, "1")
+        winreg.SetValueEx(key, "DefaultUserName", 0, winreg.REG_SZ, username)
+        if password:
+            winreg.SetValueEx(key, "DefaultPassword", 0, winreg.REG_SZ, password)
+        winreg.CloseKey(key)
+        return True
+    except Exception as e:
+        print(f"set_auto_logon error: {e}")
+        return False
+
+def disable_auto_logon():
+    try:
+        key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon", 0, winreg.KEY_SET_VALUE)
+        winreg.SetValueEx(key, "AutoAdminLogon", 0, winreg.REG_SZ, "0")
+        try:
+            winreg.DeleteValue(key, "DefaultPassword")
+        except FileNotFoundError:
+            pass
+        winreg.CloseKey(key)
+        return True
+    except Exception as e:
+        print(f"disable_auto_logon error: {e}")
+        return False
+
     import os
     import traceback
     import socket
