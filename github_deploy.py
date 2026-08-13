@@ -138,17 +138,8 @@ except Exception as e:
     time.sleep(5)
     exit(1)
 
-# ── 설치파일 빌드 ─────────────────────────────────────────────────────────────
-print("\n[3-2단계] 스마트_전원_관리자_설치파일.exe 빌드 중... (최신 auto_shutdown.exe 포함)")
-if os.path.exists(installer_spec):
-    try:
-        subprocess.run(["pyinstaller", "--noconfirm", installer_spec],
-                       check=True, cwd=BASE_DIR)
-        print("[SUCCESS] 설치파일 빌드 완료")
-    except Exception as e:
-        print(f"[WARN] 설치파일 빌드 실패 (배포는 계속): {e}")
-else:
-    print("[WARN] 스마트_전원_관리자_설치파일.spec 없음 - 설치파일 빌드 건너뜀")
+# ── 설치파일 빌드 생략 ─────────────────────────────────────────────────────────────
+
 
 # ── GitHub Releases API로 exe 업로드 ─────────────────────────────────────────
 print("\n[3-3단계] 원본 클라이언트 코드 복구...")
@@ -213,31 +204,7 @@ else:
             asset = json.loads(resp.read().decode("utf-8"))
         print(f"  exe 업로드 완료: {asset.get('browser_download_url')}")
 
-    # 설치파일(installer) 업로드 추가
-    installer_exe_path = os.path.join(BASE_DIR, "dist", "스마트_전원_관리자_설치파일.exe")
-    if os.path.exists(installer_exe_path):
-        with open(installer_exe_path, "rb") as ef:
-            installer_data = ef.read()
-        import urllib.parse
-        encoded_name = urllib.parse.quote("스마트_전원_관리자_설치파일.exe")
-        installer_upload_url = f"{upload_url_base}?name={encoded_name}"
-        installer_req = urllib.request.Request(
-            installer_upload_url,
-            data=installer_data,
-            method="POST",
-            headers={
-                "Authorization":  f"token {token}",
-                "Content-Type":   "application/octet-stream",
-                "User-Agent":     "AutoShutdown-Deploy",
-                "Accept":         "application/vnd.github+json",
-            }
-        )
-        try:
-            with urllib.request.urlopen(installer_req, context=_ssl, timeout=300) as resp:
-                installer_asset = json.loads(resp.read().decode("utf-8"))
-            print(f"  installer 업로드 완료: {installer_asset.get('browser_download_url')}")
-        except Exception as ue:
-            print(f"  [WARN] installer 업로드 실패: {ue}")
+
 
     download_url = f"https://github.com/{REPO_OWNER}/{REPO_NAME}/releases/download/{tag}/auto_shutdown.exe"
 

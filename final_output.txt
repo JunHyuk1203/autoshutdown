@@ -1,1 +1,0 @@
-﻿CLEAN: No HTML entity issues in JS contexts!
