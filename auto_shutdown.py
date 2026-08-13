@@ -368,7 +368,7 @@ def run_standalone_autologin_gui():
 
     root.mainloop()
 
-CURRENT_VERSION = "1.1.172"
+CURRENT_VERSION = "1.1.173"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -1546,7 +1546,6 @@ class AutoShutdownAppV2:
 
     def check_for_updates(self, silent=False, force=False):
         try:
-            # Firebase RTDB를 통해 업데이트 정보 조회
             url = "https://atss-a1f9e-default-rtdb.firebaseio.com/update_info.json"
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
             try:
@@ -1559,7 +1558,6 @@ class AutoShutdownAppV2:
                 data = json.loads(response.read().decode('utf-8'))
                 remote_version = data.get("version", CURRENT_VERSION)
                 download_url = data.get("download_url")
-                
             if (force or self._is_newer_version(remote_version, CURRENT_VERSION)) and download_url:
                 self.perform_auto_update(download_url, is_manual=force, silent=silent)
         except Exception as e:
@@ -1578,157 +1576,79 @@ class AutoShutdownAppV2:
             return False
 
     def _show_update_error(self, msg):
-        """업데이트 실패 알림 - 팝업을 띄우지 않고 에러 로그에만 기록"""
         try:
             with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
                 ef.write(f"[{datetime.now()}] UPDATE ERROR: {msg}\n")
-        except:
+        except Exception:
             pass
 
     def perform_auto_update(self, download_url, is_manual=False, silent=False):
-        # 저사양 PC 및 네트워크 환경에서 GUI 스레드 블로킹("응답 없음")을 방지하기 위해 백그라운드 스레드로 다운로드 수행
         threading.Thread(
-            target=self._async_download_and_install,
-            args=(download_url, is_manual, silent),
+            target=self._launch_updater_process,
+            args=(download_url,),
             daemon=True
         ).start()
 
-    def _async_download_and_install(self, download_url, is_manual=False, silent=False):
+    def _launch_updater_process(self, download_url):
+        """독립 updater.exe 프로세스를 실행하고, 메인 프로그램을 종료한다.
+
+        순서:
+          1. updater.exe 위치 파악 (PyInstaller 번들 내 _MEIPASS, 또는 exe 옆)
+          2. 실행 가능한 임시 경로로 복사 (MEIPASS는 종료 시 삭제됨)
+          3. updater.exe <pid> <download_url> <target_exe_path> 실행 (분리 프로세스)
+          4. 현재 프로세스(메인) 종료
+        """
         _ulog_path = os.path.join(application_path, 'update_debug.log')
         def _ulog(msg):
             try:
                 with open(_ulog_path, 'a', encoding='utf-8') as f:
                     f.write(f"[{datetime.now()}] {msg}\n")
-            except: pass
+            except Exception:
+                pass
 
-        update_exe_path = os.path.join(application_path, "update_temp.exe")
-        _ulog(f"[start] download_url={download_url}, is_manual={is_manual}")
         try:
-            # 1. 새 버전 다운로드
-            # 캐시 방지를 위해 다운로드 URL에도 타임스탬프 추가
-            if "?" in download_url:
-                no_cache_url = f"{download_url}&t={int(time.time())}"
+            if not getattr(sys, 'frozen', False):
+                _ulog("[updater] Not frozen exe — skipping update.")
+                return
+
+            # 1. updater.exe 원본 위치
+            meipass_updater = os.path.join(sys._MEIPASS, 'updater.exe')
+            exe_dir_updater = os.path.join(os.path.dirname(sys.executable), 'updater.exe')
+            if os.path.exists(meipass_updater):
+                src_updater = meipass_updater
+            elif os.path.exists(exe_dir_updater):
+                src_updater = exe_dir_updater
             else:
-                no_cache_url = f"{download_url}?t={int(time.time())}"
-
-            _ulog(f"[download] requesting {no_cache_url}")
-            req = urllib.request.Request(no_cache_url, headers={'User-Agent': 'Mozilla/5.0'})
-            try:
-                ssl_context = ssl._create_unverified_context()
-            except AttributeError:
-                ssl_context = None
-
-            if is_manual:
-                self.root.after(0, lambda: self._update_download_progress(0))
-
-            with urllib.request.urlopen(req, timeout=300, context=ssl_context) as response:
-                total_size = int(response.info().get('Content-Length', 0))
-                downloaded = 0
-                chunks = []
-                while True:
-                    # 64KB 청크 단위로 분할 다운로드하여 메모리 소모를 낮추고 진행률 업데이트
-                    chunk = response.read(1024 * 64)
-                    if not chunk:
-                        break
-                    chunks.append(chunk)
-                    downloaded += len(chunk)
-                    if total_size > 0 and is_manual:
-                        percent = int((downloaded / total_size) * 100)
-                        self.root.after(0, lambda p=percent: self._update_download_progress(p))
-                data = b"".join(chunks)
-
-            _ulog(f"[download] done, size={len(data)} bytes")
-            # 2. 다운로드 무결성 검증 (최소 크기 체크 — 정상 exe는 수 MB 이상)
-            if len(data) < 1_000_000:
-                _ulog(f"[error] file too small: {len(data)} bytes")
-                self._show_update_error(f"다운로드된 파일이 너무 작습니다 ({len(data)} bytes). 네트워크 오류일 수 있습니다.")
-                if is_manual:
-                    self.root.after(0, self._restore_update_btn)
+                _ulog("[updater] updater.exe not found in MEIPASS or exe dir!")
                 return
 
-            with open(update_exe_path, 'wb') as out_file:
-                out_file.write(data)
+            # 2. 임시 경로로 복사 (MEIPASS는 프로세스 종료 시 삭제됨)
+            import shutil
+            tmp_updater = os.path.join(os.environ.get('TEMP', application_path), f'as_updater_{int(time.time())}.exe')
+            shutil.copy2(src_updater, tmp_updater)
+            _ulog(f"[updater] Copied updater to: {tmp_updater}")
 
-            # 디스크에 기록된 파일 크기 재확인
-            if os.path.getsize(update_exe_path) != len(data):
-                _ulog(f"[error] disk write mismatch")
-                self._show_update_error("다운로드 파일 저장 중 오류가 발생했습니다. 디스크 공간을 확인해주세요.")
-                try: os.remove(update_exe_path)
-                except: pass
-                if is_manual:
-                    self.root.after(0, self._restore_update_btn)
-                return
-                
-            current_exe = sys.executable if getattr(sys, 'frozen', False) else None
-            
-            if current_exe and current_exe.endswith('.exe'):
-                # 3. 이전 .old 파일 정리
-                app_dir = os.path.dirname(current_exe)
-                for file_name in os.listdir(app_dir):
-                    if file_name.endswith('.old') or '.old.' in file_name:
-                        try: os.remove(os.path.join(app_dir, file_name))
-                        except: pass
-                
-                # Use a unique timestamped name to prevent clash with locked files
-                old_exe_path = f"{current_exe}.{int(time.time())}.old"
+            # 3. 대상 경로: %LOCALAPPDATA%\AutoShutdown\auto_shutdown.exe
+            local_app = os.environ.get('LOCALAPPDATA', application_path)
+            target_dir = os.path.join(local_app, 'AutoShutdown')
+            target_exe = os.path.join(target_dir, 'auto_shutdown.exe')
 
-                _ulog(f"[replace] current_exe={current_exe}")
-                # 4. 원자적 파일 교체 (실패 시 롤백)
-                renamed_current = False
-                try:
-                    os.rename(current_exe, old_exe_path)
-                    renamed_current = True
-                    os.rename(update_exe_path, current_exe)
-                    _ulog("[replace] file swap success")
-                except Exception as e:
-                    _ulog(f"[replace] file swap failed: {e}")
-                    # 롤백: 현재 exe가 이미 .old로 옮겨졌으면 원래대로 복구
-                    if renamed_current and not os.path.exists(current_exe):
-                        try:
-                            os.rename(old_exe_path, current_exe)
-                        except: pass
-                    if os.path.exists(update_exe_path):
-                        try: os.remove(update_exe_path)
-                        except: pass
-                    self._show_update_error(f"실행 파일 교체에 실패했습니다. 프로그램이 다른 곳에서 사용 중일 수 있습니다. 오류: {e}")
-                    if is_manual:
-                        self.root.after(0, self._restore_update_btn)
-                    return  # 교체 실패 시 여기서 중단 (프로그램 종료하지 않음)
+            pid = str(os.getpid())
+            cmd = [tmp_updater, pid, download_url, target_exe]
+            _ulog(f"[updater] Launching: {cmd}")
 
-                # 5. 파일 교체 성공 → 새 프로세스 실행
-                clean_env = os.environ.copy()
-                keys_to_remove = [k for k in clean_env if 'MEI' in k or 'PYI' in k or 'TCL' in k or 'TK' in k]
-                for k in keys_to_remove:
-                    clean_env.pop(k, None)
+            subprocess.Popen(
+                cmd,
+                creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+            )
+            _ulog("[updater] Updater process launched. Quitting main app.")
 
-                # 완전히 독립된 새 프로세스로 실행 (창 없이, 새 그룹)
-                args = [current_exe]
-                if is_manual:
-                    args.append("--just-updated")
+            # 4. 메인 프로세스 종료
+            self.root.after(0, self.quit_app)
 
-                _ulog(f"[relaunch] spawning new process: {args}")
-                subprocess.Popen(
-                    args,
-                    env=clean_env,
-                    creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
-                )
-
-                _ulog("[done] quitting current process")
-                self.quit_app()
-            else:
-                _ulog("[skip] not a frozen exe, skipping update")
-                if is_manual:
-                    self.root.after(0, self._restore_update_btn)
-                return
         except Exception as e:
-            _ulog(f"[exception] {e}")
-            # 실패 시 임시 파일 정리
-            if os.path.exists(update_exe_path):
-                try: os.remove(update_exe_path)
-                except: pass
-            self._show_update_error(f"업데이트 중 오류가 발생했습니다. 인터넷 연결을 확인해주세요. 오류: {e}")
-            if is_manual:
-                self.root.after(0, self._restore_update_btn)
+            _ulog(f"[updater] _launch_updater_process FAILED: {e}")
+            self._show_update_error(f"업데이트 준비 중 오류: {e}")
 
     def load_config(self):
         try:
@@ -3300,7 +3220,8 @@ class HeadlessShutdownApp:
             try:
                 with open(_log_path, 'a', encoding='utf-8') as f:
                     f.write(f"[{datetime.now()}] {msg}\n")
-            except: pass
+            except Exception:
+                pass
 
         _log(f"[update] Starting check_for_updates... (force={force})")
         try:
@@ -3316,10 +3237,9 @@ class HeadlessShutdownApp:
                 data = json.loads(response.read().decode('utf-8'))
                 remote_version = data.get("version", CURRENT_VERSION)
                 download_url = data.get("download_url")
-                
-            _log(f"[update] Current: {CURRENT_VERSION}, Remote: {remote_version}, URL: {download_url}")
+            _log(f"[update] Current: {CURRENT_VERSION}, Remote: {remote_version}")
             if (force or self._is_newer_version(remote_version, CURRENT_VERSION)) and download_url:
-                _log("[update] Newer version found (or forced)! Calling perform_auto_update...")
+                _log("[update] Update needed. Launching updater process...")
                 self.perform_auto_update(download_url)
             else:
                 _log("[update] No newer version or download URL missing.")
@@ -3338,72 +3258,54 @@ class HeadlessShutdownApp:
             return False
 
     def perform_auto_update(self, download_url):
+        """독립 updater.exe 프로세스를 실행하고 현재 프로세스를 종료한다."""
         _log_path = os.path.join(application_path, 'headless_debug.log')
         def _log(msg):
             try:
                 with open(_log_path, 'a', encoding='utf-8') as f:
                     f.write(f"[{datetime.now()}] {msg}\n")
-            except: pass
+            except Exception:
+                pass
 
-        _log(f"[update] perform_auto_update started with URL: {download_url}")
-        update_exe_path = os.path.join(application_path, "update_temp.exe")
         try:
-            if "?" in download_url:
-                no_cache_url = f"{download_url}&t={int(time.time())}"
-            else:
-                no_cache_url = f"{download_url}?t={int(time.time())}"
-                
-            req = urllib.request.Request(no_cache_url, headers={'User-Agent': 'Mozilla/5.0'})
-            _log("[update] Downloading update file...")
-            with urllib.request.urlopen(req, timeout=120, context=_global_ssl_context) as response:
-                data = response.read()
-            
-            _log(f"[update] Download completed. Size: {len(data)} bytes")
-            if len(data) < 1_000_000:
-                _log("[update] Downloaded file too small. Aborting.")
+            if not getattr(sys, 'frozen', False):
+                _log("[updater] Not frozen exe — skipping.")
                 return
-            
-            with open(update_exe_path, 'wb') as out_file:
-                out_file.write(data)
-            
-            current_exe = sys.executable if getattr(sys, 'frozen', False) else None
-            if current_exe and current_exe.endswith('.exe'):
-                _log(f"[update] Replacing current executable: {current_exe}")
-                # Clean up any existing unlocked .old files in the same folder first
-                app_dir = os.path.dirname(current_exe)
-                for file_name in os.listdir(app_dir):
-                    if file_name.endswith('.old') or '.old.' in file_name:
-                        try: os.remove(os.path.join(app_dir, file_name))
-                        except: pass
-                
-                # Use a unique timestamped name to prevent clash with locked files
-                old_exe_path = f"{current_exe}.{int(time.time())}.old"
-                
-                _log(f"[update] Renaming {current_exe} to {old_exe_path}")
-                os.rename(current_exe, old_exe_path)
-                _log(f"[update] Renaming {update_exe_path} to {current_exe}")
-                os.rename(update_exe_path, current_exe)
-                
-                clean_env = os.environ.copy()
-                keys_to_remove = [k for k in clean_env if 'MEI' in k or 'PYI' in k or 'TCL' in k or 'TK' in k]
-                for k in keys_to_remove:
-                    clean_env.pop(k, None)
-                
-                _log("[update] Spawning new process...")
-                subprocess.Popen(
-                    [current_exe, "--headless"],
-                    env=clean_env,
-                    creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
-                )
-                _log("[update] Exiting current process.")
-                os._exit(0)
+
+            # updater.exe 위치 (MEIPASS 번들 또는 exe 옆)
+            meipass_updater = os.path.join(sys._MEIPASS, 'updater.exe')
+            exe_dir_updater = os.path.join(os.path.dirname(sys.executable), 'updater.exe')
+            if os.path.exists(meipass_updater):
+                src_updater = meipass_updater
+            elif os.path.exists(exe_dir_updater):
+                src_updater = exe_dir_updater
             else:
-                _log("[update] Current process is not frozen or not an .exe.")
+                _log("[updater] updater.exe not found!")
+                return
+
+            import shutil
+            tmp_updater = os.path.join(
+                os.environ.get('TEMP', application_path),
+                f'as_updater_{int(time.time())}.exe'
+            )
+            shutil.copy2(src_updater, tmp_updater)
+            _log(f"[updater] Copied to: {tmp_updater}")
+
+            local_app = os.environ.get('LOCALAPPDATA', application_path)
+            target_dir = os.path.join(local_app, 'AutoShutdown')
+            target_exe = os.path.join(target_dir, 'auto_shutdown.exe')
+
+            pid = str(os.getpid())
+            cmd = [tmp_updater, pid, download_url, target_exe, '--headless']
+            _log(f"[updater] Launching: {cmd}")
+            subprocess.Popen(
+                cmd,
+                creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+            )
+            _log("[updater] Updater launched. Exiting headless process.")
+            os._exit(0)
         except Exception as e:
-            _log(f"[update] perform_auto_update failed: {e}")
-            if os.path.exists(update_exe_path):
-                try: os.remove(update_exe_path)
-                except: pass
+            _log(f"[updater] perform_auto_update FAILED: {e}")
 
 if __name__ == "__main__":
     import sys

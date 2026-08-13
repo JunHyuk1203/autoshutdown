@@ -1,111 +1,146 @@
-import os
+"""
+updater.exe - 독립 업데이트 프로세스
+사용법: updater.exe <pid> <download_url> <target_exe_path> [extra_args...]
+
+동작 순서:
+  1. <pid> 프로세스가 종료될 때까지 대기 (5초 후 강제 종료)
+  2. <download_url> 에서 새 exe 다운로드
+  3. <target_exe_path> 를 새 파일로 교체
+  4. <target_exe_path> [extra_args] 로 새 프로세스 실행
+  5. 자기 자신 종료
+"""
 import sys
-import json
+import os
 import time
 import urllib.request
 import ssl
-import threading
 import subprocess
-import tkinter as tk
-from tkinter import ttk, messagebox
+import ctypes
 
-class UpdaterApp:
-    def __init__(self):
-        self.root = tk.Tk()
-        self.root.title("스마트 전원 관리자 - 수동 업데이트")
-        self.root.geometry("400x150")
-        self.root.resizable(False, False)
-        
-        self.label = tk.Label(self.root, text="최신 버전을 확인하는 중...", font=("Malgun Gothic", 11))
-        self.label.pack(pady=20)
-        
-        self.progress = ttk.Progressbar(self.root, orient="horizontal", length=300, mode="determinate")
-        self.progress.pack(pady=10)
-        
-        self.root.after(100, self.start_update)
-        
-    def start_update(self):
-        threading.Thread(target=self.do_update, daemon=True).start()
-        
-    def do_update(self):
+
+def _wait_for_pid(pid: int, timeout_sec: int = 5) -> bool:
+    """프로세스가 종료될 때까지 대기. 종료되면 True 반환."""
+    SYNCHRONIZE = 0x00100000
+    PROCESS_QUERY_LIMITED = 0x1000
+    kernel32 = ctypes.windll.kernel32
+    handle = kernel32.OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED, False, pid)
+    if not handle:
+        return True  # 이미 없음
+    result = kernel32.WaitForSingleObject(handle, timeout_sec * 1000)
+    kernel32.CloseHandle(handle)
+    return result == 0  # WAIT_OBJECT_0 = 정상 종료
+
+
+def _kill_pid(pid: int):
+    """프로세스를 강제 종료."""
+    PROCESS_TERMINATE = 0x0001
+    kernel32 = ctypes.windll.kernel32
+    handle = kernel32.OpenProcess(PROCESS_TERMINATE, False, pid)
+    if handle:
+        kernel32.TerminateProcess(handle, 1)
+        kernel32.CloseHandle(handle)
+
+
+def main():
+    if len(sys.argv) < 4:
+        sys.exit(1)
+
+    pid        = int(sys.argv[1])
+    dl_url     = sys.argv[2]
+    target_exe = sys.argv[3]
+    extra_args = sys.argv[4:]  # 예: ["--headless"]
+
+    log_dir  = os.path.dirname(target_exe)
+    log_path = os.path.join(log_dir, "updater.log")
+
+    def log(msg):
         try:
-            url = "https://atss-a1f9e-default-rtdb.firebaseio.com/update_info.json"
-            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-            try:
-                ssl_context = ssl._create_unverified_context()
-                ssl_context.verify_mode = ssl.CERT_NONE
-                ssl_context.check_hostname = False
-            except AttributeError:
-                ssl_context = None
-                
-            with urllib.request.urlopen(req, timeout=10, context=ssl_context) as response:
-                data = json.loads(response.read().decode('utf-8'))
-                download_url = data.get("download_url")
-                
-            if not download_url:
-                self.root.after(0, lambda: self.label.config(text="다운로드 URL을 찾을 수 없습니다."))
-                return
-                
-            self.root.after(0, lambda: self.label.config(text="업데이트 파일을 다운로드 중입니다..."))
-            
-            no_cache_url = download_url + (f"&t={int(time.time())}" if "?" in download_url else f"?t={int(time.time())}")
-            req = urllib.request.Request(no_cache_url, headers={'User-Agent': 'Mozilla/5.0'})
-            
-            with urllib.request.urlopen(req, timeout=300, context=ssl_context) as response:
-                total_size = int(response.info().get('Content-Length', 0))
-                downloaded = 0
-                chunks = []
-                while True:
-                    chunk = response.read(1024 * 64)
-                    if not chunk:
-                        break
-                    chunks.append(chunk)
-                    downloaded += len(chunk)
-                    if total_size > 0:
-                        percent = int((downloaded / total_size) * 100)
-                        self.root.after(0, lambda p=percent: self.progress.config(value=p))
-                
-                exe_data = b"".join(chunks)
-                
-            if len(exe_data) < 1000000:
-                self.root.after(0, lambda: messagebox.showerror("오류", "다운로드된 파일이 너무 작습니다. 네트워크를 확인하세요."))
-                self.root.quit()
-                return
-                
-            
-            # 대상 경로 설정: %LOCALAPPDATA%\AutoShutdown\auto_shutdown.exe
-            appdata_path = os.getenv("LOCALAPPDATA")
-            app_dir = os.path.join(appdata_path, "AutoShutdown")
-            os.makedirs(app_dir, exist_ok=True)
-            
-            target_exe = os.path.join(app_dir, "auto_shutdown.exe")
-            update_temp_path = os.path.join(app_dir, "update_temp.exe")
-            
-            with open(update_temp_path, "wb") as f:
-                f.write(exe_data)
-                
-            self.root.after(0, lambda: self.label.config(text="업데이트 적용 중..."))
-            time.sleep(1)
-            
-            # 교체 스크립트 실행 (app_dir에 배치 파일 생성)
-            bat_path = os.path.join(app_dir, "apply_update.bat")
-            bat_script = f"""@echo off
-timeout /t 2 /nobreak >nul
-taskkill /F /IM auto_shutdown.exe >nul 2>&1
-move /Y "{update_temp_path}" "{target_exe}"
-start "" "{target_exe}"
-del "%~f0"
-"""
-            with open(bat_path, "w", encoding="euc-kr") as f:
-                f.write(bat_script)
-                
-            subprocess.Popen(f'"{bat_path}"', shell=True, creationflags=subprocess.CREATE_NO_WINDOW, cwd=app_dir)
-            self.root.after(0, self.root.quit)
-            
-        except Exception as e:
-            self.root.after(0, lambda: messagebox.showerror("업데이트 오류", f"오류가 발생했습니다:\n{str(e)}"))
-            self.root.quit()
+            os.makedirs(log_dir, exist_ok=True)
+            with open(log_path, 'a', encoding='utf-8') as f:
+                f.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {msg}\n")
+        except Exception:
+            pass
+
+    log(f"=== Updater started === pid={pid} url={dl_url} target={target_exe}")
+
+    # 1. 메인 프로세스 종료 대기
+    log("Waiting for main process to exit (5s)...")
+    if not _wait_for_pid(pid, timeout_sec=5):
+        log("Process still alive after 5s — force killing.")
+        _kill_pid(pid)
+        time.sleep(1)
+    log("Main process is gone.")
+
+    # 2. 다운로드
+    tmp_path = target_exe + f".{int(time.time())}.tmp"
+    no_cache = dl_url + ("&" if "?" in dl_url else "?") + f"t={int(time.time())}"
+    log(f"Downloading: {no_cache}")
+
+    try:
+        ctx = ssl._create_unverified_context()
+        ctx.verify_mode = ssl.CERT_NONE
+        ctx.check_hostname = False
+    except Exception:
+        ctx = None
+
+    try:
+        req = urllib.request.Request(no_cache, headers={"User-Agent": "AutoShutdown-Updater/1.0"})
+        with urllib.request.urlopen(req, timeout=300, context=ctx) as resp:
+            data = resp.read()
+        log(f"Download complete. Size={len(data)} bytes")
+    except Exception as e:
+        log(f"Download FAILED: {e}")
+        sys.exit(1)
+
+    if len(data) < 1_000_000:
+        log(f"File too small ({len(data)} bytes). Aborting.")
+        sys.exit(1)
+
+    # 3. 임시 파일로 저장
+    try:
+        os.makedirs(os.path.dirname(target_exe), exist_ok=True)
+        with open(tmp_path, 'wb') as f:
+            f.write(data)
+        log(f"Saved to tmp: {tmp_path}")
+    except Exception as e:
+        log(f"Save FAILED: {e}")
+        sys.exit(1)
+
+    # 4. 기존 파일 삭제 후 교체
+    try:
+        if os.path.exists(target_exe):
+            os.remove(target_exe)
+        os.rename(tmp_path, target_exe)
+        log(f"Replaced: {target_exe}")
+    except Exception as e:
+        log(f"Replace FAILED: {e}")
+        # 임시 파일 정리
+        try:
+            os.remove(tmp_path)
+        except Exception:
+            pass
+        sys.exit(1)
+
+    # 5. 새 프로세스 실행
+    try:
+        clean_env = os.environ.copy()
+        for k in list(clean_env.keys()):
+            if any(x in k for x in ("MEIPASS", "_MEI", "PYI", "TCL_", "TK_")):
+                del clean_env[k]
+
+        cmd = [target_exe] + extra_args
+        subprocess.Popen(
+            cmd,
+            env=clean_env,
+            creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+        )
+        log(f"Launched: {cmd}")
+    except Exception as e:
+        log(f"Launch FAILED: {e}")
+
+    log("=== Updater done. Exiting. ===")
+    sys.exit(0)
+
 
 if __name__ == "__main__":
-    app = UpdaterApp()
-    app.root.mainloop()
+    main()

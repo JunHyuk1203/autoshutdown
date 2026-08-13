@@ -12,6 +12,7 @@ a = Analysis(
     datas=[
         (r'C:\Users\tntdr\AppData\Local\Programs\Python\Python313\tcl\tcl8.6', '_tcl_data'),
         (r'C:\Users\tntdr\AppData\Local\Programs\Python\Python313\tcl\tk8.6', '_tk_data'),
+        (r'dist\updater.exe', '.'),  # 업데이터 번들 포함
     ],
     hiddenimports=['pycaw', 'customtkinter'],
     hookspath=[],
