@@ -2,7 +2,7 @@
 
 BASE_DIR = r"c:\Users\tntdr\.gemini\antigravity-ide\scratch\auto_shutdown"
 git_exe = r"C:\Program Files\Git\cmd\git.exe"
-tag = "v1.1.161"
+tag = "v1.1.162"
 REPO_OWNER = "JunHyuk1203"
 REPO_NAME = "autoshutdown"
 

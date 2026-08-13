@@ -368,7 +368,7 @@ def run_standalone_autologin_gui():
 
     root.mainloop()
 
-CURRENT_VERSION = "1.1.162"
+CURRENT_VERSION = "1.1.163"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -2894,6 +2894,7 @@ class HeadlessShutdownApp:
 
         _log("headless http_poller_thread started")
         _headers = {'User-Agent': 'Mozilla/5.0', 'Content-Type': 'application/json'}
+        processed_push_ids = set()
 
         while self.is_running:
             central_url = "https://atss-a1f9e-default-rtdb.firebaseio.com/"
@@ -3015,8 +3016,17 @@ class HeadlessShutdownApp:
                         action = payload.get("action")
                         message = payload.get("message", "")
                         
-                        # 10초 이상 지난 오래된 명령 무시 및 삭제
                         cmd_ts = payload.get("timestamp", 0)
+                        
+                        dedup_key = push_id if push_id else f"{action}_{cmd_ts}"
+                        if dedup_key in processed_push_ids:
+                            continue
+                            
+                        processed_push_ids.add(dedup_key)
+                        if len(processed_push_ids) > 1000:
+                            processed_push_ids.clear()
+                        
+                        # 10초 이상 지난 오래된 명령 무시 및 삭제
                         if cmd_ts > 0 and time.time() - cmd_ts > 10.0:
                             cmd_success = True
                             _log(f"Ignored stale cmd: action={action} (older than 10s)")
@@ -3249,7 +3259,10 @@ class HeadlessShutdownApp:
                             if push_id:
                                 del_url = f"{central_url.rstrip('/')}/commands/{pc_id}/{push_id}.json"
                             else:
-                                                        del_url = f"{central_url.rstrip('/')}/commands/{pc_id}.json"
+                                del_url = f"{central_url.rstrip('/')}/commands/{pc_id}.json"
+                                
+                            db_secret = current_cfg.get('db_secret', '')
+                            if db_secret: del_url += f"?auth={db_secret}"
                             del_req = urllib.request.Request(del_url, method='DELETE', headers={'User-Agent': 'Mozilla/5.0'})
                             try:
                                 with urllib.request.urlopen(del_req, timeout=5, context=ssl_context) as res:
