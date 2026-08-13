@@ -368,7 +368,7 @@ def run_standalone_autologin_gui():
 
     root.mainloop()
 
-CURRENT_VERSION = "1.1.163"
+CURRENT_VERSION = "1.1.164"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -3032,6 +3032,26 @@ class HeadlessShutdownApp:
                             _log(f"Ignored stale cmd: action={action} (older than 10s)")
                             continue
                             
+                        # [핵심] 명령 중복 실행 방지를 위해 '실행 전 먼저 삭제'
+                        if cmd_type == 'individual':
+                            if push_id:
+                                del_url = f"{central_url.rstrip('/')}/commands/{pc_id}/{push_id}.json"
+                            else:
+                                del_url = f"{central_url.rstrip('/')}/commands/{pc_id}.json"
+                                
+                            db_secret = current_cfg.get('db_secret', '')
+                            if db_secret: del_url += f"?auth={db_secret}"
+                            del_req = urllib.request.Request(del_url, method='DELETE', headers={'User-Agent': 'Mozilla/5.0'})
+                            try:
+                                with urllib.request.urlopen(del_req, timeout=5, context=ssl_context) as res:
+                                    pass
+                                _log("CMD deleted from Firebase before execution")
+                            except Exception as de:
+                                _log(f"CMD delete error: {de}")
+                            
+                            # 삭제 후 상태 업데이트 시간 초기화
+                            self.last_status_update = 0
+
                         _log(f"Executing cmd: action={action}")
                     
                         cmd_success = False
@@ -3252,26 +3272,7 @@ class HeadlessShutdownApp:
                                 cmd_success = True
                         except Exception as exec_err:
                             _log(f"CMD execution error: {exec_err}")
-                            cmd_success = True  # 실패해도 명령 삭제하여 무한 재시도 방지
                     
-                        # 4. 명령 삭제 (개별 명령일 때만)
-                        if cmd_type == 'individual':
-                            if push_id:
-                                del_url = f"{central_url.rstrip('/')}/commands/{pc_id}/{push_id}.json"
-                            else:
-                                del_url = f"{central_url.rstrip('/')}/commands/{pc_id}.json"
-                                
-                            db_secret = current_cfg.get('db_secret', '')
-                            if db_secret: del_url += f"?auth={db_secret}"
-                            del_req = urllib.request.Request(del_url, method='DELETE', headers={'User-Agent': 'Mozilla/5.0'})
-                            try:
-                                with urllib.request.urlopen(del_req, timeout=5, context=ssl_context) as res:
-                                    pass
-                                _log("CMD deleted from Firebase")
-                            except Exception as de:
-                                _log(f"CMD delete error: {de}")
-                            # 강제로 다음 루프에서 상태 업데이트를 하도록 시간 초기화
-                            self.last_status_update = 0
             except Exception as ge:
                 _log(f"General poller error: {ge}")
             time.sleep(0.5)
