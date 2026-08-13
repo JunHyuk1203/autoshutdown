@@ -1389,10 +1389,10 @@ body {
             <div class="form-group" style="margin-bottom:0;">
                 <label class="form-label">브라우저 선택 <span style="font-weight:400; color:var(--text-muted);">(비워두면 기본 브라우저)</span></label>
                 <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;">
-                    <button type="button"  class="app-preset-btn" id="url-preset-chrome">Chrome</button>
-                    <button type="button"  class="app-preset-btn" id="url-preset-edge">Edge</button>
-                    <button type="button"  class="app-preset-btn" id="url-preset-whale">Whale</button>
-                    <button type="button"  class="app-preset-btn" id="url-preset-default" style="border-color:rgba(255,255,255,0.12); color:var(--text-muted);">🔄 기본값</button>
+                    <button type="button"  class="app-preset-btn" id="url-preset-chrome" onclick="setUrlBrowserPreset('chrome')">Chrome</button>
+                    <button type="button"  class="app-preset-btn" id="url-preset-edge" onclick="setUrlBrowserPreset('edge')">Edge</button>
+                    <button type="button"  class="app-preset-btn" id="url-preset-whale" onclick="setUrlBrowserPreset('whale')">Whale</button>
+                    <button type="button"  class="app-preset-btn" id="url-preset-default" onclick="setUrlBrowserPreset('default')" style="border-color:rgba(255,255,255,0.12); color:var(--text-muted);">🔄 기본값</button>
                 </div>
                 <input class="form-input" id="of-url-browser" type="text" placeholder="예: C:\Program Files\Google\Chrome\Application\chrome.exe">
             </div>
@@ -3009,6 +3009,11 @@ function setUrlBrowserPreset(browser) {
 }
 
 async function handleOpenSubmit() {
+    const btn = document.getElementById('of-submit-btn');
+    if (btn.disabled) return;
+    btn.disabled = true;
+    setTimeout(() => { btn.disabled = false; }, 3000);
+
     if (_ofCurrentTab === 'url') {
         await sendOpenUrlCommand();
     } else {
