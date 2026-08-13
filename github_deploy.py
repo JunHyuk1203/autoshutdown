@@ -218,7 +218,9 @@ else:
     if os.path.exists(installer_exe_path):
         with open(installer_exe_path, "rb") as ef:
             installer_data = ef.read()
-        installer_upload_url = f"{upload_url_base}?name=스마트_전원_관리자_설치파일.exe"
+        import urllib.parse
+        encoded_name = urllib.parse.quote("스마트_전원_관리자_설치파일.exe")
+        installer_upload_url = f"{upload_url_base}?name={encoded_name}"
         installer_req = urllib.request.Request(
             installer_upload_url,
             data=installer_data,
