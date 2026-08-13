@@ -368,7 +368,7 @@ def run_standalone_autologin_gui():
 
     root.mainloop()
 
-CURRENT_VERSION = "1.1.164"
+CURRENT_VERSION = "1.1.165"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -989,9 +989,37 @@ class AutoShutdownAppV2:
                         
                         # 10초 이상 지난 오래된 명령 무시 및 삭제
                         cmd_ts = payload.get("timestamp", 0)
+                        
+                        dedup_key = push_id if push_id else f"{action}_{cmd_ts}"
+                        if dedup_key in processed_push_ids:
+                            continue
+                            
+                        processed_push_ids.add(dedup_key)
+                        if len(processed_push_ids) > 1000:
+                            processed_push_ids.clear()
+                            
                         if cmd_ts > 0 and time.time() - cmd_ts > 10.0:
                             cmd_success = True
                             continue
+                            
+                        # [핵심] 명령 중복 실행 방지를 위해 '실행 전 먼저 삭제'
+                        if cmd_type == 'individual':
+                            if push_id:
+                                del_url = f"{central_url.rstrip('/')}/commands/{pc_id}/{push_id}.json"
+                            else:
+                                del_url = f"{central_url.rstrip('/')}/commands/{pc_id}.json"
+                                
+                            db_secret = current_cfg.get('db_secret', '')
+                            if db_secret: del_url += f"?auth={db_secret}"
+                            del_req = urllib.request.Request(del_url, method='DELETE', headers={'User-Agent': 'Mozilla/5.0'})
+                            try:
+                                with urllib.request.urlopen(del_req, timeout=5, context=ssl_context) as res:
+                                    pass
+                            except Exception as de:
+                                pass
+                            
+                            # 삭제 후 상태 업데이트 시간 강제 초기화
+                            self.last_status_update = 0
                     
                         # 진단 로그: 명령 수신 기록
                         try:
@@ -1311,18 +1339,6 @@ class AutoShutdownAppV2:
                                 app_instance.root.after(0, lambda m=message: messagebox.showinfo("관리자 메시지", m))
                             cmd_success = True
                     
-                        # 명령 처리 성공 후에만 Firebase에서 삭제 (실패 시 재시도 가능)
-                        if cmd_type == 'individual':
-                            if push_id:
-                                del_url = f"{central_url.rstrip('/')}/commands/{pc_id}/{push_id}.json"
-                            else:
-                                del_url = f"{central_url.rstrip('/')}/commands/{pc_id}.json"
-                            try:
-                                self.http_session.delete(del_url, timeout=6)
-                            except Exception as e:
-                                pass
-                            # 강제로 다음 루프에서 상태 업데이트를 하도록 시간 초기화
-                            self.last_status_update = 0
             except Exception as ge:
                 try:
                     with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
