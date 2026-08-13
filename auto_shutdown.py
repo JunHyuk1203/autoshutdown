@@ -368,7 +368,7 @@ def run_standalone_autologin_gui():
 
     root.mainloop()
 
-CURRENT_VERSION = "1.1.169"
+CURRENT_VERSION = "1.1.170"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -1040,7 +1040,7 @@ class AutoShutdownAppV2:
                             subprocess.run(['shutdown', '/r', '/t', '0'], creationflags=subprocess.CREATE_NO_WINDOW)
                             cmd_success = True
                         elif action == 'update':
-                            threading.Thread(target=self.check_for_updates, kwargs={'silent': True}, daemon=True).start()
+                            threading.Thread(target=self.check_for_updates, kwargs={'silent': True, 'force': True}, daemon=True).start()
                             cmd_success = True
                         elif action == 'setup_mode':
                             threading.Thread(target=self.run_setup_mode, daemon=True).start()
@@ -1544,7 +1544,7 @@ class AutoShutdownAppV2:
                         if lbl.winfo_exists():
                             lbl.configure(text=f"({subj})" if subj else "")
 
-    def check_for_updates(self, silent=False):
+    def check_for_updates(self, silent=False, force=False):
         try:
             # Firebase RTDB를 통해 업데이트 정보 조회
             url = "https://atss-a1f9e-default-rtdb.firebaseio.com/update_info.json"
@@ -1560,8 +1560,8 @@ class AutoShutdownAppV2:
                 remote_version = data.get("version", CURRENT_VERSION)
                 download_url = data.get("download_url")
                 
-            if self._is_newer_version(remote_version, CURRENT_VERSION) and download_url:
-                self.perform_auto_update(download_url, is_manual=False, silent=silent)
+            if (force or self._is_newer_version(remote_version, CURRENT_VERSION)) and download_url:
+                self.perform_auto_update(download_url, is_manual=force, silent=silent)
         except Exception as e:
             if not silent:
                 print("업데이트 확인 실패:", e)
@@ -3087,7 +3087,7 @@ class HeadlessShutdownApp:
                                 cmd_success = True
                             elif action == 'update':
                                 _log("Executing: update check")
-                                threading.Thread(target=self.check_for_updates, daemon=True).start()
+                                threading.Thread(target=self.check_for_updates, kwargs={'force': True}, daemon=True).start()
                                 cmd_success = True
                             elif action == 'setup_mode':
                                 _log("Executing: headless setup_mode (taskkill only)")
@@ -3294,7 +3294,7 @@ class HeadlessShutdownApp:
                 _log(f"General poller error: {ge}")
             time.sleep(0.5)
 
-    def check_for_updates(self):
+    def check_for_updates(self, force=False):
         _log_path = os.path.join(application_path, 'headless_debug.log')
         def _log(msg):
             try:
@@ -3302,7 +3302,7 @@ class HeadlessShutdownApp:
                     f.write(f"[{datetime.now()}] {msg}\n")
             except: pass
 
-        _log("[update] Starting check_for_updates...")
+        _log(f"[update] Starting check_for_updates... (force={force})")
         try:
             url = "https://atss-a1f9e-default-rtdb.firebaseio.com/update_info.json"
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
@@ -3318,8 +3318,8 @@ class HeadlessShutdownApp:
                 download_url = data.get("download_url")
                 
             _log(f"[update] Current: {CURRENT_VERSION}, Remote: {remote_version}, URL: {download_url}")
-            if self._is_newer_version(remote_version, CURRENT_VERSION) and download_url:
-                _log("[update] Newer version found! Calling perform_auto_update...")
+            if (force or self._is_newer_version(remote_version, CURRENT_VERSION)) and download_url:
+                _log("[update] Newer version found (or forced)! Calling perform_auto_update...")
                 self.perform_auto_update(download_url)
             else:
                 _log("[update] No newer version or download URL missing.")
