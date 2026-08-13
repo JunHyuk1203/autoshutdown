@@ -157,7 +157,7 @@ try:
         req = url_or_req
         if isinstance(req, urllib.request.Request):
             url = req.full_url
-            method = req.method if req.method else ('POST' if req.data else 'GET')
+            method = getattr(req, 'method', None) or ('POST' if req.data else 'GET')
             headers = dict(req.headers)
             headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
             headers['Pragma'] = 'no-cache'
@@ -368,7 +368,7 @@ def run_standalone_autologin_gui():
 
     root.mainloop()
 
-CURRENT_VERSION = "1.1.175"
+CURRENT_VERSION = "1.1.176"
 
 try:
     from pycaw.pycaw import AudioUtilities
