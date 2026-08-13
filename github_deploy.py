@@ -230,6 +230,32 @@ else:
     else:
         print("  [WARN] SmartPowerInstaller.exe 없음 - 업로드 건너뜀")
 
+    # ManualUpdater.exe 업로드
+    manual_updater_path = os.path.join(BASE_DIR, "dist", "ManualUpdater.exe")
+    if os.path.exists(manual_updater_path):
+        with open(manual_updater_path, "rb") as ef:
+            mu_data = ef.read()
+        mu_upload_url = f"{upload_url_base}?name=ManualUpdater.exe"
+        mu_req = urllib.request.Request(
+            mu_upload_url,
+            data=mu_data,
+            method="POST",
+            headers={
+                "Authorization":  f"token {token}",
+                "Content-Type":   "application/octet-stream",
+                "User-Agent":     "AutoShutdown-Deploy",
+                "Accept":         "application/vnd.github+json",
+            }
+        )
+        try:
+            with urllib.request.urlopen(mu_req, context=_ssl, timeout=300) as resp:
+                mu_asset = json.loads(resp.read().decode("utf-8"))
+            print(f"  ManualUpdater 업로드 완료: {mu_asset.get('browser_download_url')}")
+        except Exception as ue:
+            print(f"  [WARN] ManualUpdater 업로드 실패: {ue}")
+    else:
+        print("  [WARN] ManualUpdater.exe 없음 - 업로드 건너뜀")
+
     download_url = f"https://github.com/{REPO_OWNER}/{REPO_NAME}/releases/download/{tag}/auto_shutdown.exe"
 
 # ── version.json 및 Firebase 업데이트 ────────────────────────────────────────
