@@ -204,7 +204,31 @@ else:
             asset = json.loads(resp.read().decode("utf-8"))
         print(f"  exe 업로드 완료: {asset.get('browser_download_url')}")
 
-
+    # SmartPowerInstaller.exe 업로드
+    installer_path = os.path.join(BASE_DIR, "dist", "SmartPowerInstaller.exe")
+    if os.path.exists(installer_path):
+        with open(installer_path, "rb") as ef:
+            installer_data = ef.read()
+        installer_upload_url = f"{upload_url_base}?name=SmartPowerInstaller.exe"
+        inst_req = urllib.request.Request(
+            installer_upload_url,
+            data=installer_data,
+            method="POST",
+            headers={
+                "Authorization":  f"token {token}",
+                "Content-Type":   "application/octet-stream",
+                "User-Agent":     "AutoShutdown-Deploy",
+                "Accept":         "application/vnd.github+json",
+            }
+        )
+        try:
+            with urllib.request.urlopen(inst_req, context=_ssl, timeout=300) as resp:
+                inst_asset = json.loads(resp.read().decode("utf-8"))
+            print(f"  SmartPowerInstaller 업로드 완료: {inst_asset.get('browser_download_url')}")
+        except Exception as ue:
+            print(f"  [WARN] SmartPowerInstaller 업로드 실패: {ue}")
+    else:
+        print("  [WARN] SmartPowerInstaller.exe 없음 - 업로드 건너뜀")
 
     download_url = f"https://github.com/{REPO_OWNER}/{REPO_NAME}/releases/download/{tag}/auto_shutdown.exe"
 
