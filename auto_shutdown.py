@@ -368,7 +368,7 @@ def run_standalone_autologin_gui():
 
     root.mainloop()
 
-CURRENT_VERSION = "1.1.165"
+CURRENT_VERSION = "1.1.166"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -848,6 +848,7 @@ class AutoShutdownAppV2:
 
 
     def http_poller_thread(self):
+        processed_push_ids = set()
         while self.is_running:
             central_url = "https://atss-a1f9e-default-rtdb.firebaseio.com/"
             try:
