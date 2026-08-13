@@ -1269,12 +1269,12 @@ body {
         </h3>
         <!-- 탭 전환 -->
         <div style="display: flex; gap: 0; margin-bottom: 14px; border-bottom: 1px solid var(--border-light);">
-            <button id="of-tab-file"  style="flex:1; padding: 7px 0; font-size: 12px; font-weight: 700; background: none; border: none; border-bottom: 2px solid var(--primary); color: var(--text-main); cursor: pointer;">📂 파일 열기</button>
-            <button id="of-tab-url"  style="flex:1; padding: 7px 0; font-size: 12px; font-weight: 700; background: none; border: none; border-bottom: 2px solid transparent; color: var(--text-muted); cursor: pointer;">🌐 링크 열기</button>
+            <button id="of-tab-file" onclick="switchOpenTab('file')" style="flex:1; padding: 7px 0; font-size: 12px; font-weight: 700; background: none; border: none; border-bottom: 2px solid var(--primary); color: var(--text-main); cursor: pointer;">📂 파일 열기</button>
+            <button id="of-tab-url" onclick="switchOpenTab('url')" style="flex:1; padding: 7px 0; font-size: 12px; font-weight: 700; background: none; border: none; border-bottom: 2px solid transparent; color: var(--text-muted); cursor: pointer;">🌐 링크 열기</button>
         </div>
 
         <!-- 즐겨찾기 섹션 -->
-        <div style="margin-bottom: 16px;">
+        <div id="of-fav-section" style="margin-bottom: 16px;">
             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
                 <span style="font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">⭐ 즐겨찾기</span>
                 <button  style="
@@ -1296,7 +1296,7 @@ body {
 
 
           <!-- 파일 탐색기 영역 -->
-          <div style="border-top: 1px solid var(--border-light); padding-top: 16px; margin-bottom: 16px;">
+          <div id="of-explorer-section" style="border-top: 1px solid var(--border-light); padding-top: 16px; margin-bottom: 16px;">
               <div style="display: flex; gap: 8px; margin-bottom: 8px;">
                   <button class="action-btn" id="explorer-up-btn" style="padding: 0 10px; font-weight:bold;">↑ 상위</button>
                   <input class="form-input" id="explorer-path" type="text" placeholder="경로 입력 (예: C:\)" style="flex-grow: 1; margin-bottom: 0;">
@@ -1356,7 +1356,7 @@ body {
         </div>
 
         <!-- URL 탭 패널 -->
-        <div id="of-url-panel" style="display:none; border-top: 1px solid var(--border-light); padding-top: 14px; display:none; flex-direction:column; gap:10px;">
+        <div id="of-url-panel" style="display:none; border-top: 1px solid var(--border-light); padding-top: 14px; flex-direction:column; gap:10px;">
             <div class="form-group" style="margin-bottom:0;">
                 <label class="form-label">URL 주소 <span style="color:var(--danger);">*</span></label>
                 <input class="form-input" id="of-url" type="text" placeholder="예: https://www.youtube.com/watch?v=..." maxlength="500">
@@ -2873,6 +2873,7 @@ function openFileModal(pcId) {
 
     renderFavorites();
     loadFavoritesFromServer(); // 모달 오픈 시 다시 Firebase 원격 데이터 내려받기 동기화
+    switchOpenTab('file'); // 항상 파일 탭으로 초기화
     document.getElementById("open-file-modal").classList.add("show");
     if (pcId !== "__ALL__") loadExplorerPath("DRIVES");
     else { document.getElementById("explorer-list").innerHTML = "<div style='text-align: center; padding-top: 80px; font-size: 12px;'>전체 PC에서는 탐색기를 사용할 수 없습니다.</div>"; document.getElementById("explorer-path").value = ""; }
@@ -2922,42 +2923,29 @@ async function reRequestApproval() {
 
 function switchOpenTab(tab) {
     _ofCurrentTab = tab;
-    const filePanel = document.querySelector('#open-file-modal .border-top.padding-top-16');
-    const urlPanel = document.getElementById('of-url-panel');
-    const tabFile = document.getElementById('of-tab-file');
-    const tabUrl = document.getElementById('of-tab-url');
-    const submitBtn = document.getElementById('of-submit-btn');
-    const favSection = document.getElementById('open-file-modal').querySelector('[style*="margin-bottom: 16px"]');
-    const explorerSection = document.getElementById('explorer-list')?.closest('[style*="border-top"]');
+    const urlPanel         = document.getElementById('of-url-panel');
+    const favSection       = document.getElementById('of-fav-section');
+    const explorerSection  = document.getElementById('of-explorer-section');
     const fileInputSection = document.getElementById('of-file-path')?.closest('.form-group');
-    const appInputSection = document.getElementById('of-app-path')?.closest('.form-group');
-    const favNameSection = document.getElementById('of-fav-name')?.closest('.form-group');
+    const appInputSection  = document.getElementById('of-app-path')?.closest('.form-group');
+    const favNameSection   = document.getElementById('of-fav-name')?.closest('.form-group');
+    const tabFile          = document.getElementById('of-tab-file');
+    const tabUrl           = document.getElementById('of-tab-url');
+    const submitBtn        = document.getElementById('of-submit-btn');
 
-    if (tab === 'file') {
-        tabFile.style.borderBottomColor = 'var(--primary)';
-        tabFile.style.color = 'var(--text-main)';
-        tabUrl.style.borderBottomColor = 'transparent';
-        tabUrl.style.color = 'var(--text-muted)';
-        if (urlPanel) urlPanel.style.display = 'none';
-        if (favSection) favSection.style.display = '';
-        if (explorerSection) explorerSection.style.display = '';
-        if (fileInputSection) fileInputSection.style.display = '';
-        if (appInputSection) appInputSection.style.display = '';
-        if (favNameSection) favNameSection.style.display = '';
-        submitBtn.textContent = '📂 파일 열기';
-    } else {
-        tabFile.style.borderBottomColor = 'transparent';
-        tabFile.style.color = 'var(--text-muted)';
-        tabUrl.style.borderBottomColor = 'var(--primary)';
-        tabUrl.style.color = 'var(--text-main)';
-        if (urlPanel) urlPanel.style.display = 'flex';
-        if (favSection) favSection.style.display = 'none';
-        if (explorerSection) explorerSection.style.display = 'none';
-        if (fileInputSection) fileInputSection.style.display = 'none';
-        if (appInputSection) appInputSection.style.display = 'none';
-        if (favNameSection) favNameSection.style.display = 'none';
-        submitBtn.textContent = '🌐 링크 열기';
-    }
+    const isFile = tab === 'file';
+    tabFile.style.borderBottomColor = isFile ? 'var(--primary)' : 'transparent';
+    tabFile.style.color             = isFile ? 'var(--text-main)' : 'var(--text-muted)';
+    tabUrl.style.borderBottomColor  = isFile ? 'transparent' : 'var(--primary)';
+    tabUrl.style.color              = isFile ? 'var(--text-muted)' : 'var(--text-main)';
+
+    if (urlPanel)        urlPanel.style.display        = isFile ? 'none' : 'flex';
+    if (favSection)      favSection.style.display      = isFile ? '' : 'none';
+    if (explorerSection) explorerSection.style.display = isFile ? '' : 'none';
+    if (fileInputSection) fileInputSection.style.display = isFile ? '' : 'none';
+    if (appInputSection)  appInputSection.style.display  = isFile ? '' : 'none';
+    if (favNameSection)   favNameSection.style.display   = isFile ? '' : 'none';
+    submitBtn.textContent = isFile ? '📂 파일 열기' : '🌐 링크 열기';
 }
 
 function setUrlBrowserPreset(browser) {
