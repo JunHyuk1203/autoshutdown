@@ -190,7 +190,7 @@ else:
     upload_url_base = release["upload_url"].split("{")[0]  # 템플릿 부분 제거
     print(f"  릴리즈 생성 완료 (id={release_id})")
 
-    # exe 업로드
+    # exe 업로드 (auto_shutdown.exe)
     if not os.path.exists(exe_path):
         print(f"[Error] exe 파일 없음: {exe_path}")
     else:
@@ -212,6 +212,30 @@ else:
         with urllib.request.urlopen(up_req, context=_ssl, timeout=300) as resp:
             asset = json.loads(resp.read().decode("utf-8"))
         print(f"  exe 업로드 완료: {asset.get('browser_download_url')}")
+
+    # 설치파일(installer) 업로드 추가
+    installer_exe_path = os.path.join(BASE_DIR, "dist", "스마트_전원_관리자_설치파일.exe")
+    if os.path.exists(installer_exe_path):
+        with open(installer_exe_path, "rb") as ef:
+            installer_data = ef.read()
+        installer_upload_url = f"{upload_url_base}?name=스마트_전원_관리자_설치파일.exe"
+        installer_req = urllib.request.Request(
+            installer_upload_url,
+            data=installer_data,
+            method="POST",
+            headers={
+                "Authorization":  f"token {token}",
+                "Content-Type":   "application/octet-stream",
+                "User-Agent":     "AutoShutdown-Deploy",
+                "Accept":         "application/vnd.github+json",
+            }
+        )
+        try:
+            with urllib.request.urlopen(installer_req, context=_ssl, timeout=300) as resp:
+                installer_asset = json.loads(resp.read().decode("utf-8"))
+            print(f"  installer 업로드 완료: {installer_asset.get('browser_download_url')}")
+        except Exception as ue:
+            print(f"  [WARN] installer 업로드 실패: {ue}")
 
     download_url = f"https://github.com/{REPO_OWNER}/{REPO_NAME}/releases/download/{tag}/auto_shutdown.exe"
 
