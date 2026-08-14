@@ -368,7 +368,7 @@ def run_standalone_autologin_gui():
 
     root.mainloop()
 
-CURRENT_VERSION = "1.1.176"
+CURRENT_VERSION = "1.1.177"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -579,9 +579,25 @@ def sanitize_rtdb_keys(data):
         return [sanitize_rtdb_keys(x) for x in data]
     return data
 
+def _sync_windows_time():
+    """백그라운드에서 조용히 Windows 시간 동기화를 수행합니다."""
+    def _do_sync():
+        import subprocess
+        try:
+            res = subprocess.run(['w32tm', '/resync', '/force'], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW, timeout=5)
+            if res.returncode != 0:
+                subprocess.run(['net', 'stop', 'w32tm'], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW, timeout=5)
+                subprocess.run(['net', 'start', 'w32tm'], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW, timeout=5)
+                subprocess.run(['w32tm', '/resync', '/force'], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW, timeout=5)
+        except Exception:
+            pass
+    import threading
+    threading.Thread(target=_do_sync, daemon=True).start()
+
 class AutoShutdownAppV2:
     def __init__(self, root):
         self.root = root
+        _sync_windows_time()
         
         self._just_updated = "--just-updated" in sys.argv
         
@@ -2632,6 +2648,7 @@ class AutoShutdownAppV2:
 
 class HeadlessShutdownApp:
     def __init__(self):
+        _sync_windows_time()
         self.is_running = True
         self.skipped_events = set()
         self.last_triggered_time = None
