@@ -1492,6 +1492,11 @@ function setAccessGranted(value) {
     if (!value) {
         if (pollerInterval) clearInterval(pollerInterval);
         pollerInterval = null;
+        if (window._pcsListener && window.firebase && firebase.database) {
+            try { firebase.database().ref("/pcs").off("value", window._pcsListener); } catch(e) {}
+            window._pcsListener = null;
+        }
+        if (window._renderInterval) { clearInterval(window._renderInterval); window._renderInterval = null; }
     }
 }
 
@@ -1608,6 +1613,16 @@ function _showScreen(id) {
 
 // ─── Firebase 초기화 ──────────────────────────────────────
 function _initFB(apiKey) {
+    if (window._pcsListener && window.firebase && firebase.database) {
+        try { firebase.database().ref("/pcs").off("value", window._pcsListener); } catch(e) {}
+        window._pcsListener = null;
+    }
+    if (window._userStatusListener && window.firebase && firebase.database) {
+        try { firebase.database().ref("/users").off(); } catch(e) {}
+        window._userStatusListener = null;
+    }
+    window._dashboardInitialized = false;
+
     try {
         if (window.firebase && firebase.apps && firebase.apps.length > 0) {
             firebase.app().delete().then(() => _startAuth(apiKey)).catch(() => _startAuth(apiKey));
@@ -1713,10 +1728,7 @@ function _enterDashboard(user) {
             window._dashboardInitialized = true;
             initializeDashboard();
         } else {
-            if (!pollerInterval) {
-                fetchPCData();
-                
-            }
+            startRealtimeSync();
         }
 
         // ── 보안 스캐너 시작 (마스터 제외, 대시보드 진입 이후에만) ──
@@ -3235,6 +3247,22 @@ async function checkPendingApproval() {
 // ─ 로그아웃 ──────────────────────────────────────────────
 async function signOutAndReset() {
     try {
+        if (window._pcsListener && window.firebase && firebase.database) {
+            try { firebase.database().ref("/pcs").off("value", window._pcsListener); } catch(e) {}
+            window._pcsListener = null;
+        }
+        if (window._userStatusListener && window.firebase && firebase.database) {
+            const uid = _fbAuth?.currentUser?.uid;
+            if (uid) { try { firebase.database().ref("/users/" + uid).off("value", window._userStatusListener); } catch(e) {} }
+            window._userStatusListener = null;
+        }
+        if (window._renderInterval) { clearInterval(window._renderInterval); window._renderInterval = null; }
+        
+        window._dashboardInitialized = false;
+        window._securityScannerStarted = false;
+        pcs = {};
+        selectedPcs = new Set();
+
         if (_fbAuth) await _fbAuth.signOut();
         const lb = document.getElementById("logout-header-btn");
         const ab = document.getElementById("admin-panel-btn");
@@ -3247,6 +3275,8 @@ async function signOutAndReset() {
             firebase.database().ref("/users/" + _fbAuth.currentUser.uid + "/approved").off("value", _revokedListener);
             _revokedListener = null;
         }
+        
+        detachAdminListeners();
         
         _showScreen("auth-view");
     } catch(e) { console.error(e); }
