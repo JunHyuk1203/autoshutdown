@@ -40,6 +40,12 @@
     "update_info": {
       ".read": "true",
       ".write": "true"
+    },
+    "screenshots": {
+      "$pc_id": {
+        ".read": "auth != null",
+        ".write": "true"
+      }
     }
   }
 }

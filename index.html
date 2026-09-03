@@ -1455,6 +1455,23 @@ body {
 </div>
 
 <!-- ─────────────────────────────────────────────────────────────
+   스크린샷 보기 모달
+   ───────────────────────────────────────────────────────────── -->
+<div id="screenshot-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-card" style="max-width:900px; width:95%;">
+        <div class="modal-header">
+            <span id="ss-modal-title" style="font-weight: 800;">📷 화면 보기</span>
+            <button id="ss-close-btn" class="modal-btn-cancel" style="padding: 4px 8px;">✕</button>
+        </div>
+        <div id="ss-modal-body" style="text-align:center; padding:20px;">
+            <div id="ss-loading" style="padding: 40px; font-weight: bold; color: var(--accent-blue);">⏳ 스크린샷 요청 중...</div>
+            <img id="ss-image" src="" alt="스크린샷" style="display:none; max-width:100%; border-radius:8px; margin: 0 auto;" />
+            <div id="ss-meta" style="color:var(--text-muted); font-size:12px; margin-top:12px;"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────
    JAVASCRIPT LOGIC (Firebase SDK & REST Hybrid)
    ───────────────────────────────────────────────────────────── -->
 <!-- Firebase Auth SDK (Compat v10) -->
@@ -1517,6 +1534,67 @@ let pendingAction = null;
 
 
 let _volumePcId = null;
+
+let _ssListener = null;
+let _ssPcId = null;
+
+async function takeScreenshot(pcId) {
+    _ssPcId = pcId;
+    const hostname = pcs[pcId]?.hostname || pcId;
+
+    document.getElementById('ss-modal-title').textContent = `📷 ${hostname} 화면`;
+    document.getElementById('ss-loading').style.display = 'block';
+    document.getElementById('ss-loading').textContent = '⏳ 스크린샷 요청 중...';
+    document.getElementById('ss-image').style.display = 'none';
+    document.getElementById('ss-meta').textContent = '';
+    document.getElementById('screenshot-modal').style.display = 'flex';
+
+    if (_ssListener) {
+        firebase.database().ref('/screenshots/' + _ssPcId).off('value', _ssListener);
+        _ssListener = null;
+    }
+
+    const requestedAt = Date.now() / 1000;
+    await writeCommandToDB(pcId, 'screenshot');
+
+    const timeout = setTimeout(() => {
+        if (_ssListener) {
+            firebase.database().ref('/screenshots/' + _ssPcId).off('value', _ssListener);
+            _ssListener = null;
+        }
+        document.getElementById('ss-loading').textContent = '⚠️ 응답 없음 (20초 초과)';
+    }, 20000);
+
+    _ssListener = firebase.database().ref('/screenshots/' + pcId).on('value', snapshot => {
+        const val = snapshot.val();
+        if (!val || !val.data) return;
+
+        if (val.ts < requestedAt) return;
+
+        clearTimeout(timeout);
+        firebase.database().ref('/screenshots/' + pcId).off('value', _ssListener);
+        _ssListener = null;
+
+        const img = document.getElementById('ss-image');
+        img.src = 'data:image/jpeg;base64,' + val.data;
+        img.style.display = 'block';
+        document.getElementById('ss-loading').style.display = 'none';
+
+        const ts = new Date(val.ts * 1000);
+        const elapsed = ((val.ts - requestedAt) * 1000).toFixed(0);
+        document.getElementById('ss-meta').textContent = 
+            `촬영: ${ts.toLocaleTimeString()} | 해상도: ${val.w}×${val.h} | 응답: ${elapsed}ms`;
+    });
+}
+
+function closeScreenshotModal() {
+    if (_ssListener && _ssPcId) {
+        firebase.database().ref('/screenshots/' + _ssPcId).off('value', _ssListener);
+        _ssListener = null;
+    }
+    document.getElementById('screenshot-modal').style.display = 'none';
+    document.getElementById('ss-image').src = '';
+}
 
 function openVolumeControl(pcId) {
     _volumePcId = pcId;
@@ -1784,6 +1862,11 @@ async function _savePending(user) {
 function initializeDashboard() {
     document.getElementById("label-connected-db").innerText = `연결 주소: ${config.databaseURL}`;
     
+    // Server Time Sync
+    firebase.database().ref('.info/serverTimeOffset').on('value', function(snapshot) {
+        serverTimeOffset = snapshot.val() || 0;
+    });
+
     // Real-time synchronization
     startRealtimeSync();
 }
@@ -1987,9 +2070,10 @@ function renderPCGrid(serverNowMs) {
                 <button class="card-action-btn btn-success" data-action="triggerSingleCommand" data-cmd="update" data-pcid="${pcId}" ${isOnline ? '' : 'disabled'} title="원격 업데이트">🔼 업뎃</button>
                 <button class="card-action-btn btn-secondary" data-action="triggerSingleMessage" data-pcid="${pcId}" ${isOnline ? '' : 'disabled'} title="메시지 전송">💬 메시지</button>
                 ${isOnline 
-                    ? `<button class="card-action-btn btn-warning" data-action="openFileModal" data-pcid="${pcId}" title="원격 파일 열기" style="grid-column: 1 / 2;">📂 파일 열기</button>
-                       <button class="card-action-btn btn-dark" data-action="openVolumeControl" data-pcid="${pcId}" ${isOnline ? '' : 'disabled'} title="원격 음량 제어" style="grid-column: 2 / 3;">🔊 음량조절</button>
-                       <button class="card-action-btn btn-teal" data-action="openWindowsModal" data-pcid="${pcId}" title="실행 중인 창 목록 보기" style="grid-column: 3 / 4;">🖥️ 실행 창</button>`
+                    ? `<button class="card-action-btn btn-warning" data-action="openFileModal" data-pcid="${pcId}" title="원격 파일 열기">📂 파일열기</button>
+                       <button class="card-action-btn btn-dark" data-action="openVolumeControl" data-pcid="${pcId}" title="원격 음량 제어">🔊 음량</button>
+                       <button class="card-action-btn btn-teal" data-action="openWindowsModal" data-pcid="${pcId}" title="실행 중인 창 목록 보기">🖥️ 실행창</button>
+                       <button class="card-action-btn btn-teal" data-action="takeScreenshot" data-pcid="${pcId}" title="화면 보기" style="grid-column: 1 / 4;">📷 화면 캡처 보기</button>`
                     : ''
                 }
             `;
@@ -3861,6 +3945,10 @@ window.addEventListener('DOMContentLoaded', () => {
             e.stopPropagation();
             openWindowsModal(btn.getAttribute('data-pcid'));
         }
+        if (action === 'takeScreenshot') {
+            e.stopPropagation();
+            takeScreenshot(btn.getAttribute('data-pcid'));
+        }
     });
 
     const el_of_cancel_btn = document.getElementById("of-cancel-btn");
@@ -3873,6 +3961,8 @@ window.addEventListener('DOMContentLoaded', () => {
     if (el_vol_cancel_btn) el_vol_cancel_btn.addEventListener("click", () => { closeVolumeModal(); });
     const el_vol_apply_btn = document.getElementById("vol-apply-btn");
     if (el_vol_apply_btn) el_vol_apply_btn.addEventListener("click", () => { applyVolumeControl(); });
+    const el_ss_close_btn = document.getElementById("ss-close-btn");
+    if (el_ss_close_btn) el_ss_close_btn.addEventListener("click", () => { closeScreenshotModal(); });
 
 });
 

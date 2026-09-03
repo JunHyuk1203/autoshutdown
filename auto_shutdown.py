@@ -368,7 +368,7 @@ def run_standalone_autologin_gui():
 
     root.mainloop()
 
-CURRENT_VERSION = "1.1.177"
+CURRENT_VERSION = "1.1.178"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -593,6 +593,59 @@ def _sync_windows_time():
             pass
     import threading
     threading.Thread(target=_do_sync, daemon=True).start()
+
+def _take_and_upload_screenshot(central_url, pc_id, db_secret, ssl_context):
+    import base64, io, time
+    try:
+        img_bytes = None
+        w, h = 0, 0
+        try:
+            import mss, mss.tools
+            with mss.mss() as sct:
+                monitor = sct.monitors[1]  # 1번 모니터
+                w, h = monitor['width'], monitor['height']
+                shot = sct.grab(monitor)
+                from PIL import Image
+                img = Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
+        except ImportError:
+            from PIL import ImageGrab
+            img = ImageGrab.grab()
+            w, h = img.size
+
+        max_w = 1280
+        if img.width > max_w:
+            ratio = max_w / img.width
+            from PIL import Image
+            img = img.resize((max_w, int(img.height * ratio)), Image.LANCZOS)
+
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=40, optimize=True)
+        img_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
+
+        payload = json.dumps({
+            "data": img_b64,
+            "ts": time.time(),
+            "w": w,
+            "h": h
+        }, ensure_ascii=False).encode('utf-8')
+
+        ss_url = f"{central_url.rstrip('/')}/screenshots/{pc_id}.json"
+        if db_secret:
+            ss_url += f"?auth={db_secret}"
+
+        req = urllib.request.Request(
+            ss_url, data=payload, method="PUT",
+            headers={'Content-Type': 'application/json'}
+        )
+        with urllib.request.urlopen(req, timeout=15, context=ssl_context) as _:
+            pass
+    except Exception as e:
+        try:
+            application_path = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
+            with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
+                ef.write(f"[{datetime.now()}] screenshot FAILED: {e}\n")
+        except:
+            pass
 
 class AutoShutdownAppV2:
     def __init__(self, root):
@@ -1329,6 +1382,17 @@ class AutoShutdownAppV2:
                             # cmd_success를 True로 안해줘도 개별명령은 무조건 지워지도록 패치되어 있으나, 성공 로깅을 위해
                             cmd_success = True
                             
+                        elif action == 'screenshot':
+                            import threading
+                            threading.Thread(
+                                target=_take_and_upload_screenshot,
+                                args=(central_url, pc_id, db_secret, ssl_context),
+                                daemon=True
+                            ).start()
+                            cmd_success = True
+                            if app_instance:
+                                app_instance.root.after(0, lambda: app_instance.add_system_alert("📸 원격 화면 캡처 요청됨"))
+                                
                         elif action == 'close_active_window':
                             try:
                                 hwnd = ctypes.windll.user32.GetForegroundWindow()
