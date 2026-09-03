@@ -1547,7 +1547,7 @@ async function takeScreenshot(pcId) {
     document.getElementById('ss-loading').textContent = '⏳ 스크린샷 요청 중...';
     document.getElementById('ss-image').style.display = 'none';
     document.getElementById('ss-meta').textContent = '';
-    document.getElementById('screenshot-modal').style.display = 'flex';
+    document.getElementById('screenshot-modal').classList.add('show');
 
     if (_ssListener) {
         firebase.database().ref('/screenshots/' + _ssPcId).off('value', _ssListener);
@@ -1592,7 +1592,7 @@ function closeScreenshotModal() {
         firebase.database().ref('/screenshots/' + _ssPcId).off('value', _ssListener);
         _ssListener = null;
     }
-    document.getElementById('screenshot-modal').style.display = 'none';
+    document.getElementById('screenshot-modal').classList.remove('show');
     document.getElementById('ss-image').src = '';
 }
 
