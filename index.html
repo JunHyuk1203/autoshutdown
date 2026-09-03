@@ -3846,28 +3846,7 @@ window.addEventListener('DOMContentLoaded', () => {
     });
 });
 
-window.addEventListener('DOMContentLoaded', () => {
-    // Delegation for PC Grid
-    document.addEventListener('click', (e) => {
-        const btn = e.target.closest('[data-action]');
-        if (!btn) return;
-        const action = btn.getAttribute('data-action');
-        const pcId = btn.getAttribute('data-pcid');
-        const hwnd = btn.getAttribute('data-hwnd');
-        
-        if (action === 'shutdown' && pcId) triggerCommand(pcId, 'shutdown');
-        if (action === 'restart' && pcId) triggerCommand(pcId, 'restart');
-        if (action === 'openFileModal' && pcId) openFileModal(pcId);
-        if (action === 'openVolumeControl' && pcId) openVolumeControl(pcId);
-        if (action === 'openWindowsControl' && pcId) openWindowsControl(pcId);
-        
-        if (action === 'restore_window' && hwnd) {
-            triggerCommand(_wmPcId, 'restore_window', {hwnd: parseInt(hwnd)});
-        }
-        if (action === 'close_window' && hwnd) {
-            triggerCommand(_wmPcId, 'close_window', {hwnd: parseInt(hwnd)});
-        }
-    });
+
 
     document.addEventListener('change', (e) => {
         if (e.target.classList.contains('pc-checkbox')) {
