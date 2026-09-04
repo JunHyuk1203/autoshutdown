@@ -978,7 +978,7 @@ body {
     </div>
     <button class="auth-btn auth-btn-primary" id="verify-check-btn" style="margin-bottom:8px;">&#x2705; 인증 완료 확인</button>
     <button class="auth-btn" id="verify-resend-btn" style="background:rgba(255,255,255,0.05);color:var(--text-muted);border:1px solid rgba(255,255,255,0.1);">&#x1F4E8; 인증 이메일 재발송</button>
-    <button class="auth-btn auth-btn-outline" id="signout-btn-1">로그아웃</button>
+    <button class="auth-btn auth-btn-outline" id="signout-btn-pending">로그아웃</button>
   </div>
 </div>
 
@@ -1003,7 +1003,7 @@ body {
     <p id="pending-email-label" style="font-size:13px; color:var(--accent-blue); margin-bottom:22px; background:rgba(14,165,233,0.08); padding:10px 18px; border-radius:10px; border:1px solid rgba(14,165,233,0.2);">이메일</p>
     <button class="auth-btn auth-btn-primary" id="pending-check-btn" style="margin-bottom:8px;">🔄 새로고침 (승인 확인)</button>
     <button id="pending-rerequest-btn" class="auth-btn auth-btn-google" style="margin-bottom:8px; display:none;">요청 다시 보내기</button>
-    <button class="auth-btn auth-btn-outline" id="signout-btn-1">로그아웃</button>
+    <button class="auth-btn auth-btn-outline" id="signout-btn-pending">로그아웃</button>
   </div>
 </div>
 
@@ -1030,7 +1030,7 @@ body {
       관리자에 의해 기기 제어 권한이 박탈되었습니다.<br>더 이상 대시보드에 접근할 수 없습니다.
     </p>
     <button class="auth-btn auth-btn-primary" id="revoked-rerequest-btn" style="margin-bottom:8px;">🔄 권한 재요청</button>
-    <button class="auth-btn auth-btn-outline" id="signout-btn-1">로그아웃</button>
+    <button class="auth-btn auth-btn-outline" id="signout-btn-revoked">로그아웃</button>
   </div>
 </div>
 
@@ -1513,7 +1513,8 @@ let config = {
 
 let pcs = {};
 let selectedPcs = new Set();
-
+let pollerInterval = null;
+let currentPollerMs = 5000;
 
 let APP_ACCESS_GRANTED = null;
 
@@ -1556,17 +1557,22 @@ let _webrtcDc = null;
 let _webrtcInterval = null;
 
 async function startWebRTC(pcId) {
+    const dbUrl = config.databaseURL;
+    const authParam = config.authKey ? `?auth=${config.authKey}` : '';
+
     const modal = document.getElementById('webrtc-modal');
     const video = document.getElementById('webrtc-video');
     const status = document.getElementById('webrtc-status');
     
     modal.style.display = 'flex';
+    modal.classList.add('show');
     video.style.display = 'none';
     status.style.display = 'block';
     status.innerText = '⏳ P2P 연결 중 (SDP Offer 생성)...';
     
     document.getElementById('webrtc-close-btn').onclick = () => {
         modal.style.display = 'none';
+        modal.classList.remove('show');
         if (_webrtcPc) { _webrtcPc.close(); _webrtcPc = null; }
         if (_webrtcInterval) { clearInterval(_webrtcInterval); _webrtcInterval = null; }
         video.srcObject = null;
@@ -1619,7 +1625,7 @@ async function startWebRTC(pcId) {
         })
     });
     
-    triggerCommand(pcId, 'webrtc_start');
+    await writeCommandToDB(pcId, 'webrtc_start');
     
     status.innerText = '⏳ 타겟 PC 응답 대기 중...';
     const answerUrl = `${dbUrl}/webrtc/${pcId}/answer.json${authParam}`;
@@ -1893,6 +1899,12 @@ function _attachUserStatusListener(user) {
         const statusObj = snapshot.val();
         const status = statusObj ? statusObj.approved : null;
         
+        if (statusObj && statusObj.role === 'master') {
+            setAccessGranted(true);
+            _enterDashboard(user);
+            return;
+        }
+
         if (status === true) {
             setAccessGranted(true);
             _enterDashboard(user);
@@ -3936,6 +3948,10 @@ function bindStaticEvents() {
     if (el_verify_resend_btn) el_verify_resend_btn.addEventListener("click", function(e) { resendVerificationEmail(); });
     const el_signout_btn_1 = document.getElementById("signout-btn-1");
     if (el_signout_btn_1) el_signout_btn_1.addEventListener("click", function(e) { signOutAndReset(); });
+    const el_signout_btn_pending = document.getElementById("signout-btn-pending");
+    if (el_signout_btn_pending) el_signout_btn_pending.addEventListener("click", function(e) { signOutAndReset(); });
+    const el_signout_btn_revoked = document.getElementById("signout-btn-revoked");
+    if (el_signout_btn_revoked) el_signout_btn_revoked.addEventListener("click", function(e) { signOutAndReset(); });
     const el_signout_btn_banned = document.getElementById("signout-btn-banned");
     if (el_signout_btn_banned) el_signout_btn_banned.addEventListener("click", function(e) { signOutAndReset(); });
     const el_pending_check_btn = document.getElementById("pending-check-btn");

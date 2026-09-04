@@ -14,7 +14,7 @@ a = Analysis(
         (r'C:\Users\tntdr\AppData\Local\Programs\Python\Python313\tcl\tk8.6', '_tk_data'),
         (r'dist\updater.exe', '.'),  # 업데이터 번들 포함
     ],
-    hiddenimports=['pycaw', 'customtkinter', 'mss', 'mss.tools', 'aiortc', 'av', 'pynput', 'pynput.keyboard', 'pynput.mouse'],
+    hiddenimports=['pycaw', 'customtkinter', 'mss', 'mss.tools', 'aiortc', 'av', 'pynput', 'pynput.keyboard', 'pynput.mouse', 'google_crc32c', 'cffi', '_cffi_backend', 'pylibsrtp', 'numpy', 'av.logging', 'av.video.frame', 'av.audio.frame'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
