@@ -1601,7 +1601,17 @@ async function startWebRTC(pcId) {
     };
     
     // 브라우저가 video를 수신할 준비 (offer에 video m-line 포함 필수)
-    pc.addTransceiver('video', { direction: 'recvonly' });
+    const videoTransceiver = pc.addTransceiver('video', { direction: 'recvonly' });
+    
+    // iOS Safari는 VP8 미지원 - H264를 우선 협상하도록 설정
+    try {
+        const { codecs } = RTCRtpReceiver.getCapabilities('video');
+        const h264Codecs = codecs.filter(c => c.mimeType === 'video/H264');
+        const otherCodecs = codecs.filter(c => c.mimeType !== 'video/H264');
+        if (h264Codecs.length > 0) {
+            videoTransceiver.setCodecPreferences([...h264Codecs, ...otherCodecs]);
+        }
+    } catch(e) { /* 지원 안하는 브라우저는 무시 */ }
     
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);

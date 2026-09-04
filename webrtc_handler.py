@@ -7,6 +7,7 @@ import io
 
 try:
     from aiortc import RTCPeerConnection, RTCSessionDescription, VideoStreamTrack
+    from aiortc.codecs import h264
     from av import VideoFrame
     import mss
     import pynput.mouse
@@ -116,9 +117,23 @@ class WebRTCServer:
         offer = RTCSessionDescription(sdp=offer_dict["sdp"], type=offer_dict["type"])
         await pc.setRemoteDescription(offer)
         
-        # Add video track after setRemoteDescription
+        # Add video track
         track = ScreenTrack()
-        pc.addTrack(track)
+        sender = pc.addTrack(track)
+        
+        # Force H264 codec for iOS/Android compatibility (Safari doesn't support VP8)
+        try:
+            from aiortc.codecs import get_capabilities
+            caps = get_capabilities('video')
+            h264_codecs = [c for c in caps.codecs if 'H264' in c.mimeType]
+            if h264_codecs:
+                transceiver = next(
+                    (t for t in pc.getTransceivers() if t.sender == sender), None
+                )
+                if transceiver:
+                    transceiver.setCodecPreferences(h264_codecs)
+        except Exception:
+            pass  # fallback to default if H264 preference fails
         
         # Create answer and set local description
         answer = await pc.createAnswer()
