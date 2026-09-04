@@ -1600,6 +1600,9 @@ async function startWebRTC(pcId) {
         }
     };
     
+    // 브라우저가 video를 수신할 준비 (offer에 video m-line 포함 필수)
+    pc.addTransceiver('video', { direction: 'recvonly' });
+    
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
     
