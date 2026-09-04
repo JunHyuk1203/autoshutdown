@@ -368,7 +368,7 @@ def run_standalone_autologin_gui():
 
     root.mainloop()
 
-CURRENT_VERSION = "1.1.178"
+CURRENT_VERSION = "1.1.179"
 
 try:
     from pycaw.pycaw import AudioUtilities
