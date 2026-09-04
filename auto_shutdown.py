@@ -368,7 +368,7 @@ def run_standalone_autologin_gui():
 
     root.mainloop()
 
-CURRENT_VERSION = "1.1.180"
+CURRENT_VERSION = "1.1.181"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -609,11 +609,19 @@ def _take_and_upload_screenshot(central_url, pc_id, db_secret, ssl_context):
                 shot = sct.grab(monitor)
                 from PIL import Image
                 img = Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
-        except ImportError:
-            from PIL import ImageGrab
-            img = ImageGrab.grab()
-            w, h = img.size
-
+        except Exception as mss_err:
+            try:
+                from PIL import ImageGrab
+                img = ImageGrab.grab(all_screens=True)
+                if img is None: raise Exception("ImageGrab returned None")
+                w, h = img.size
+            except Exception as grab_err:
+                from PIL import Image, ImageDraw
+                w, h = 800, 600
+                img = Image.new("RGB", (w, h), color=(40, 40, 40))
+                draw = ImageDraw.Draw(img)
+                err_txt = f"Screen Capture Failed\n(Screen locked or no desktop access)\n\nmss: {mss_err}\npil: {grab_err}"
+                draw.text((40, 280), err_txt, fill=(255, 100, 100))
         max_w = 1280
         if img.width > max_w:
             ratio = max_w / img.width
