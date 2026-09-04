@@ -110,8 +110,37 @@ class WebRTCServer:
             pass
 
     async def run(self):
-        pc = RTCPeerConnection()
+        from aiortc import RTCConfiguration, RTCIceServer
+        config = RTCConfiguration(iceServers=[
+            RTCIceServer(urls=[
+                "stun:stun.l.google.com:19302",
+                "stun:stun1.l.google.com:19302",
+                "stun:stun2.l.google.com:19302",
+                "stun:stun.cloudflare.com:3478"
+            ])
+        ])
+        pc = RTCPeerConnection(configuration=config)
         
+        @pc.on("connectionstatechange")
+        def on_connectionstatechange():
+            try:
+                import os, sys
+                from datetime import datetime
+                log_path = os.path.join(os.path.dirname(sys.executable), 'error.log')
+                with open(log_path, 'a', encoding='utf-8') as f:
+                    f.write(f"[{datetime.now()}] WebRTC state: {pc.connectionState}, ice: {pc.iceConnectionState}\n")
+            except: pass
+
+        @pc.on("iceconnectionstatechange")
+        def on_iceconnectionstatechange():
+            try:
+                import os, sys
+                from datetime import datetime
+                log_path = os.path.join(os.path.dirname(sys.executable), 'error.log')
+                with open(log_path, 'a', encoding='utf-8') as f:
+                    f.write(f"[{datetime.now()}] WebRTC ICE state: {pc.iceConnectionState}\n")
+            except: pass
+
         @pc.on("datachannel")
         def on_datachannel(channel):
             @channel.on("message")

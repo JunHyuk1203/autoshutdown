@@ -1579,7 +1579,12 @@ async function startWebRTC(pcId) {
     };
 
     const pc = new RTCPeerConnection({
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+        iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun.cloudflare.com:3478' }
+        ]
     });
     _webrtcPc = pc;
     
@@ -1587,8 +1592,6 @@ async function startWebRTC(pcId) {
     _webrtcDc = dc;
     
     pc.ontrack = (event) => {
-        status.style.display = 'none';
-        video.style.display = 'block';
         if (event.streams && event.streams[0]) {
             video.srcObject = event.streams[0];
         } else {
@@ -1598,10 +1601,20 @@ async function startWebRTC(pcId) {
         video.play().catch(e => console.warn("Video play error:", e));
     };
     
+    const showVideo = () => {
+        status.style.display = 'none';
+        video.style.display = 'block';
+    };
+    video.onloadeddata = showVideo;
+    video.onplaying = showVideo;
+    
     pc.oniceconnectionstatechange = () => {
-        if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+        console.log("ICE state:", pc.iceConnectionState);
+        if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+            status.innerText = '✅ P2P 연결 성공! 화면 수신 중...';
+        } else if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
             status.style.display = 'block';
-            status.innerText = '❌ 연결이 끊어졌습니다.';
+            status.innerText = '❌ 연결이 끊어졌습니다. (P2P 연결 실패)';
             video.style.display = 'none';
         }
     };
