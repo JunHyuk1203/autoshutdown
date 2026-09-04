@@ -1479,7 +1479,7 @@ body {
         </div>
         <div id="webrtc-modal-body" style="flex:1; background:#1e1e1e; display:flex; justify-content:center; align-items:center; position:relative; overflow:hidden;">
             <div id="webrtc-status" style="position:absolute; color:white; font-size:18px;">⏳ P2P 연결 중...</div>
-            <video id="webrtc-video" autoplay playsinline style="max-width:100%; max-height:100%; object-fit:contain; display:none;" tabindex="0"></video>
+            <video id="webrtc-video" autoplay playsinline muted style="max-width:100%; max-height:100%; object-fit:contain; display:none;" tabindex="0"></video>
         </div>
     </div>
 </div>
@@ -1589,7 +1589,13 @@ async function startWebRTC(pcId) {
     pc.ontrack = (event) => {
         status.style.display = 'none';
         video.style.display = 'block';
-        video.srcObject = event.streams[0];
+        if (event.streams && event.streams[0]) {
+            video.srcObject = event.streams[0];
+        } else {
+            video.srcObject = new MediaStream([event.track]);
+        }
+        video.muted = true;
+        video.play().catch(e => console.warn("Video play error:", e));
     };
     
     pc.oniceconnectionstatechange = () => {
@@ -1603,15 +1609,19 @@ async function startWebRTC(pcId) {
     // 브라우저가 video를 수신할 준비 (offer에 video m-line 포함 필수)
     const videoTransceiver = pc.addTransceiver('video', { direction: 'recvonly' });
     
-    // iOS Safari는 VP8 미지원 - H264를 우선 협상하도록 설정
+    // iOS Safari 및 모바일 호환성을 위해 H264 우선 협상 (VP8도 폴백으로 유지)
     try {
-        const { codecs } = RTCRtpReceiver.getCapabilities('video');
-        const h264Codecs = codecs.filter(c => c.mimeType === 'video/H264');
-        const otherCodecs = codecs.filter(c => c.mimeType !== 'video/H264');
-        if (h264Codecs.length > 0) {
-            videoTransceiver.setCodecPreferences([...h264Codecs, ...otherCodecs]);
+        if (window.RTCRtpReceiver && RTCRtpReceiver.getCapabilities) {
+            const { codecs } = RTCRtpReceiver.getCapabilities('video');
+            if (codecs && codecs.length > 0) {
+                const h264Codecs = codecs.filter(c => c.mimeType && c.mimeType.toLowerCase() === 'video/h264');
+                const otherCodecs = codecs.filter(c => !c.mimeType || c.mimeType.toLowerCase() !== 'video/h264');
+                if (h264Codecs.length > 0) {
+                    videoTransceiver.setCodecPreferences([...h264Codecs, ...otherCodecs]);
+                }
+            }
         }
-    } catch(e) { /* 지원 안하는 브라우저는 무시 */ }
+    } catch(e) { console.warn("setCodecPreferences error:", e); }
     
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
@@ -1702,6 +1712,43 @@ async function startWebRTC(pcId) {
         e.preventDefault();
         if (dc.readyState === "open") dc.send(JSON.stringify({t: 'keyup', k: e.key}));
     };
+    
+    // 모바일 터치 이벤트 -> 마우스 이벤트 변환 지원 (iOS/Android)
+    function handleTouch(e, type) {
+        if (!e.touches || (!e.touches.length && type !== 'mouseup')) return;
+        const touch = e.touches[0] || (e.changedTouches ? e.changedTouches[0] : null);
+        if (!touch) return;
+        const rect = video.getBoundingClientRect();
+        let vw = video.videoWidth || 1280;
+        let vh = video.videoHeight || 720;
+        let containerRatio = rect.width / rect.height;
+        let videoRatio = vw / vh;
+        let x, y;
+        if (containerRatio > videoRatio) {
+            let drawWidth = rect.height * videoRatio;
+            let margin = (rect.width - drawWidth) / 2;
+            x = (touch.clientX - rect.left - margin) / drawWidth;
+            y = (touch.clientY - rect.top) / rect.height;
+        } else {
+            let drawHeight = rect.width / videoRatio;
+            let margin = (rect.height - drawHeight) / 2;
+            x = (touch.clientX - rect.left) / rect.width;
+            y = (touch.clientY - rect.top - margin) / drawHeight;
+        }
+        if (x >= 0 && x <= 1 && y >= 0 && y <= 1 && dc && dc.readyState === "open") {
+            if (type === 'mousemove') {
+                dc.send(JSON.stringify({t: 'mousemove', x, y}));
+            } else if (type === 'mousedown') {
+                dc.send(JSON.stringify({t: 'mousemove', x, y}));
+                dc.send(JSON.stringify({t: 'mousedown', b: 0}));
+            } else if (type === 'mouseup') {
+                dc.send(JSON.stringify({t: 'mouseup', b: 0}));
+            }
+        }
+    }
+    video.ontouchstart = (e) => { e.preventDefault(); handleTouch(e, 'mousedown'); };
+    video.ontouchmove = (e) => { e.preventDefault(); handleTouch(e, 'mousemove'); };
+    video.ontouchend = (e) => { e.preventDefault(); handleTouch(e, 'mouseup'); };
 }
 
 async function takeScreenshot(pcId) {

@@ -24,23 +24,44 @@ class ScreenTrack(VideoStreamTrack):
         super().__init__()
         self.monitor_idx = monitor_idx
         self.sct = mss.mss()
-        self.monitor = self.sct.monitors[monitor_idx]
+        self.monitor = self.sct.monitors[monitor_idx] if len(self.sct.monitors) > monitor_idx else self.sct.monitors[0]
         self.time_base = 1.0 / 15.0  # target 15 FPS
 
     async def recv(self):
         pts, time_base = await self.next_timestamp()
         
-        # Grab screen
-        shot = self.sct.grab(self.monitor)
+        # Grab screen with fallback
+        img = None
+        try:
+            shot = self.sct.grab(self.monitor)
+            from PIL import Image
+            img = Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
+        except Exception:
+            try:
+                from PIL import ImageGrab
+                img = ImageGrab.grab(all_screens=True)
+            except Exception:
+                pass
         
+        if img is None:
+            from PIL import Image
+            img = Image.new("RGB", (1280, 720), color=(30, 30, 30))
+        
+        # Resize to max 1280, ensuring EVEN width and height for H264 (libx264) compatibility
         from PIL import Image
-        img = Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
-        
-        # Optionally resize to reduce bandwidth
         max_w = 1280
         if img.width > max_w:
             ratio = max_w / img.width
-            img = img.resize((max_w, int(img.height * ratio)), Image.LANCZOS)
+            new_w = max_w
+            new_h = int(img.height * ratio)
+            new_w -= (new_w % 2)
+            new_h -= (new_h % 2)
+            img = img.resize((new_w, new_h), Image.LANCZOS)
+        else:
+            new_w = img.width - (img.width % 2)
+            new_h = img.height - (img.height % 2)
+            if new_w != img.width or new_h != img.height:
+                img = img.crop((0, 0, new_w, new_h))
             
         frame = VideoFrame.from_image(img)
         frame.pts = pts
@@ -121,17 +142,17 @@ class WebRTCServer:
         track = ScreenTrack()
         sender = pc.addTrack(track)
         
-        # Force H264 codec for iOS/Android compatibility (Safari doesn't support VP8)
+        # Codec preferences: prefer H264 for iOS/Safari/Android, with VP8 fallback
         try:
             from aiortc.codecs import get_capabilities
             caps = get_capabilities('video')
             h264_codecs = [c for c in caps.codecs if 'H264' in c.mimeType]
-            if h264_codecs:
-                transceiver = next(
-                    (t for t in pc.getTransceivers() if t.sender == sender), None
-                )
-                if transceiver:
-                    transceiver.setCodecPreferences(h264_codecs)
+            other_codecs = [c for c in caps.codecs if 'H264' not in c.mimeType]
+            transceiver = next(
+                (t for t in pc.getTransceivers() if t.sender == sender), None
+            )
+            if transceiver:
+                transceiver.setCodecPreferences(h264_codecs + other_codecs)
         except Exception:
             pass  # fallback to default if H264 preference fails
         
@@ -224,11 +245,21 @@ def start_webrtc_session(pc_id, central_url, db_secret, ssl_context, offer_dict=
         return
         
     def _run_loop():
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        server = WebRTCServer(pc_id, central_url, db_secret, ssl_context, offer_dict=offer_dict)
-        loop.run_until_complete(server.run())
-        loop.close()
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            server = WebRTCServer(pc_id, central_url, db_secret, ssl_context, offer_dict=offer_dict)
+            loop.run_until_complete(server.run())
+            loop.close()
+        except Exception as err:
+            try:
+                import os, sys
+                from datetime import datetime
+                log_path = os.path.join(os.path.dirname(sys.executable), 'error.log')
+                with open(log_path, 'a', encoding='utf-8') as f:
+                    f.write(f"[{datetime.now()}] WebRTC error: {err}\n")
+            except:
+                pass
         
     t = threading.Thread(target=_run_loop, daemon=True)
     t.start()
