@@ -368,7 +368,7 @@ def run_standalone_autologin_gui():
 
     root.mainloop()
 
-CURRENT_VERSION = "1.1.181"
+CURRENT_VERSION = "1.1.182"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -588,8 +588,9 @@ def _sync_windows_time():
         try:
             res = subprocess.run(['w32tm', '/resync', '/force'], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW, timeout=5)
             if res.returncode != 0:
-                subprocess.run(['net', 'stop', 'w32tm'], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW, timeout=5)
-                subprocess.run(['net', 'start', 'w32tm'], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW, timeout=5)
+                subprocess.run(['sc', 'config', 'w32time', 'start=', 'demand'], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW, timeout=5)
+                subprocess.run(['net', 'stop', 'w32time'], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW, timeout=5)
+                subprocess.run(['net', 'start', 'w32time'], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW, timeout=5)
                 subprocess.run(['w32tm', '/resync', '/force'], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW, timeout=5)
         except Exception:
             pass
