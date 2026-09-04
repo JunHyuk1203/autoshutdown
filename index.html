@@ -1616,19 +1616,15 @@ async function startWebRTC(pcId) {
     
     status.innerText = '⏳ 타겟 PC에 연결 요청 중...';
     
-    const offerUrl = `${dbUrl}/webrtc/${pcId}/offer.json${authParam}`;
-    await fetch(offerUrl, {
-        method: 'PUT',
-        body: JSON.stringify({
-            type: pc.localDescription.type,
-            sdp: pc.localDescription.sdp
-        })
+    // offer SDP를 명령 message에 직접 포함 (Firebase auth 없이도 Python이 읽을 수 있도록)
+    await writeCommandToDB(pcId, 'webrtc_start', {
+        sdp: pc.localDescription.sdp,
+        type: pc.localDescription.type
     });
     
-    await writeCommandToDB(pcId, 'webrtc_start');
-    
     status.innerText = '⏳ 타겟 PC 응답 대기 중...';
-    const answerUrl = `${dbUrl}/webrtc/${pcId}/answer.json${authParam}`;
+    // answer는 pcs/{pcId}/webrtc_answer 경로에서 읽음 (Python이 인증 없이 쓸 수 있는 경로)
+    const answerUrl = `${dbUrl}/pcs/${pcId}/webrtc_answer.json${authParam}`;
     let retries = 0;
     
     _webrtcInterval = setInterval(async () => {
@@ -1645,7 +1641,8 @@ async function startWebRTC(pcId) {
                 clearInterval(_webrtcInterval);
                 await pc.setRemoteDescription(new RTCSessionDescription(ans));
                 status.innerText = '✅ P2P 영상 수신 대기 중...';
-                fetch(answerUrl, { method: 'DELETE' });
+                // webrtc_answer 필드 삭제 (NULL로 설정)
+                fetch(answerUrl, { method: 'PUT', body: 'null' });
             }
         } catch (e) {}
     }, 1000);

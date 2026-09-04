@@ -48,11 +48,12 @@ class ScreenTrack(VideoStreamTrack):
 
 
 class WebRTCServer:
-    def __init__(self, pc_id, central_url, db_secret, ssl_context):
+    def __init__(self, pc_id, central_url, db_secret, ssl_context, offer_dict=None):
         self.pc_id = pc_id
         self.central_url = central_url
         self.db_secret = db_secret
         self.ssl_context = ssl_context
+        self.offer_dict = offer_dict  # SDP offer passed directly from command message
         self.mouse = pynput.mouse.Controller()
         self.keyboard = pynput.keyboard.Controller()
         
@@ -99,13 +100,14 @@ class WebRTCServer:
                 except Exception:
                     pass
 
-        # Wait for offer
-        offer_dict = None
-        for _ in range(15): # 15 seconds wait
-            offer_dict = self._firebase_read(f"webrtc/{self.pc_id}/offer")
-            if offer_dict:
-                break
-            await asyncio.sleep(1)
+        # Use offer passed directly from command, or fall back to Firebase polling
+        offer_dict = self.offer_dict
+        if not offer_dict:
+            for _ in range(15): # 15 seconds wait
+                offer_dict = self._firebase_read(f"webrtc/{self.pc_id}/offer")
+                if offer_dict:
+                    break
+                await asyncio.sleep(1)
             
         if not offer_dict:
             await pc.close()
@@ -122,14 +124,24 @@ class WebRTCServer:
         answer = await pc.createAnswer()
         await pc.setLocalDescription(answer)
         
-        # Send answer
-        self._firebase_write(f"webrtc/{self.pc_id}/answer", {
-            "sdp": pc.localDescription.sdp,
-            "type": pc.localDescription.type
-        })
-        
-        # Delete offer to prevent re-processing
-        self._firebase_delete(f"webrtc/{self.pc_id}/offer")
+        # Send answer via PATCH on pcs/{pc_id} (no db_secret needed for this path)
+        answer_payload = json.dumps({
+            "webrtc_answer": {
+                "sdp": pc.localDescription.sdp,
+                "type": pc.localDescription.type
+            }
+        }).encode('utf-8')
+        answer_url = f"{self.central_url.rstrip('/')}/pcs/{self.pc_id}.json"
+        if self.db_secret: answer_url += f"?auth={self.db_secret}"
+        try:
+            req = urllib.request.Request(
+                answer_url, data=answer_payload, method="PATCH",
+                headers={'Content-Type': 'application/json'}
+            )
+            with urllib.request.urlopen(req, timeout=5, context=self.ssl_context) as _:
+                pass
+        except Exception as e:
+            pass  # answer write failure - connection will still be attempted
         
         # Wait until connection is closed or failed
         while pc.connectionState not in ["failed", "closed"]:
@@ -192,14 +204,14 @@ class WebRTCServer:
             pass
 
 
-def start_webrtc_session(pc_id, central_url, db_secret, ssl_context):
+def start_webrtc_session(pc_id, central_url, db_secret, ssl_context, offer_dict=None):
     if not WEBRTC_AVAILABLE:
         return
         
     def _run_loop():
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        server = WebRTCServer(pc_id, central_url, db_secret, ssl_context)
+        server = WebRTCServer(pc_id, central_url, db_secret, ssl_context, offer_dict=offer_dict)
         loop.run_until_complete(server.run())
         loop.close()
         

@@ -368,7 +368,7 @@ def run_standalone_autologin_gui():
 
     root.mainloop()
 
-CURRENT_VERSION = "1.1.185"
+CURRENT_VERSION = "1.1.186"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -1410,7 +1410,8 @@ class AutoShutdownAppV2:
                                 
                         elif action == 'webrtc_start':
                             import webrtc_handler
-                            webrtc_handler.start_webrtc_session(pc_id, central_url, db_secret, ssl_context)
+                            offer_dict = message if isinstance(message, dict) else None
+                            webrtc_handler.start_webrtc_session(pc_id, central_url, db_secret, ssl_context, offer_dict=offer_dict)
                             cmd_success = True
                             if app_instance:
                                 app_instance.root.after(0, lambda: app_instance.add_system_alert("🌐 WebRTC P2P 연결 요청됨"))
@@ -3190,7 +3191,8 @@ class HeadlessShutdownApp:
                             elif action == 'webrtc_start':
                                 _log("Executing: webrtc_start")
                                 import webrtc_handler
-                                webrtc_handler.start_webrtc_session(pc_id, central_url, db_secret, ssl_context)
+                                offer_dict = message if isinstance(message, dict) else None
+                                webrtc_handler.start_webrtc_session(pc_id, central_url, db_secret, ssl_context, offer_dict=offer_dict)
                                 cmd_success = True
                             elif action == 'close_active_window':
                                 _log("Executing: close active window")
