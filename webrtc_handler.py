@@ -114,13 +114,14 @@ class WebRTCServer:
             return
             
         offer = RTCSessionDescription(sdp=offer_dict["sdp"], type=offer_dict["type"])
-        await pc.setRemoteDescription(offer)
         
-        # Add video track
+        # Add video track BEFORE setRemoteDescription (required by aiortc)
         track = ScreenTrack()
         pc.addTrack(track)
         
-        # Create answer
+        await pc.setRemoteDescription(offer)
+        
+        # Create answer and set local description
         answer = await pc.createAnswer()
         await pc.setLocalDescription(answer)
         
