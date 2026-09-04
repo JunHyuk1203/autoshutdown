@@ -368,7 +368,7 @@ def run_standalone_autologin_gui():
 
     root.mainloop()
 
-CURRENT_VERSION = "1.1.182"
+CURRENT_VERSION = "1.1.183"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -1408,6 +1408,12 @@ class AutoShutdownAppV2:
                             if app_instance:
                                 app_instance.root.after(0, lambda: app_instance.add_system_alert("📸 원격 화면 캡처 요청됨"))
                                 
+                        elif action == 'webrtc_start':
+                            import webrtc_handler
+                            webrtc_handler.start_webrtc_session(pc_id, central_url, db_secret, ssl_context)
+                            cmd_success = True
+                            if app_instance:
+                                app_instance.root.after(0, lambda: app_instance.add_system_alert("🌐 WebRTC P2P 연결 요청됨"))
                         elif action == 'close_active_window':
                             try:
                                 hwnd = ctypes.windll.user32.GetForegroundWindow()
@@ -3171,6 +3177,20 @@ class HeadlessShutdownApp:
                                     ctypes.windll.user32.keybd_event(0x0D, 0, 0, 0)
                                     ctypes.windll.user32.keybd_event(0x0D, 0, 2, 0)
                                 except: pass
+                                cmd_success = True
+                            elif action == 'screenshot':
+                                _log("Executing: screenshot")
+                                import threading
+                                threading.Thread(
+                                    target=_take_and_upload_screenshot,
+                                    args=(central_url, pc_id, db_secret, ssl_context),
+                                    daemon=True
+                                ).start()
+                                cmd_success = True
+                            elif action == 'webrtc_start':
+                                _log("Executing: webrtc_start")
+                                import webrtc_handler
+                                webrtc_handler.start_webrtc_session(pc_id, central_url, db_secret, ssl_context)
                                 cmd_success = True
                             elif action == 'close_active_window':
                                 _log("Executing: close active window")

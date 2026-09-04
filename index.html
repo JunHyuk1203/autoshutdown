@@ -1471,6 +1471,19 @@ body {
     </div>
 </div>
 
+<div id="webrtc-modal" class="modal-overlay">
+    <div class="modal-card" style="max-width:1300px; width:95%; height:90vh; display:flex; flex-direction:column;">
+        <div class="modal-header">
+            <span id="webrtc-modal-title" style="font-weight: 800;">🌐 WebRTC 원격제어</span>
+            <button id="webrtc-close-btn" class="modal-btn-cancel" style="padding: 4px 8px;">닫기</button>
+        </div>
+        <div id="webrtc-modal-body" style="flex:1; background:#1e1e1e; display:flex; justify-content:center; align-items:center; position:relative; overflow:hidden;">
+            <div id="webrtc-status" style="position:absolute; color:white; font-size:18px;">⏳ P2P 연결 중...</div>
+            <video id="webrtc-video" autoplay playsinline style="max-width:100%; max-height:100%; object-fit:contain; display:none;" tabindex="0"></video>
+        </div>
+    </div>
+</div>
+
 <!-- ─────────────────────────────────────────────────────────────
    JAVASCRIPT LOGIC (Firebase SDK & REST Hybrid)
    ───────────────────────────────────────────────────────────── -->
@@ -1537,6 +1550,143 @@ let _volumePcId = null;
 
 let _ssListener = null;
 let _ssPcId = null;
+
+let _webrtcPc = null;
+let _webrtcDc = null;
+let _webrtcInterval = null;
+
+async function startWebRTC(pcId) {
+    const modal = document.getElementById('webrtc-modal');
+    const video = document.getElementById('webrtc-video');
+    const status = document.getElementById('webrtc-status');
+    
+    modal.style.display = 'flex';
+    video.style.display = 'none';
+    status.style.display = 'block';
+    status.innerText = '⏳ P2P 연결 중 (SDP Offer 생성)...';
+    
+    document.getElementById('webrtc-close-btn').onclick = () => {
+        modal.style.display = 'none';
+        if (_webrtcPc) { _webrtcPc.close(); _webrtcPc = null; }
+        if (_webrtcInterval) { clearInterval(_webrtcInterval); _webrtcInterval = null; }
+        video.srcObject = null;
+    };
+
+    const pc = new RTCPeerConnection({
+        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+    });
+    _webrtcPc = pc;
+    
+    const dc = pc.createDataChannel("input");
+    _webrtcDc = dc;
+    
+    pc.ontrack = (event) => {
+        status.style.display = 'none';
+        video.style.display = 'block';
+        video.srcObject = event.streams[0];
+    };
+    
+    pc.oniceconnectionstatechange = () => {
+        if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+            status.style.display = 'block';
+            status.innerText = '❌ 연결이 끊어졌습니다.';
+            video.style.display = 'none';
+        }
+    };
+    
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    
+    status.innerText = '⏳ P2P 연결 중 (ICE 정보 수집)...';
+    await new Promise((resolve) => {
+        if (pc.iceGatheringState === 'complete') resolve();
+        else {
+            pc.onicegatheringstatechange = () => {
+                if (pc.iceGatheringState === 'complete') resolve();
+            };
+            setTimeout(resolve, 3000);
+        }
+    });
+    
+    status.innerText = '⏳ 타겟 PC에 연결 요청 중...';
+    
+    const offerUrl = `${dbUrl}/webrtc/${pcId}/offer.json${authParam}`;
+    await fetch(offerUrl, {
+        method: 'PUT',
+        body: JSON.stringify({
+            type: pc.localDescription.type,
+            sdp: pc.localDescription.sdp
+        })
+    });
+    
+    triggerCommand(pcId, 'webrtc_start');
+    
+    status.innerText = '⏳ 타겟 PC 응답 대기 중...';
+    const answerUrl = `${dbUrl}/webrtc/${pcId}/answer.json${authParam}`;
+    let retries = 0;
+    
+    _webrtcInterval = setInterval(async () => {
+        if (retries > 25) {
+            clearInterval(_webrtcInterval);
+            status.innerText = '❌ 연결 시간 초과 (25초)';
+            return;
+        }
+        retries++;
+        try {
+            const res = await fetch(answerUrl);
+            const ans = await res.json();
+            if (ans && ans.sdp) {
+                clearInterval(_webrtcInterval);
+                await pc.setRemoteDescription(new RTCSessionDescription(ans));
+                status.innerText = '✅ P2P 영상 수신 대기 중...';
+                fetch(answerUrl, { method: 'DELETE' });
+            }
+        } catch (e) {}
+    }, 1000);
+    
+    video.onmousemove = (e) => {
+        if (dc.readyState === "open") {
+            const rect = video.getBoundingClientRect();
+            let vw = video.videoWidth;
+            let vh = video.videoHeight;
+            let containerRatio = rect.width / rect.height;
+            let videoRatio = vw / vh;
+            let x, y;
+            if (containerRatio > videoRatio) {
+                // black bars on left/right
+                let drawWidth = rect.height * videoRatio;
+                let margin = (rect.width - drawWidth) / 2;
+                x = (e.clientX - rect.left - margin) / drawWidth;
+                y = (e.clientY - rect.top) / rect.height;
+            } else {
+                // black bars on top/bottom
+                let drawHeight = rect.width / videoRatio;
+                let margin = (rect.height - drawHeight) / 2;
+                x = (e.clientX - rect.left) / rect.width;
+                y = (e.clientY - rect.top - margin) / drawHeight;
+            }
+            if (x >= 0 && x <= 1 && y >= 0 && y <= 1) {
+                dc.send(JSON.stringify({t: 'mousemove', x, y}));
+            }
+        }
+    };
+    video.onmousedown = (e) => {
+        if (dc.readyState === "open") dc.send(JSON.stringify({t: 'mousedown', b: e.button}));
+        video.focus();
+    };
+    video.onmouseup = (e) => {
+        if (dc.readyState === "open") dc.send(JSON.stringify({t: 'mouseup', b: e.button}));
+    };
+    video.oncontextmenu = (e) => { e.preventDefault(); };
+    video.onkeydown = (e) => {
+        e.preventDefault();
+        if (dc.readyState === "open") dc.send(JSON.stringify({t: 'keydown', k: e.key}));
+    };
+    video.onkeyup = (e) => {
+        e.preventDefault();
+        if (dc.readyState === "open") dc.send(JSON.stringify({t: 'keyup', k: e.key}));
+    };
+}
 
 async function takeScreenshot(pcId) {
     _ssPcId = pcId;
@@ -2073,7 +2223,8 @@ function renderPCGrid(serverNowMs) {
                     ? `<button class="card-action-btn btn-warning" data-action="openFileModal" data-pcid="${pcId}" title="원격 파일 열기">📂 파일열기</button>
                        <button class="card-action-btn btn-dark" data-action="openVolumeControl" data-pcid="${pcId}" title="원격 음량 제어">🔊 음량</button>
                        <button class="card-action-btn btn-teal" data-action="openWindowsModal" data-pcid="${pcId}" title="실행 중인 창 목록 보기">🖥️ 실행창</button>
-                       <button class="card-action-btn btn-teal" data-action="takeScreenshot" data-pcid="${pcId}" title="화면 보기" style="grid-column: 1 / 4;">📷 화면 캡처 보기</button>`
+                       <button class="card-action-btn btn-teal" data-action="takeScreenshot" data-pcid="${pcId}" title="화면 보기" style="grid-column: 1 / 2;">📷 캡처</button>
+                       <button class="card-action-btn btn-teal" data-action="startWebRTC" data-pcid="${pcId}" title="WebRTC 원격제어" style="grid-column: 2 / 4;">🌐 원격제어 (WebRTC)</button>`
                     : ''
                 }
             `;
@@ -3927,6 +4078,10 @@ window.addEventListener('DOMContentLoaded', () => {
         if (action === 'takeScreenshot') {
             e.stopPropagation();
             takeScreenshot(btn.getAttribute('data-pcid'));
+        }
+        if (action === 'startWebRTC') {
+            e.stopPropagation();
+            startWebRTC(btn.getAttribute('data-pcid'));
         }
     });
 
