@@ -1473,13 +1473,21 @@ body {
 
 <div id="webrtc-modal" class="modal-overlay">
     <div class="modal-card" style="max-width:1300px; width:95%; height:90vh; display:flex; flex-direction:column;">
-        <div class="modal-header">
-            <span id="webrtc-modal-title" style="font-weight: 800;">🌐 WebRTC 원격제어</span>
-            <button id="webrtc-close-btn" class="modal-btn-cancel" style="padding: 4px 8px;">닫기</button>
+        <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+                <span id="webrtc-modal-title" style="font-weight: 800;">🌐 원격 화면 제어</span>
+                <span id="webrtc-mode-badge" style="font-size:11px; padding:2px 8px; border-radius:12px; background:rgba(14,165,233,0.2); color:var(--accent-blue); font-weight:600;">WebRTC P2P</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px;">
+                <button id="webrtc-mode-p2p-btn" class="action-btn" style="padding:4px 10px; font-size:12px; background:var(--primary); color:white;">🌐 P2P (초고속)</button>
+                <button id="webrtc-mode-stream-btn" class="action-btn" style="padding:4px 10px; font-size:12px; background:rgba(255,255,255,0.08); color:var(--text-muted);">⚡ 스트리밍 (LTE/외부)</button>
+                <button id="webrtc-close-btn" class="modal-btn-cancel" style="padding:4px 10px; font-size:12px;">닫기</button>
+            </div>
         </div>
-        <div id="webrtc-modal-body" style="flex:1; background:#1e1e1e; display:flex; justify-content:center; align-items:center; position:relative; overflow:hidden;">
-            <div id="webrtc-status" style="position:absolute; color:white; font-size:18px;">⏳ P2P 연결 중...</div>
+        <div id="webrtc-modal-body" style="flex:1; background:#18181b; display:flex; justify-content:center; align-items:center; position:relative; overflow:hidden; touch-action:none;">
+            <div id="webrtc-status" style="position:absolute; color:white; font-size:14px; text-align:center; padding:14px 20px; background:rgba(0,0,0,0.82); border-radius:10px; z-index:10; max-width:90%; border:1px solid rgba(255,255,255,0.12); line-height:1.5;">⏳ P2P 연결 중...</div>
             <video id="webrtc-video" autoplay playsinline muted style="max-width:100%; max-height:100%; object-fit:contain; display:none;" tabindex="0"></video>
+            <img id="webrtc-stream-img" src="" alt="원격 화면 스트림" style="max-width:100%; max-height:100%; object-fit:contain; display:none; user-select:none; -webkit-user-drag:none; cursor:crosshair;" tabindex="0" />
         </div>
     </div>
 </div>
@@ -1555,35 +1563,221 @@ let _ssPcId = null;
 let _webrtcPc = null;
 let _webrtcDc = null;
 let _webrtcInterval = null;
+let _iceCheckTimeout = null;
+let _streamListener = null;
+let _streamPcId = null;
+let _activePcId = null;
+let _webrtcCurrentMode = 'p2p';
+
+function closeWebRTCModal() {
+    const modal = document.getElementById('webrtc-modal');
+    modal.style.display = 'none';
+    modal.classList.remove('show');
+    if (_webrtcPc) { _webrtcPc.close(); _webrtcPc = null; }
+    if (_webrtcInterval) { clearInterval(_webrtcInterval); _webrtcInterval = null; }
+    if (_iceCheckTimeout) { clearTimeout(_iceCheckTimeout); _iceCheckTimeout = null; }
+    const video = document.getElementById('webrtc-video');
+    if (video) video.srcObject = null;
+    const img = document.getElementById('webrtc-stream-img');
+    if (img) img.src = '';
+    
+    if (_streamListener && _streamPcId) {
+        firebase.database().ref('/screenshots/' + _streamPcId).off('value', _streamListener);
+        _streamListener = null;
+        writeCommandToDB(_streamPcId, 'stream_stop');
+    }
+}
+
+function sendRemoteInput(action, x, y, b, k) {
+    const payload = { t: action };
+    if (x !== undefined) payload.x = Math.max(0, Math.min(1, x));
+    if (y !== undefined) payload.y = Math.max(0, Math.min(1, y));
+    if (b !== undefined) payload.b = b;
+    if (k !== undefined) payload.k = k;
+    
+    if (_webrtcCurrentMode === 'p2p' && _webrtcDc && _webrtcDc.readyState === "open") {
+        _webrtcDc.send(JSON.stringify(payload));
+    } else if (_activePcId) {
+        writeCommandToDB(_activePcId, 'remote_input', payload);
+    }
+}
+
+function getNormalizedCoords(element, clientX, clientY) {
+    const rect = element.getBoundingClientRect();
+    let vw = element.videoWidth || element.naturalWidth || 1280;
+    let vh = element.videoHeight || element.naturalHeight || 720;
+    let containerRatio = rect.width / rect.height;
+    let mediaRatio = vw / vh;
+    let x, y;
+    if (containerRatio > mediaRatio) {
+        let drawWidth = rect.height * mediaRatio;
+        let margin = (rect.width - drawWidth) / 2;
+        x = (clientX - rect.left - margin) / drawWidth;
+        y = (clientY - rect.top) / rect.height;
+    } else {
+        let drawHeight = rect.width / mediaRatio;
+        let margin = (rect.height - drawHeight) / 2;
+        x = (clientX - rect.left) / rect.width;
+        y = (clientY - rect.top - margin) / drawHeight;
+    }
+    return { x, y };
+}
+
+function bindMediaElementEvents(el) {
+    if (el._hasBoundEvents) return;
+    el._hasBoundEvents = true;
+
+    el.onmousemove = (e) => {
+        const { x, y } = getNormalizedCoords(el, e.clientX, e.clientY);
+        if (x >= 0 && x <= 1 && y >= 0 && y <= 1) {
+            sendRemoteInput('mousemove', x, y);
+        }
+    };
+    el.onmousedown = (e) => {
+        const { x, y } = getNormalizedCoords(el, e.clientX, e.clientY);
+        if (x >= 0 && x <= 1 && y >= 0 && y <= 1) {
+            sendRemoteInput('mousemove', x, y);
+            sendRemoteInput('mousedown', x, y, e.button);
+        }
+        el.focus();
+    };
+    el.onmouseup = (e) => {
+        const { x, y } = getNormalizedCoords(el, e.clientX, e.clientY);
+        sendRemoteInput('mouseup', x, y, e.button);
+    };
+    el.oncontextmenu = (e) => { e.preventDefault(); };
+    el.onkeydown = (e) => {
+        e.preventDefault();
+        sendRemoteInput('keydown', undefined, undefined, undefined, e.key);
+    };
+    el.onkeyup = (e) => {
+        e.preventDefault();
+        sendRemoteInput('keyup', undefined, undefined, undefined, e.key);
+    };
+
+    function handleTouch(e, type) {
+        if (!e.touches || (!e.touches.length && type !== 'mouseup')) return;
+        const touch = e.touches[0] || (e.changedTouches ? e.changedTouches[0] : null);
+        if (!touch) return;
+        const { x, y } = getNormalizedCoords(el, touch.clientX, touch.clientY);
+        if (x >= 0 && x <= 1 && y >= 0 && y <= 1) {
+            if (type === 'mousedown') {
+                sendRemoteInput('mousemove', x, y);
+                sendRemoteInput('mousedown', x, y, 0);
+            } else if (type === 'mousemove') {
+                sendRemoteInput('mousemove', x, y);
+            } else if (type === 'mouseup') {
+                sendRemoteInput('mouseup', x, y, 0);
+            }
+        }
+    }
+    el.ontouchstart = (e) => { e.preventDefault(); handleTouch(e, 'mousedown'); };
+    el.ontouchmove = (e) => { e.preventDefault(); handleTouch(e, 'mousemove'); };
+    el.ontouchend = (e) => { e.preventDefault(); handleTouch(e, 'mouseup'); };
+}
+
+function switchToStreamMode(pcId, noticeText) {
+    _webrtcCurrentMode = 'stream';
+    const video = document.getElementById('webrtc-video');
+    const img = document.getElementById('webrtc-stream-img');
+    const status = document.getElementById('webrtc-status');
+    const badge = document.getElementById('webrtc-mode-badge');
+    const p2pBtn = document.getElementById('webrtc-mode-p2p-btn');
+    const streamBtn = document.getElementById('webrtc-mode-stream-btn');
+    
+    if (badge) {
+        badge.innerText = '⚡ 클라우드 스트리밍';
+        badge.style.background = 'rgba(234,179,8,0.2)';
+        badge.style.color = '#eab308';
+    }
+    if (p2pBtn) { p2pBtn.style.background = 'rgba(255,255,255,0.08)'; p2pBtn.style.color = 'var(--text-muted)'; }
+    if (streamBtn) { streamBtn.style.background = 'var(--primary)'; streamBtn.style.color = 'white'; }
+    
+    if (video) video.style.display = 'none';
+    if (status) {
+        status.style.display = 'block';
+        status.innerText = noticeText || '⚡ 고속 클라우드 스트리밍 연결 중...';
+    }
+    
+    // Close WebRTC interval & timeout
+    if (_webrtcInterval) { clearInterval(_webrtcInterval); _webrtcInterval = null; }
+    if (_iceCheckTimeout) { clearTimeout(_iceCheckTimeout); _iceCheckTimeout = null; }
+    
+    bindMediaElementEvents(img);
+    
+    // Request stream start on PC
+    writeCommandToDB(pcId, 'stream_start');
+    
+    // Listen to /screenshots/{pcId}
+    if (_streamListener && _streamPcId) {
+        firebase.database().ref('/screenshots/' + _streamPcId).off('value', _streamListener);
+    }
+    _streamPcId = pcId;
+    _streamListener = firebase.database().ref('/screenshots/' + pcId).on('value', snapshot => {
+        const val = snapshot.val();
+        if (!val || !val.data) return;
+        img.src = 'data:image/jpeg;base64,' + val.data;
+        img.style.display = 'block';
+        if (status) status.style.display = 'none';
+    });
+}
+
+function switchToP2PMode(pcId) {
+    if (_streamListener && _streamPcId) {
+        firebase.database().ref('/screenshots/' + _streamPcId).off('value', _streamListener);
+        _streamListener = null;
+        writeCommandToDB(_streamPcId, 'stream_stop');
+    }
+    const img = document.getElementById('webrtc-stream-img');
+    if (img) img.style.display = 'none';
+    startWebRTC(pcId);
+}
 
 async function startWebRTC(pcId) {
+    _activePcId = pcId;
+    _webrtcCurrentMode = 'p2p';
     const dbUrl = config.databaseURL;
     const authParam = config.authKey ? `?auth=${config.authKey}` : '';
 
     const modal = document.getElementById('webrtc-modal');
     const video = document.getElementById('webrtc-video');
+    const img = document.getElementById('webrtc-stream-img');
     const status = document.getElementById('webrtc-status');
+    const badge = document.getElementById('webrtc-mode-badge');
+    const p2pBtn = document.getElementById('webrtc-mode-p2p-btn');
+    const streamBtn = document.getElementById('webrtc-mode-stream-btn');
+    
+    if (badge) {
+        badge.innerText = 'WebRTC P2P';
+        badge.style.background = 'rgba(14,165,233,0.2)';
+        badge.style.color = 'var(--accent-blue)';
+    }
+    if (p2pBtn) { p2pBtn.style.background = 'var(--primary)'; p2pBtn.style.color = 'white'; }
+    if (streamBtn) { streamBtn.style.background = 'rgba(255,255,255,0.08)'; streamBtn.style.color = 'var(--text-muted)'; }
     
     modal.style.display = 'flex';
     modal.classList.add('show');
     video.style.display = 'none';
+    if (img) img.style.display = 'none';
     status.style.display = 'block';
     status.innerText = '⏳ P2P 연결 중 (SDP Offer 생성)...';
     
-    document.getElementById('webrtc-close-btn').onclick = () => {
-        modal.style.display = 'none';
-        modal.classList.remove('show');
-        if (_webrtcPc) { _webrtcPc.close(); _webrtcPc = null; }
-        if (_webrtcInterval) { clearInterval(_webrtcInterval); _webrtcInterval = null; }
-        video.srcObject = null;
-    };
+    document.getElementById('webrtc-close-btn').onclick = closeWebRTCModal;
+    if (p2pBtn) p2pBtn.onclick = () => switchToP2PMode(pcId);
+    if (streamBtn) streamBtn.onclick = () => switchToStreamMode(pcId, '⚡ 스트리밍 모드로 전환 중...');
+
+    // Close any prior connections
+    if (_webrtcPc) { _webrtcPc.close(); _webrtcPc = null; }
+    if (_webrtcInterval) { clearInterval(_webrtcInterval); _webrtcInterval = null; }
+    if (_iceCheckTimeout) { clearTimeout(_iceCheckTimeout); _iceCheckTimeout = null; }
 
     const pc = new RTCPeerConnection({
         iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun1.l.google.com:19302' },
             { urls: 'stun:stun2.l.google.com:19302' },
-            { urls: 'stun:stun.cloudflare.com:3478' }
+            { urls: 'stun:stun.cloudflare.com:3478' },
+            { urls: 'stun:stun.nextcloud.com:443' }
         ]
     });
     _webrtcPc = pc;
@@ -1602,20 +1796,27 @@ async function startWebRTC(pcId) {
     };
     
     const showVideo = () => {
-        status.style.display = 'none';
-        video.style.display = 'block';
+        if (_webrtcCurrentMode === 'p2p') {
+            status.style.display = 'none';
+            video.style.display = 'block';
+            if (img) img.style.display = 'none';
+        }
     };
     video.onloadeddata = showVideo;
     video.onplaying = showVideo;
     
+    bindMediaElementEvents(video);
+    
     pc.oniceconnectionstatechange = () => {
         console.log("ICE state:", pc.iceConnectionState);
         if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+            if (_iceCheckTimeout) { clearTimeout(_iceCheckTimeout); _iceCheckTimeout = null; }
             status.innerText = '✅ P2P 연결 성공! 화면 수신 중...';
         } else if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
-            status.style.display = 'block';
-            status.innerText = '❌ 연결이 끊어졌습니다. (P2P 연결 실패)';
-            video.style.display = 'none';
+            if (_webrtcCurrentMode === 'p2p') {
+                console.warn("P2P ICE failed, auto switching to cloud stream fallback...");
+                switchToStreamMode(pcId, '⚠️ 통신사 LTE/방화벽으로 P2P가 차단되었습니다 ➔ 고속 스트리밍으로 전환됨');
+            }
         }
     };
     
@@ -1643,10 +1844,13 @@ async function startWebRTC(pcId) {
     await new Promise((resolve) => {
         if (pc.iceGatheringState === 'complete') resolve();
         else {
+            pc.onicecandidate = (e) => {
+                if (!e.candidate) resolve();
+            };
             pc.onicegatheringstatechange = () => {
                 if (pc.iceGatheringState === 'complete') resolve();
             };
-            setTimeout(resolve, 3000);
+            setTimeout(resolve, 3500);
         }
     });
     
@@ -1664,9 +1868,12 @@ async function startWebRTC(pcId) {
     let retries = 0;
     
     _webrtcInterval = setInterval(async () => {
-        if (retries > 25) {
+        if (retries > 10) {
             clearInterval(_webrtcInterval);
-            status.innerText = '❌ 연결 시간 초과 (25초)';
+            _webrtcInterval = null;
+            if (_webrtcCurrentMode === 'p2p') {
+                switchToStreamMode(pcId, '⚠️ P2P 응답 시간 초과 ➔ 고속 스트리밍으로 전환됨');
+            }
             return;
         }
         retries++;
@@ -1675,93 +1882,22 @@ async function startWebRTC(pcId) {
             const ans = await res.json();
             if (ans && ans.sdp) {
                 clearInterval(_webrtcInterval);
+                _webrtcInterval = null;
                 await pc.setRemoteDescription(new RTCSessionDescription(ans));
                 status.innerText = '✅ P2P 영상 수신 대기 중...';
                 // webrtc_answer 필드 삭제 (NULL로 설정)
                 fetch(answerUrl, { method: 'PUT', body: 'null' });
+                
+                // If P2P does not connect within 6 seconds from answer, auto fallback to stream!
+                _iceCheckTimeout = setTimeout(() => {
+                    if (_webrtcCurrentMode === 'p2p' && pc.iceConnectionState !== 'connected' && pc.iceConnectionState !== 'completed') {
+                        console.warn("P2P checking timeout (>6s), auto switching to stream mode...");
+                        switchToStreamMode(pcId, '⚠️ 통신사 LTE/방화벽 감지 ➔ 고속 스트리밍으로 자동 전환되었습니다.');
+                    }
+                }, 6000);
             }
         } catch (e) {}
     }, 1000);
-    
-    video.onmousemove = (e) => {
-        if (dc.readyState === "open") {
-            const rect = video.getBoundingClientRect();
-            let vw = video.videoWidth;
-            let vh = video.videoHeight;
-            let containerRatio = rect.width / rect.height;
-            let videoRatio = vw / vh;
-            let x, y;
-            if (containerRatio > videoRatio) {
-                // black bars on left/right
-                let drawWidth = rect.height * videoRatio;
-                let margin = (rect.width - drawWidth) / 2;
-                x = (e.clientX - rect.left - margin) / drawWidth;
-                y = (e.clientY - rect.top) / rect.height;
-            } else {
-                // black bars on top/bottom
-                let drawHeight = rect.width / videoRatio;
-                let margin = (rect.height - drawHeight) / 2;
-                x = (e.clientX - rect.left) / rect.width;
-                y = (e.clientY - rect.top - margin) / drawHeight;
-            }
-            if (x >= 0 && x <= 1 && y >= 0 && y <= 1) {
-                dc.send(JSON.stringify({t: 'mousemove', x, y}));
-            }
-        }
-    };
-    video.onmousedown = (e) => {
-        if (dc.readyState === "open") dc.send(JSON.stringify({t: 'mousedown', b: e.button}));
-        video.focus();
-    };
-    video.onmouseup = (e) => {
-        if (dc.readyState === "open") dc.send(JSON.stringify({t: 'mouseup', b: e.button}));
-    };
-    video.oncontextmenu = (e) => { e.preventDefault(); };
-    video.onkeydown = (e) => {
-        e.preventDefault();
-        if (dc.readyState === "open") dc.send(JSON.stringify({t: 'keydown', k: e.key}));
-    };
-    video.onkeyup = (e) => {
-        e.preventDefault();
-        if (dc.readyState === "open") dc.send(JSON.stringify({t: 'keyup', k: e.key}));
-    };
-    
-    // 모바일 터치 이벤트 -> 마우스 이벤트 변환 지원 (iOS/Android)
-    function handleTouch(e, type) {
-        if (!e.touches || (!e.touches.length && type !== 'mouseup')) return;
-        const touch = e.touches[0] || (e.changedTouches ? e.changedTouches[0] : null);
-        if (!touch) return;
-        const rect = video.getBoundingClientRect();
-        let vw = video.videoWidth || 1280;
-        let vh = video.videoHeight || 720;
-        let containerRatio = rect.width / rect.height;
-        let videoRatio = vw / vh;
-        let x, y;
-        if (containerRatio > videoRatio) {
-            let drawWidth = rect.height * videoRatio;
-            let margin = (rect.width - drawWidth) / 2;
-            x = (touch.clientX - rect.left - margin) / drawWidth;
-            y = (touch.clientY - rect.top) / rect.height;
-        } else {
-            let drawHeight = rect.width / videoRatio;
-            let margin = (rect.height - drawHeight) / 2;
-            x = (touch.clientX - rect.left) / rect.width;
-            y = (touch.clientY - rect.top - margin) / drawHeight;
-        }
-        if (x >= 0 && x <= 1 && y >= 0 && y <= 1 && dc && dc.readyState === "open") {
-            if (type === 'mousemove') {
-                dc.send(JSON.stringify({t: 'mousemove', x, y}));
-            } else if (type === 'mousedown') {
-                dc.send(JSON.stringify({t: 'mousemove', x, y}));
-                dc.send(JSON.stringify({t: 'mousedown', b: 0}));
-            } else if (type === 'mouseup') {
-                dc.send(JSON.stringify({t: 'mouseup', b: 0}));
-            }
-        }
-    }
-    video.ontouchstart = (e) => { e.preventDefault(); handleTouch(e, 'mousedown'); };
-    video.ontouchmove = (e) => { e.preventDefault(); handleTouch(e, 'mousemove'); };
-    video.ontouchend = (e) => { e.preventDefault(); handleTouch(e, 'mouseup'); };
 }
 
 async function takeScreenshot(pcId) {

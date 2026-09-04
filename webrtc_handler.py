@@ -44,8 +44,12 @@ class ScreenTrack(VideoStreamTrack):
                 pass
         
         if img is None:
-            from PIL import Image
-            img = Image.new("RGB", (1280, 720), color=(30, 30, 30))
+            from PIL import Image, ImageDraw
+            img = Image.new("RGB", (1280, 720), color=(25, 25, 30))
+            try:
+                draw = ImageDraw.Draw(img)
+                draw.text((40, 340), "화면 잠금 또는 절전 상태입니다. (마우스/터치 시 화면이 켜집니다)", fill=(200, 200, 220))
+            except: pass
         
         # Resize to max 1280, ensuring EVEN width and height for H264 (libx264) compatibility
         from PIL import Image
@@ -116,7 +120,8 @@ class WebRTCServer:
                 "stun:stun.l.google.com:19302",
                 "stun:stun1.l.google.com:19302",
                 "stun:stun2.l.google.com:19302",
-                "stun:stun.cloudflare.com:3478"
+                "stun:stun.cloudflare.com:3478",
+                "stun:stun.nextcloud.com:443"
             ])
         ])
         pc = RTCPeerConnection(configuration=config)
@@ -147,7 +152,7 @@ class WebRTCServer:
             def on_message(message):
                 try:
                     cmd = json.loads(message)
-                    self._handle_input(cmd)
+                    handle_input_cmd(cmd)
                 except Exception:
                     pass
 
@@ -164,7 +169,24 @@ class WebRTCServer:
             await pc.close()
             return
             
-        offer = RTCSessionDescription(sdp=offer_dict["sdp"], type=offer_dict["type"])
+        # Sanitize SDP offer: remove mDNS .local host candidates to prevent DNS stall / hijacking
+        raw_sdp = offer_dict["sdp"]
+        cleaned_sdp_lines = [
+            line for line in raw_sdp.splitlines()
+            if not (line.startswith("a=candidate:") and ".local" in line)
+        ]
+        sanitized_sdp = "\r\n".join(cleaned_sdp_lines) + "\r\n"
+
+        try:
+            import os, sys
+            from datetime import datetime
+            log_path = os.path.join(os.path.dirname(sys.executable), 'error.log')
+            with open(log_path, 'a', encoding='utf-8') as f:
+                cands = [l for l in sanitized_sdp.splitlines() if 'candidate' in l]
+                f.write(f"[{datetime.now()}] WebRTC Remote candidates ({len(cands)}): {cands}\n")
+        except: pass
+
+        offer = RTCSessionDescription(sdp=sanitized_sdp, type=offer_dict["type"])
         await pc.setRemoteDescription(offer)
         
         # Add video track
@@ -189,6 +211,15 @@ class WebRTCServer:
         answer = await pc.createAnswer()
         await pc.setLocalDescription(answer)
         
+        try:
+            import os, sys
+            from datetime import datetime
+            log_path = os.path.join(os.path.dirname(sys.executable), 'error.log')
+            with open(log_path, 'a', encoding='utf-8') as f:
+                cands = [l for l in pc.localDescription.sdp.splitlines() if 'candidate' in l]
+                f.write(f"[{datetime.now()}] WebRTC Local candidates ({len(cands)}): {cands}\n")
+        except: pass
+
         # Send answer via PATCH on pcs/{pc_id} (no db_secret needed for this path)
         answer_payload = json.dumps({
             "webrtc_answer": {
@@ -213,60 +244,85 @@ class WebRTCServer:
             await asyncio.sleep(1)
             
         await pc.close()
-        
-    def _handle_input(self, cmd):
+
+
+# Global input controllers and handler (used by both WebRTC datachannel and Cloud Stream remote_input)
+_global_mouse = None
+_global_keyboard = None
+
+def _get_input_controllers():
+    global _global_mouse, _global_keyboard
+    if _global_mouse is None:
         try:
-            action = cmd.get("t")
-            if action == "mousemove":
+            _global_mouse = pynput.mouse.Controller()
+            _global_keyboard = pynput.keyboard.Controller()
+        except: pass
+    return _global_mouse, _global_keyboard
+
+def _press_key_impl(keyboard, key_str, press=True):
+    if not keyboard or not key_str: return
+    key_map = {
+        "Enter": pynput.keyboard.Key.enter,
+        "Backspace": pynput.keyboard.Key.backspace,
+        "Shift": pynput.keyboard.Key.shift,
+        "Control": pynput.keyboard.Key.ctrl,
+        "Alt": pynput.keyboard.Key.alt,
+        "Escape": pynput.keyboard.Key.esc,
+        "Tab": pynput.keyboard.Key.tab,
+        "ArrowUp": pynput.keyboard.Key.up,
+        "ArrowDown": pynput.keyboard.Key.down,
+        "ArrowLeft": pynput.keyboard.Key.left,
+        "ArrowRight": pynput.keyboard.Key.right,
+        "Meta": pynput.keyboard.Key.cmd,
+        "Delete": pynput.keyboard.Key.delete,
+    }
+    k = key_map.get(key_str)
+    if not k:
+        if len(key_str) == 1:
+            k = pynput.keyboard.KeyCode.from_char(key_str)
+        else:
+            return
+    try:
+        if press:
+            keyboard.press(k)
+        else:
+            keyboard.release(k)
+    except Exception:
+        pass
+
+def handle_input_cmd(cmd):
+    mouse, keyboard = _get_input_controllers()
+    if not mouse or not cmd or not isinstance(cmd, dict):
+        return
+    try:
+        action = cmd.get("t")
+        if action == "mousemove":
+            try:
                 monitors = mss.mss().monitors
                 mon = monitors[1] if len(monitors) > 1 else monitors[0]
-                abs_x = int(mon["left"] + cmd["x"] * mon["width"])
-                abs_y = int(mon["top"] + cmd["y"] * mon["height"])
-                self.mouse.position = (abs_x, abs_y)
-            elif action == "mousedown":
-                btn = cmd.get("b", 0)
-                m_btn = pynput.mouse.Button.left if btn == 0 else pynput.mouse.Button.right
-                self.mouse.press(m_btn)
-            elif action == "mouseup":
-                btn = cmd.get("b", 0)
-                m_btn = pynput.mouse.Button.left if btn == 0 else pynput.mouse.Button.right
-                self.mouse.release(m_btn)
-            elif action == "keydown":
-                self._press_key(cmd.get("k"), press=True)
-            elif action == "keyup":
-                self._press_key(cmd.get("k"), press=False)
-        except Exception:
-            pass
-            
-    def _press_key(self, key_str, press=True):
-        key_map = {
-            "Enter": pynput.keyboard.Key.enter,
-            "Backspace": pynput.keyboard.Key.backspace,
-            "Shift": pynput.keyboard.Key.shift,
-            "Control": pynput.keyboard.Key.ctrl,
-            "Alt": pynput.keyboard.Key.alt,
-            "Escape": pynput.keyboard.Key.esc,
-            "Tab": pynput.keyboard.Key.tab,
-            "ArrowUp": pynput.keyboard.Key.up,
-            "ArrowDown": pynput.keyboard.Key.down,
-            "ArrowLeft": pynput.keyboard.Key.left,
-            "ArrowRight": pynput.keyboard.Key.right,
-            "Meta": pynput.keyboard.Key.cmd,
-            "Delete": pynput.keyboard.Key.delete,
-        }
-        k = key_map.get(key_str)
-        if not k:
-            if len(key_str) == 1:
-                k = pynput.keyboard.KeyCode.from_char(key_str)
-            else:
-                return
-        try:
-            if press:
-                self.keyboard.press(k)
-            else:
-                self.keyboard.release(k)
-        except Exception:
-            pass
+            except:
+                mon = {"left": 0, "top": 0, "width": 1920, "height": 1080}
+            abs_x = int(mon["left"] + cmd["x"] * mon["width"])
+            abs_y = int(mon["top"] + cmd["y"] * mon["height"])
+            mouse.position = (abs_x, abs_y)
+        elif action == "mousedown":
+            btn = cmd.get("b", 0)
+            m_btn = pynput.mouse.Button.left if btn == 0 else pynput.mouse.Button.right
+            mouse.press(m_btn)
+        elif action == "mouseup":
+            btn = cmd.get("b", 0)
+            m_btn = pynput.mouse.Button.left if btn == 0 else pynput.mouse.Button.right
+            mouse.release(m_btn)
+        elif action == "wheel":
+            dx = cmd.get("dx", 0)
+            dy = cmd.get("dy", 0)
+            mouse.scroll(dx, dy)
+        elif action == "keydown":
+            _press_key_impl(keyboard, cmd.get("k"), press=True)
+        elif action == "keyup":
+            _press_key_impl(keyboard, cmd.get("k"), press=False)
+    except Exception:
+        pass
 
 
 def start_webrtc_session(pc_id, central_url, db_secret, ssl_context, offer_dict=None):
@@ -292,3 +348,4 @@ def start_webrtc_session(pc_id, central_url, db_secret, ssl_context, offer_dict=
         
     t = threading.Thread(target=_run_loop, daemon=True)
     t.start()
+

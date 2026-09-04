@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<body>
+<div id="res">EMPTY</div>
+<script>
+async function go() {
+    try {
+        const pc = new RTCPeerConnection({
+            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+        });
+        pc.createDataChannel('test');
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        
+        await new Promise(resolve => {
+            if (pc.iceGatheringState === 'complete') resolve();
+            else {
+                pc.onicegatheringstatechange = () => {
+                    if (pc.iceGatheringState === 'complete') resolve();
+                };
+                setTimeout(resolve, 2000);
+            }
+        });
+        
+        document.getElementById('res').innerText = pc.localDescription.sdp;
+    } catch(e) {
+        document.getElementById('res').innerText = 'ERROR: ' + e;
+    }
+}
+go();
+</script>
+</body>
+</html>

@@ -368,7 +368,7 @@ def run_standalone_autologin_gui():
 
     root.mainloop()
 
-CURRENT_VERSION = "1.1.191"
+CURRENT_VERSION = "1.1.192"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -657,6 +657,33 @@ def _take_and_upload_screenshot(central_url, pc_id, db_secret, ssl_context):
                 ef.write(f"[{datetime.now()}] screenshot FAILED: {e}\n")
         except:
             pass
+
+_stream_active = False
+_stream_thread = None
+
+def _start_screen_streaming(central_url, pc_id, db_secret, ssl_context):
+    global _stream_active, _stream_thread
+    _stream_active = True
+    
+    def _stream_loop():
+        global _stream_active
+        start_t = time.time()
+        # Stream up to 5 minutes per session or until stopped
+        while _stream_active and (time.time() - start_t < 300):
+            try:
+                _take_and_upload_screenshot(central_url, pc_id, db_secret, ssl_context)
+            except Exception:
+                pass
+            time.sleep(0.3)  # ~3.3 FPS
+        _stream_active = False
+        
+    if _stream_thread is None or not _stream_thread.is_alive():
+        _stream_thread = threading.Thread(target=_stream_loop, daemon=True)
+        _stream_thread.start()
+
+def _stop_screen_streaming():
+    global _stream_active
+    _stream_active = False
 
 class AutoShutdownAppV2:
     def __init__(self, root):
@@ -1415,6 +1442,20 @@ class AutoShutdownAppV2:
                             cmd_success = True
                             if app_instance:
                                 app_instance.root.after(0, lambda: app_instance.add_system_alert("🌐 WebRTC P2P 연결 요청됨"))
+                        elif action == 'stream_start':
+                            _start_screen_streaming(central_url, pc_id, db_secret, ssl_context)
+                            cmd_success = True
+                            if app_instance:
+                                app_instance.root.after(0, lambda: app_instance.add_system_alert("⚡ 실시간 화면 스트리밍 시작됨"))
+                        elif action == 'stream_stop':
+                            _stop_screen_streaming()
+                            cmd_success = True
+                        elif action == 'remote_input' and isinstance(message, dict):
+                            try:
+                                import webrtc_handler
+                                webrtc_handler.handle_input_cmd(message)
+                            except: pass
+                            cmd_success = True
                         elif action == 'close_active_window':
                             try:
                                 hwnd = ctypes.windll.user32.GetForegroundWindow()
@@ -3193,6 +3234,20 @@ class HeadlessShutdownApp:
                                 import webrtc_handler
                                 offer_dict = message if isinstance(message, dict) else None
                                 webrtc_handler.start_webrtc_session(pc_id, central_url, db_secret, ssl_context, offer_dict=offer_dict)
+                                cmd_success = True
+                            elif action == 'stream_start':
+                                _log("Executing: stream_start")
+                                _start_screen_streaming(central_url, pc_id, db_secret, ssl_context)
+                                cmd_success = True
+                            elif action == 'stream_stop':
+                                _log("Executing: stream_stop")
+                                _stop_screen_streaming()
+                                cmd_success = True
+                            elif action == 'remote_input' and isinstance(message, dict):
+                                try:
+                                    import webrtc_handler
+                                    webrtc_handler.handle_input_cmd(message)
+                                except: pass
                                 cmd_success = True
                             elif action == 'close_active_window':
                                 _log("Executing: close active window")
