@@ -368,7 +368,7 @@ def run_standalone_autologin_gui():
 
     root.mainloop()
 
-CURRENT_VERSION = "1.1.179"
+CURRENT_VERSION = "1.1.180"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -416,6 +416,8 @@ def get_idle_time():
 def is_media_playing():
     if not HAS_PYCAW: return False
     try:
+        import comtypes
+        comtypes.CoInitialize()
         sessions = AudioUtilities.GetAllSessions()
         for session in sessions:
             if session.State == 1: return True
@@ -956,6 +958,8 @@ class AutoShutdownAppV2:
                     current_vol = 50
                     if PYCAW_AVAILABLE:
                         try:
+                            import comtypes
+                            comtypes.CoInitialize()
                             _devs = AudioUtilities.GetSpeakers()
                             _vol_intf = _devs.EndpointVolume
                             current_vol = int(_vol_intf.GetMasterVolumeLevelScalar() * 100)
@@ -1353,6 +1357,8 @@ class AutoShutdownAppV2:
                             if PYCAW_AVAILABLE:
                                 try:
                                     level = float(message.get('level', 0.5))
+                                    import comtypes
+                                    comtypes.CoInitialize()
                                     devices = AudioUtilities.GetSpeakers()
                                     volume = devices.EndpointVolume
                                     volume.SetMasterVolumeLevelScalar(level, None)
@@ -2951,6 +2957,8 @@ class HeadlessShutdownApp:
                     current_vol = 50
                     if PYCAW_AVAILABLE:
                         try:
+                            import comtypes
+                            comtypes.CoInitialize()
                             _devs = AudioUtilities.GetSpeakers()
                             _vol_intf = _devs.EndpointVolume
                             current_vol = int(_vol_intf.GetMasterVolumeLevelScalar() * 100)
@@ -3139,6 +3147,8 @@ class HeadlessShutdownApp:
                                 if PYCAW_AVAILABLE:
                                     try:
                                         level = float(message.get('level', 0.5))
+                                        import comtypes
+                                        comtypes.CoInitialize()
                                         devices = AudioUtilities.GetSpeakers()
                                         volume = devices.EndpointVolume
                                         volume.SetMasterVolumeLevelScalar(level, None)
