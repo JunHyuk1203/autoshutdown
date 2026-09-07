@@ -368,7 +368,7 @@ def run_standalone_autologin_gui():
 
     root.mainloop()
 
-CURRENT_VERSION = "1.1.193"
+CURRENT_VERSION = "1.1.194"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -597,10 +597,9 @@ def _sync_windows_time():
     import threading
     threading.Thread(target=_do_sync, daemon=True).start()
 
-def _take_and_upload_screenshot(central_url, pc_id, db_secret, ssl_context, sct=None, monitor=None):
+def _take_and_upload_screenshot(central_url, pc_id, db_secret, ssl_context, sct=None, monitor=None, session=None):
     import base64, io, time
     try:
-        img_bytes = None
         w, h = 0, 0
         try:
             if sct is None:
@@ -623,43 +622,37 @@ def _take_and_upload_screenshot(central_url, pc_id, db_secret, ssl_context, sct=
                 w, h = 800, 600
                 img = Image.new("RGB", (w, h), color=(40, 40, 40))
                 draw = ImageDraw.Draw(img)
-                err_txt = f"Screen Capture Failed\n(Screen locked or no desktop access)\n\nmss: {mss_err}\npil: {grab_err}"
-                draw.text((40, 280), err_txt, fill=(255, 100, 100))
-        # 스트리밍 최적화: 960px로 축소해 업로드 크기 최소화
-        max_w = 960
+                draw.text((40, 280), f"Screen Capture Failed\nmss:{mss_err}", fill=(255, 100, 100))
+
+        # 극한 최소화: 640px, quality=15 → 프레임당 ~8~15KB
+        max_w = 640
         if img.width > max_w:
             ratio = max_w / img.width
             from PIL import Image
-            img = img.resize((max_w, int(img.height * ratio)), Image.BILINEAR)  # BILINEAR: 속도 우선
+            img = img.resize((max_w, int(img.height * ratio)), Image.NEAREST)  # NEAREST: 가장 빠름
 
         buf = io.BytesIO()
-        img.save(buf, format="JPEG", quality=30, optimize=False)  # quality 낮춰 업로드 속도↑
-        img_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
+        img.save(buf, format="JPEG", quality=15, optimize=False, progressive=False)
+        img_b64 = base64.b64encode(buf.getvalue()).decode('ascii')
 
-        payload = json.dumps({
-            "data": img_b64,
-            "ts": time.time(),
-            "w": w,
-            "h": h
-        }, ensure_ascii=False).encode('utf-8')
+        payload_str = f'{{"data":"{img_b64}","ts":{time.time():.3f},"w":{w},"h":{h}}}'
+        payload_bytes = payload_str.encode('utf-8')
 
         ss_url = f"{central_url.rstrip('/')}/screenshots/{pc_id}.json"
         if db_secret:
             ss_url += f"?auth={db_secret}"
 
-        req = urllib.request.Request(
-            ss_url, data=payload, method="PUT",
-            headers={'Content-Type': 'application/json'}
-        )
-        with urllib.request.urlopen(req, timeout=5, context=ssl_context) as _:  # timeout 15→5
-            pass
-    except Exception as e:
-        try:
-            application_path = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
-            with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
-                ef.write(f"[{datetime.now()}] screenshot FAILED: {e}\n")
-        except:
-            pass
+        if session is not None:
+            # requests.Session: keep-alive TCP 재사용 (TLS 핸드셰이크 생략)
+            session.put(ss_url, data=payload_bytes,
+                        headers={'Content-Type': 'application/json'}, timeout=3)
+        else:
+            req = urllib.request.Request(ss_url, data=payload_bytes, method="PUT",
+                                         headers={'Content-Type': 'application/json'})
+            with urllib.request.urlopen(req, timeout=3, context=ssl_context) as _:
+                pass
+    except Exception:
+        pass
 
 _stream_active = False
 _stream_thread = None
@@ -667,32 +660,118 @@ _stream_thread = None
 def _start_screen_streaming(central_url, pc_id, db_secret, ssl_context):
     global _stream_active, _stream_thread
     _stream_active = True
-    
+
     def _stream_loop():
         global _stream_active
         import mss as _mss
-        start_t = time.time()
-        # mss 인스턴스 한 번만 생성 (재사용으로 오버헤드 제거)
+        import queue as _queue
+        from PIL import Image
+        import base64, io
+
+        # requests.Session으로 HTTP keep-alive 연결 재사용 (TLS 핸드셰이크 생략)
+        try:
+            import requests as _requests
+            import urllib3
+            urllib3.disable_warnings()
+            session = _requests.Session()
+            session.verify = False
+            adapter = _requests.adapters.HTTPAdapter(
+                pool_connections=1, pool_maxsize=1, max_retries=0
+            )
+            session.mount('https://', adapter)
+            session.mount('http://', adapter)
+        except ImportError:
+            session = None
+
+        # mss 인스턴스 한 번만 생성
         try:
             sct = _mss.mss()
             monitor = sct.monitors[1] if len(sct.monitors) > 1 else sct.monitors[0]
         except:
             sct = None
             monitor = None
-        # 세션당 최대 30분
+
+        ss_url = f"{central_url.rstrip('/')}/screenshots/{pc_id}.json"
+        if db_secret:
+            ss_url += f"?auth={db_secret}"
+
+        # 업로드 큐: 캡처/인코딩과 업로드를 별도 스레드로 분리 (파이프라인)
+        upload_q = _queue.Queue(maxsize=2)
+
+        def _upload_worker():
+            while True:
+                try:
+                    item = upload_q.get(timeout=1)
+                    if item is None:
+                        break
+                    payload_bytes = item
+                    try:
+                        if session is not None:
+                            session.put(ss_url, data=payload_bytes,
+                                        headers={'Content-Type': 'application/json'}, timeout=3)
+                        else:
+                            req = urllib.request.Request(ss_url, data=payload_bytes, method="PUT",
+                                                         headers={'Content-Type': 'application/json'})
+                            with urllib.request.urlopen(req, timeout=3, context=ssl_context) as _:
+                                pass
+                    except Exception:
+                        pass
+                    finally:
+                        upload_q.task_done()
+                except _queue.Empty:
+                    if not _stream_active:
+                        break
+
+        upload_thread = threading.Thread(target=_upload_worker, daemon=True)
+        upload_thread.start()
+
+        start_t = time.time()
         while _stream_active and (time.time() - start_t < 1800):
             t0 = time.time()
             try:
-                _take_and_upload_screenshot(central_url, pc_id, db_secret, ssl_context, sct=sct, monitor=monitor)
+                if sct:
+                    shot = sct.grab(monitor)
+                    img = Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
+                    w, h = monitor['width'], monitor['height']
+                else:
+                    from PIL import ImageGrab
+                    img = ImageGrab.grab()
+                    w, h = img.size
+
+                # 리사이즈: 640px, NEAREST (최속)
+                if img.width > 640:
+                    img = img.resize((640, int(img.height * 640 / img.width)), Image.NEAREST)
+
+                # JPEG: quality=15 -> 프레임당 ~8~15KB
+                buf = io.BytesIO()
+                img.save(buf, format="JPEG", quality=15, optimize=False, progressive=False)
+                img_b64 = base64.b64encode(buf.getvalue()).decode('ascii')
+                payload_str = f'{{"data":"{img_b64}","ts":{time.time():.3f},"w":{w},"h":{h}}}'
+                payload_bytes = payload_str.encode('utf-8')
+
+                # 큐 가득 차면 오래된 프레임 버리고 최신 프레임으로 교체
+                if upload_q.full():
+                    try:
+                        upload_q.get_nowait()
+                        upload_q.task_done()
+                    except _queue.Empty:
+                        pass
+                try:
+                    upload_q.put_nowait(payload_bytes)
+                except _queue.Full:
+                    pass
             except Exception:
                 pass
+
             elapsed = time.time() - t0
-            # 목표 ~10FPS (100ms 간격), 업로드 시간 제외
-            wait = max(0, 0.10 - elapsed)
+            # 목표 ~15FPS (66ms 간격)
+            wait = max(0, 0.066 - elapsed)
             if wait > 0:
                 time.sleep(wait)
+
         _stream_active = False
-        
+        upload_q.put(None)  # 업로드 스레드 종료
+
     if _stream_thread is None or not _stream_thread.is_alive():
         _stream_thread = threading.Thread(target=_stream_loop, daemon=True)
         _stream_thread.start()
@@ -700,6 +779,7 @@ def _start_screen_streaming(central_url, pc_id, db_secret, ssl_context):
 def _stop_screen_streaming():
     global _stream_active
     _stream_active = False
+
 
 class AutoShutdownAppV2:
     def __init__(self, root):
