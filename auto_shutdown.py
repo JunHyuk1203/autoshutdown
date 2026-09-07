@@ -368,7 +368,7 @@ def run_standalone_autologin_gui():
 
     root.mainloop()
 
-CURRENT_VERSION = "1.1.192"
+CURRENT_VERSION = "1.1.193"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -597,19 +597,21 @@ def _sync_windows_time():
     import threading
     threading.Thread(target=_do_sync, daemon=True).start()
 
-def _take_and_upload_screenshot(central_url, pc_id, db_secret, ssl_context):
+def _take_and_upload_screenshot(central_url, pc_id, db_secret, ssl_context, sct=None, monitor=None):
     import base64, io, time
     try:
         img_bytes = None
         w, h = 0, 0
         try:
-            import mss, mss.tools
-            with mss.mss() as sct:
-                monitor = sct.monitors[1]  # 1번 모니터
-                w, h = monitor['width'], monitor['height']
-                shot = sct.grab(monitor)
-                from PIL import Image
-                img = Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
+            if sct is None:
+                import mss as _mss
+                sct = _mss.mss()
+            if monitor is None:
+                monitor = sct.monitors[1] if len(sct.monitors) > 1 else sct.monitors[0]
+            w, h = monitor['width'], monitor['height']
+            shot = sct.grab(monitor)
+            from PIL import Image
+            img = Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
         except Exception as mss_err:
             try:
                 from PIL import ImageGrab
@@ -623,14 +625,15 @@ def _take_and_upload_screenshot(central_url, pc_id, db_secret, ssl_context):
                 draw = ImageDraw.Draw(img)
                 err_txt = f"Screen Capture Failed\n(Screen locked or no desktop access)\n\nmss: {mss_err}\npil: {grab_err}"
                 draw.text((40, 280), err_txt, fill=(255, 100, 100))
-        max_w = 1280
+        # 스트리밍 최적화: 960px로 축소해 업로드 크기 최소화
+        max_w = 960
         if img.width > max_w:
             ratio = max_w / img.width
             from PIL import Image
-            img = img.resize((max_w, int(img.height * ratio)), Image.LANCZOS)
+            img = img.resize((max_w, int(img.height * ratio)), Image.BILINEAR)  # BILINEAR: 속도 우선
 
         buf = io.BytesIO()
-        img.save(buf, format="JPEG", quality=40, optimize=True)
+        img.save(buf, format="JPEG", quality=30, optimize=False)  # quality 낮춰 업로드 속도↑
         img_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
 
         payload = json.dumps({
@@ -648,7 +651,7 @@ def _take_and_upload_screenshot(central_url, pc_id, db_secret, ssl_context):
             ss_url, data=payload, method="PUT",
             headers={'Content-Type': 'application/json'}
         )
-        with urllib.request.urlopen(req, timeout=15, context=ssl_context) as _:
+        with urllib.request.urlopen(req, timeout=5, context=ssl_context) as _:  # timeout 15→5
             pass
     except Exception as e:
         try:
@@ -667,14 +670,27 @@ def _start_screen_streaming(central_url, pc_id, db_secret, ssl_context):
     
     def _stream_loop():
         global _stream_active
+        import mss as _mss
         start_t = time.time()
-        # Stream up to 5 minutes per session or until stopped
-        while _stream_active and (time.time() - start_t < 300):
+        # mss 인스턴스 한 번만 생성 (재사용으로 오버헤드 제거)
+        try:
+            sct = _mss.mss()
+            monitor = sct.monitors[1] if len(sct.monitors) > 1 else sct.monitors[0]
+        except:
+            sct = None
+            monitor = None
+        # 세션당 최대 30분
+        while _stream_active and (time.time() - start_t < 1800):
+            t0 = time.time()
             try:
-                _take_and_upload_screenshot(central_url, pc_id, db_secret, ssl_context)
+                _take_and_upload_screenshot(central_url, pc_id, db_secret, ssl_context, sct=sct, monitor=monitor)
             except Exception:
                 pass
-            time.sleep(0.3)  # ~3.3 FPS
+            elapsed = time.time() - t0
+            # 목표 ~10FPS (100ms 간격), 업로드 시간 제외
+            wait = max(0, 0.10 - elapsed)
+            if wait > 0:
+                time.sleep(wait)
         _stream_active = False
         
     if _stream_thread is None or not _stream_thread.is_alive():
@@ -1488,7 +1504,8 @@ class AutoShutdownAppV2:
                     with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
                         ef.write(f"[{datetime.now()}] General thread error: {ge}\n")
                 except: pass
-            time.sleep(0.5)
+            # 스트리밍 활성 중 remote_input 요청 정군 대기 최소화: 50ms
+            time.sleep(0.05 if _stream_active else 0.5)
 
     def get_timetable_endpoint(self, school_kind):
         if "초등" in school_kind: return "elsTimetable"
@@ -3389,7 +3406,8 @@ class HeadlessShutdownApp:
                     
             except Exception as ge:
                 _log(f"General poller error: {ge}")
-            time.sleep(0.5)
+            # 스트리밍 활성 중 remote_input 요청 정군 대기 최소화: 50ms
+            time.sleep(0.05 if _stream_active else 0.5)
 
     def check_for_updates(self, force=False):
         _log_path = os.path.join(application_path, 'headless_debug.log')

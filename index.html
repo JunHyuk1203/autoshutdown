@@ -1568,6 +1568,28 @@ let _streamListener = null;
 let _streamPcId = null;
 let _activePcId = null;
 let _webrtcCurrentMode = 'p2p';
+let _mouseMoveThrottleTs = 0;  // mousemove throttle
+let _docKeyHandler = null;     // document-level key handler for stream mode
+
+function _installDocKeyHandler() {
+    if (_docKeyHandler) return;
+    _docKeyHandler = (e) => {
+        const modal = document.getElementById('webrtc-modal');
+        if (!modal || modal.style.display === 'none') return;
+        if (_webrtcCurrentMode !== 'stream') return;
+        // 모달이 표시되고 스트리밍 모드일 때만 키 이벤트 가로채기
+        e.preventDefault();
+        sendRemoteInput(e.type === 'keydown' ? 'keydown' : 'keyup', undefined, undefined, undefined, e.key);
+    };
+    document.addEventListener('keydown', _docKeyHandler, true);
+    document.addEventListener('keyup', _docKeyHandler, true);
+}
+function _removeDocKeyHandler() {
+    if (!_docKeyHandler) return;
+    document.removeEventListener('keydown', _docKeyHandler, true);
+    document.removeEventListener('keyup', _docKeyHandler, true);
+    _docKeyHandler = null;
+}
 
 function closeWebRTCModal() {
     const modal = document.getElementById('webrtc-modal');
@@ -1580,6 +1602,7 @@ function closeWebRTCModal() {
     if (video) video.srcObject = null;
     const img = document.getElementById('webrtc-stream-img');
     if (img) img.src = '';
+    _removeDocKeyHandler();
     
     if (_streamListener && _streamPcId) {
         firebase.database().ref('/screenshots/' + _streamPcId).off('value', _streamListener);
@@ -1587,6 +1610,7 @@ function closeWebRTCModal() {
         writeCommandToDB(_streamPcId, 'stream_stop');
     }
 }
+
 
 function sendRemoteInput(action, x, y, b, k) {
     const payload = { t: action };
@@ -1628,6 +1652,10 @@ function bindMediaElementEvents(el) {
     el._hasBoundEvents = true;
 
     el.onmousemove = (e) => {
+        // throttle: 스트리밍 모드일 때 mousemove는 50ms마다 한 번만 Firebase로 전송
+        const now = Date.now();
+        if (_webrtcCurrentMode === 'stream' && now - _mouseMoveThrottleTs < 50) return;
+        _mouseMoveThrottleTs = now;
         const { x, y } = getNormalizedCoords(el, e.clientX, e.clientY);
         if (x >= 0 && x <= 1 && y >= 0 && y <= 1) {
             sendRemoteInput('mousemove', x, y);
@@ -1704,6 +1732,8 @@ function switchToStreamMode(pcId, noticeText) {
     if (_iceCheckTimeout) { clearTimeout(_iceCheckTimeout); _iceCheckTimeout = null; }
     
     bindMediaElementEvents(img);
+    // document-level 키보드 핸들러 설치 (스트리밍 모드 키 입력 활성화)
+    _installDocKeyHandler();
     
     // Request stream start on PC
     writeCommandToDB(pcId, 'stream_start');
@@ -1719,8 +1749,11 @@ function switchToStreamMode(pcId, noticeText) {
         img.src = 'data:image/jpeg;base64,' + val.data;
         img.style.display = 'block';
         if (status) status.style.display = 'none';
+        // 화면 표시 시 자동 포커스 (키보드 입력 즉시 대기)
+        if (document.activeElement !== img) img.focus({ preventScroll: true });
     });
 }
+
 
 function switchToP2PMode(pcId) {
     if (_streamListener && _streamPcId) {
@@ -2729,8 +2762,8 @@ async function applyRemoteConfig() {
 async function writeCommandToDB(target, action, message = "") {
     if (!(await _checkAuthPermission())) return;
     
-    // Rate Limit (Only for actual commands, not data fetching)
-    if (action !== "list_dir" && action !== "get_processes") {
+    // Rate Limit (remote_input은 스트리밍 실시간 입력이므로 rate limit 제외)
+    if (action !== "list_dir" && action !== "get_processes" && action !== "remote_input") {
         const now = Date.now();
         if (_fbAuth?.currentUser?.email && _fbAuth?.currentUser?.email.toLowerCase() !== MASTER_EMAIL.toLowerCase()) {
             _cmdTimestamps.push(now);
@@ -2745,11 +2778,13 @@ async function writeCommandToDB(target, action, message = "") {
         }
     }
 
-    // Security: XSS Pattern Check
-    const xssPattern = /<script|javascript:|on[a-z]+=|eval\(|document\.|window\./i;
-    if (xssPattern.test(message) || xssPattern.test(action) || xssPattern.test(target)) {
-        triggerSecurityViolation("XSS 패턴 입력 감지");
-        return { success: false };
+    // Security: XSS Pattern Check (remote_input은 구조화된 객체라 스킵)
+    if (action !== "remote_input") {
+        const xssPattern = /<script|javascript:|on[a-z]+=|eval\(|document\.|window\./i;
+        if (xssPattern.test(message) || xssPattern.test(action) || xssPattern.test(target)) {
+            triggerSecurityViolation("XSS 패턴 입력 감지");
+            return { success: false };
+        }
     }
 
     const bodyData = {
