@@ -2760,7 +2760,7 @@ async function applyRemoteConfig() {
 
 // ── 전원 제어 명령 작성 기능 ──
 async function writeCommandToDB(target, action, message = "") {
-    if (!(await _checkAuthPermission())) return;
+    if (!(await _checkAuthPermission())) return { success: false, error: 'auth' };
     
     // Rate Limit (remote_input은 스트리밍 실시간 입력이므로 rate limit 제외)
     if (action !== "list_dir" && action !== "get_processes" && action !== "remote_input") {
@@ -2835,14 +2835,25 @@ function triggerCommandAll(action) {
 async function triggerSingleCommand(pcId, action) {
     const labels = { shutdown: "종료", sleep: "절전", restart: "재부팅", setup_mode: "초기설정", update: "원격 업데이트", close_active_window: "활성 창 종료" };
     showModal(
-        `${labels[action]} 확인`,
-        `[${pcs[pcId]?.hostname || pcId}] PC로 즉시 [${labels[action]}] 명령을 전송하시겠습니까?`,
+        `${labels[action] || action} 확인`,
+        `[${pcs[pcId]?.hostname || pcId}] PC로 즉시 [${labels[action] || action}] 명령을 전송하시겠습니까?`,
         async () => {
             closeModal();
-            const result = await writeCommandToDB(pcId, action);
+            let result;
+            try {
+                result = await writeCommandToDB(pcId, action);
+            } catch(e) {
+                alert("명령 전달 중 예외 발생: " + (e.message || String(e)));
+                return;
+            }
+            if (!result) {
+                alert("명령 전달 실패: 서버 응답 없음");
+                return;
+            }
             if (result.success) {
-                alert("명령이 성공적으로 전달되었습니다.");
-            } else {
+                // 성공 알림 (alert 대신 조용히 처리 - 이미 명령이 전송됨)
+                console.log(`[triggerSingleCommand] ${action} → ${pcId} 전송 성공`);
+            } else if (result.error && result.error !== 'auth') {
                 alert("명령 전달 중 오류가 발생했습니다: " + result.error);
             }
         }
