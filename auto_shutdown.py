@@ -1,5 +1,6 @@
 import os
 import sys
+import threading
 import base64
 import winreg
 import getpass
@@ -367,7 +368,7 @@ def run_standalone_autologin_gui():
 
     root.mainloop()
 
-CURRENT_VERSION = "1.1.201"
+CURRENT_VERSION = "1.1.202"
 
 try:
     from pycaw.pycaw import AudioUtilities
