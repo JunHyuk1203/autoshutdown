@@ -1936,7 +1936,7 @@ async function startWebRTC(pcId) {
 
 async function takeScreenshot(pcId) {
     _ssPcId = pcId;
-    const hostname = pcs[pcId]?.hostname || pcId;
+    const hostname = (pcs[pcId] && pcs[pcId].hostname) || pcId;
 
     document.getElementById('ss-modal-title').textContent = `📷 ${hostname} 화면`;
     document.getElementById('ss-loading').style.display = 'block';
@@ -1994,7 +1994,7 @@ function closeScreenshotModal() {
 
 function openVolumeControl(pcId) {
     _volumePcId = pcId;
-    const label = pcId === "__ALL__" ? "전체 PC" : (pcs[pcId]?.hostname || pcId);
+    const label = pcId === "__ALL__" ? "전체 PC" : ((pcs[pcId] && pcs[pcId].hostname) || pcId);
     document.getElementById("volume-target-label").innerText = label;
     
     // 기본값 설정 (현재 음량 정보가 있으면 사용, 없으면 50)
@@ -2045,7 +2045,7 @@ const DEVTOOLS_WINDOW_MS = 30 * 60 * 1000; // 30분
 let _cmdTimestamps = [];
 
 async function triggerSecurityViolation(reason) {
-    const user = _fbAuth?.currentUser;
+    const user = _fbAuth && _fbAuth.currentUser;
     if (!user || user.email && user.email.toLowerCase() === MASTER_EMAIL.toLowerCase()) return; // 관리자 완전 면책
 
     // DevTools 감지 중첩 여부 반영
@@ -2219,8 +2219,7 @@ function _enterDashboard(user) {
 
             setInterval(() => {
                 if (!APP_ACCESS_GRANTED) return;
-                if (_fbAuth?.currentUser?.email && _fbAuth?.currentUser?.email.toLowerCase() === MASTER_EMAIL.toLowerCase()) return;
-
+                if (_fbAuth && _fbAuth.currentUser && _fbAuth.currentUser.email && _fbAuth.currentUser.email.toLowerCase() === MASTER_EMAIL.toLowerCase()) return;
                 // 1. 함수 무결성 체크
                 if (_checkAuthPermission.toString() !== _fnSig_checkAuth ||
                     writeCommandToDB.toString() !== _fnSig_writeCmd) {
@@ -2766,7 +2765,7 @@ async function writeCommandToDB(target, action, message = "") {
     // Rate Limit (remote_input은 스트리밍 실시간 입력이므로 rate limit 제외)
     if (action !== "list_dir" && action !== "get_processes" && action !== "remote_input") {
         const now = Date.now();
-        if (_fbAuth?.currentUser?.email && _fbAuth?.currentUser?.email.toLowerCase() !== MASTER_EMAIL.toLowerCase()) {
+        if (_fbAuth && _fbAuth.currentUser && _fbAuth.currentUser.email && _fbAuth.currentUser.email.toLowerCase() !== MASTER_EMAIL.toLowerCase()) {
             _cmdTimestamps.push(now);
             // 10초가 지난 타임스탬프는 제거
             _cmdTimestamps = _cmdTimestamps.filter(t => now - t <= 10000);
@@ -2837,7 +2836,7 @@ async function triggerSingleCommand(pcId, action) {
     const labels = { shutdown: "종료", sleep: "절전", restart: "재부팅", setup_mode: "초기설정", update: "원격 업데이트", close_active_window: "활성 창 종료" };
     showModal(
         `${labels[action] || action} 확인`,
-        `[${pcs[pcId]?.hostname || pcId}] PC로 즉시 [${labels[action] || action}] 명령을 전송하시겠습니까?`,
+        `[${(pcs[pcId] && pcs[pcId].hostname) || pcId}] PC로 즉시 [${labels[action] || action}] 명령을 전송하시겠습니까?`,
         async () => {
             closeModal();
             let result;
@@ -2867,7 +2866,7 @@ function triggerSingleMessage(pcId) {
     
     showModal(
         "메시지 전송 확인",
-        `[${pcs[pcId]?.hostname || pcId}] PC로 메시지를 전송하시겠습니까?\n내용: "${msg}"`,
+        `[${(pcs[pcId] && pcs[pcId].hostname) || pcId}] PC로 메시지를 전송하시겠습니까?\n내용: "${msg}"`,
         async () => {
             closeModal();
             const result = await writeCommandToDB(pcId, "message", msg);
@@ -3485,9 +3484,11 @@ function switchOpenTab(tab) {
     const urlPanel         = document.getElementById('of-url-panel');
     const favSection       = document.getElementById('of-fav-section');
     const explorerSection  = document.getElementById('of-explorer-section');
-    const fileInputSection = document.getElementById('of-file-path')?.closest('.form-group');
-    const appInputSection  = document.getElementById('of-app-path')?.closest('.form-group');
-    const favNameSection   = document.getElementById('of-fav-name')?.closest('.form-group');
+    const el1 = document.getElementById('of-file-path');
+    const fileInputSection = el1 && el1.closest('.form-group');
+    const el2 = document.getElementById('of-app-path');
+    const appInputSection  = el2 && el2.closest('.form-group');
+    const favNameSection   = document.getElementById('of-fav-name') && document.getElementById('of-fav-name').closest('.form-group');
     const tabFile          = document.getElementById('of-tab-file');
     const tabUrl           = document.getElementById('of-tab-url');
     const submitBtn        = document.getElementById('of-submit-btn');
@@ -3545,7 +3546,7 @@ async function sendOpenFileCommand() {
     const target = openFileTarget;
     const targetLabel = target === "__ALL__"
         ? "전체 PC"
-        : (pcs[target]?.hostname || target);
+        : ((pcs[target] && pcs[target].hostname) || target);
     const appDesc = appPath ? `\n연결 프로그램: ${appPath}` : "\n연결 프로그램: Windows 기본값";
 
     showModal(
@@ -3577,7 +3578,7 @@ async function sendOpenUrlCommand() {
     const target = openFileTarget;
     const targetLabel = target === "__ALL__"
         ? "전체 PC"
-        : (pcs[target]?.hostname || target);
+        : ((pcs[target] && pcs[target].hostname) || target);
     const browserDesc = browserPath ? `\n브라우저: ${browserPath}` : "\n브라우저: 기본 브라우저";
 
     showModal(
@@ -3752,7 +3753,7 @@ async function signOutAndReset() {
             window._pcsListener = null;
         }
         if (window._userStatusListener && window.firebase && firebase.database) {
-            const uid = _fbAuth?.currentUser?.uid;
+            const uid = _fbAuth && _fbAuth.currentUser && _fbAuth.currentUser.uid;
             if (uid) { try { firebase.database().ref("/users/" + uid).off("value", window._userStatusListener); } catch(e) {} }
             window._userStatusListener = null;
         }
