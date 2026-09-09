@@ -368,7 +368,7 @@ def run_standalone_autologin_gui():
 
     root.mainloop()
 
-CURRENT_VERSION = "1.1.198"
+CURRENT_VERSION = "1.1.199"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -1204,7 +1204,9 @@ class AutoShutdownAppV2:
                         if len(processed_push_ids) > 1000:
                             processed_push_ids.clear()
                             
-                        if cmd_ts > 0 and time.time() - cmd_ts > 20.0:
+                        # [핵심] PC 시계와 모바일(서버) 시계 간의 오차(수 분 이상)를 고려하여 
+                        # 명령 유효 기간을 300초(5분)로 넉넉하게 잡음. (시계 오차가 나면 즉시 파기되는 문제 해결)
+                        if cmd_ts > 0 and time.time() - cmd_ts > 300.0:
                             cmd_success = True
                             continue
                             
