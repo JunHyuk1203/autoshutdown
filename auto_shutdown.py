@@ -368,7 +368,7 @@ def run_standalone_autologin_gui():
 
     root.mainloop()
 
-CURRENT_VERSION = "1.1.195"
+CURRENT_VERSION = "1.1.196"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -1204,7 +1204,7 @@ class AutoShutdownAppV2:
                         if len(processed_push_ids) > 1000:
                             processed_push_ids.clear()
                             
-                        if cmd_ts > 0 and time.time() - cmd_ts > 10.0:
+                        if cmd_ts > 0 and time.time() - cmd_ts > 120.0:
                             cmd_success = True
                             continue
                             
@@ -1248,6 +1248,8 @@ class AutoShutdownAppV2:
                             threading.Thread(target=self.check_for_updates, kwargs={'silent': True, 'force': True}, daemon=True).start()
                             cmd_success = True
                         elif action == 'setup_mode':
+                            if app_instance:
+                                app_instance.root.after(0, lambda: app_instance.add_system_alert("\U0001f680 \uc6d0\uaca9 \ucd08\uae30\ud654 \uba85\ub839 \uc218\uc2e0\ub428"))
                             threading.Thread(target=self.run_setup_mode, daemon=True).start()
                             cmd_success = True
                         elif action == 'kill_process' and isinstance(message, dict):
