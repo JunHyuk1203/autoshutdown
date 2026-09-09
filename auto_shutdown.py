@@ -368,7 +368,7 @@ def run_standalone_autologin_gui():
 
     root.mainloop()
 
-CURRENT_VERSION = "1.1.197"
+CURRENT_VERSION = "1.1.198"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -2682,6 +2682,7 @@ class AutoShutdownAppV2:
 
                             # OS Shell을 직접 호출하여 사용자가 더블클릭한 것과 동일하게 실행 (포커스 획득 보장)
                             try:
+                                ctypes.windll.ole32.CoInitialize(None)
                                 # SW_SHOWNORMAL = 1
                                 res = ctypes.windll.shell32.ShellExecuteW(None, "open", full_path, None, on_folder, 1)
                                 if res <= 32:
@@ -2691,9 +2692,10 @@ class AutoShutdownAppV2:
                                 subprocess.Popen(
                                     full_path,
                                     cwd=on_folder,
-                                    shell=True,
-                                    creationflags=subprocess.CREATE_NO_WINDOW
+                                    shell=True
                                 )
+                            finally:
+                                ctypes.windll.ole32.CoUninitialize()
                                 
                             launched += 1
                             time.sleep(0.5) # 여러 프로그램 실행 시 포커스 경합 방지
