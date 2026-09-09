@@ -296,4 +296,4 @@ except Exception as e:
     print(f"\n[Error] Git 오류: {e}")
 
 print("\n배포 프로세스가 완료되었습니다.")
-input("\n엔터를 누르면 창이 닫힙니다...")
+# input("\n엔터를 누르면 창이 닫힙니다...")
