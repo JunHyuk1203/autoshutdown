@@ -368,7 +368,7 @@ def run_standalone_autologin_gui():
 
     root.mainloop()
 
-CURRENT_VERSION = "1.1.199"
+CURRENT_VERSION = "1.1.200"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -1204,9 +1204,7 @@ class AutoShutdownAppV2:
                         if len(processed_push_ids) > 1000:
                             processed_push_ids.clear()
                             
-                        # [핵심] PC 시계와 모바일(서버) 시계 간의 오차(수 분 이상)를 고려하여 
-                        # 명령 유효 기간을 300초(5분)로 넉넉하게 잡음. (시계 오차가 나면 즉시 파기되는 문제 해결)
-                        if cmd_ts > 0 and time.time() - cmd_ts > 300.0:
+                        if cmd_ts > 0 and time.time() - cmd_ts > 20.0:
                             cmd_success = True
                             continue
                             
@@ -2637,6 +2635,11 @@ class AutoShutdownAppV2:
                 on_folder = os.path.join(application_path, 'on')
                 os.makedirs(on_folder, exist_ok=True)
                 
+                desktop_on_folder = os.path.join(os.path.expanduser("~"), "Desktop", "on")
+                search_folders = [on_folder]
+                if os.path.exists(desktop_on_folder) and desktop_on_folder != on_folder:
+                    search_folders.append(desktop_on_folder)
+                
                 launched = 0
                 RUNNABLE_EXTS = ('.exe', '.lnk', '.bat', '.cmd', '.vbs')
                 EXT_PRIORITY = {'.exe': 0, '.lnk': 1, '.bat': 2, '.cmd': 3, '.vbs': 4}
@@ -2660,50 +2663,60 @@ class AutoShutdownAppV2:
                         pass
                     
                     stem_map = {}
-                    for f in os.listdir(on_folder):
-                        ext = os.path.splitext(f)[1].lower()
-                        stem = os.path.splitext(f)[0].lower()
-                        if ext not in EXT_PRIORITY:
-                            continue
-                        pri = EXT_PRIORITY[ext]
-                        if stem not in stem_map or pri < stem_map[stem][0]:
-                            stem_map[stem] = (pri, f)
+                    for folder_to_search in search_folders:
+                        if not os.path.exists(folder_to_search): continue
+                        for f in os.listdir(folder_to_search):
+                            ext = os.path.splitext(f)[1].lower()
+                            stem = os.path.splitext(f)[0].lower()
+                            if ext not in EXT_PRIORITY:
+                                continue
+                            pri = EXT_PRIORITY[ext]
+                            if stem not in stem_map or pri < stem_map[stem][0]:
+                                stem_map[stem] = (pri, f, folder_to_search)
                     
-                    for stem, (pri, f) in stem_map.items():
+                    for stem, (pri, f, folder_to_search) in stem_map.items():
                         ext = os.path.splitext(f)[1].lower()
                         if ext == '.exe' and f.lower() in running_procs:
                             self.root.after(0, lambda m=f: self.add_system_alert(f"⏭️ 이미 실행 중 (건너뜀): {m}"))
                             continue
                         try:
-                            full_path = os.path.join(on_folder, f)
+                            full_path = os.path.join(folder_to_search, f)
+                            
+                            # 로그 기록
+                            with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
+                                ef.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] run_setup_mode: Attempting to launch: {full_path}\n")
+
                             # 포커스 강제 가져오기 트릭 (Alt 키 시뮬레이션)
                             try:
                                 ctypes.windll.user32.keybd_event(0x12, 0, 0, 0) # Alt 누름
                                 ctypes.windll.user32.keybd_event(0x12, 0, 2, 0) # Alt 뗌
                             except: pass
 
-                            # OS Shell을 직접 호출하여 사용자가 더블클릭한 것과 동일하게 실행 (포커스 획득 보장)
                             try:
-                                ctypes.windll.ole32.CoInitialize(None)
-                                # SW_SHOWNORMAL = 1
-                                res = ctypes.windll.shell32.ShellExecuteW(None, "open", full_path, None, on_folder, 1)
-                                if res <= 32:
-                                    raise Exception(f"ShellExecuteW failed with code {res}")
-                            except Exception:
-                                # 실패 시 fallback
+                                # os.startfile이 ShellExecuteW를 안전하게 래핑하며 COM 초기화 문제 등을 파이썬 내부에서 처리함
+                                os.startfile(full_path)
+                            except Exception as ex1:
+                                with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
+                                    ef.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] os.startfile failed: {ex1}. Trying Popen...\n")
+                                # 실패 시 fallback (공백 경로를 안전하게 처리하기 위해 리스트 형태로 전달하고, lnk 실행을 위해 shell=True 유지하되 인용부호 추가)
                                 subprocess.Popen(
-                                    full_path,
+                                    f'"{full_path}"',
                                     cwd=on_folder,
                                     shell=True
                                 )
-                            finally:
-                                ctypes.windll.ole32.CoUninitialize()
                                 
                             launched += 1
                             time.sleep(0.5) # 여러 프로그램 실행 시 포커스 경합 방지
+                            
+                            with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
+                                ef.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] run_setup_mode: Successfully launched {f}\n")
                         except Exception as e:
+                            with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
+                                ef.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] run_setup_mode: FAILED to launch {f} - {e}\n")
                             self.root.after(0, lambda m=f"{f}: {e}": self.add_system_alert(f"⚠️ 실행 실패 - {m}"))
                 except Exception as e:
+                    with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
+                        ef.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] run_setup_mode: on folder iteration error - {e}\n")
                     self.root.after(0, lambda m=str(e): self.add_system_alert(f"⚠️ on 폴더 오류: {m}"))
                 
                 self.root.after(0, lambda: self.add_system_alert(f"✅ 초기세팅 완료: 창 정리 후 {launched}개 프로그램 실행됨"))
