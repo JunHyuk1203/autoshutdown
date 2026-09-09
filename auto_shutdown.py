@@ -112,7 +112,6 @@ def disable_auto_logon():
         print(f"disable_auto_logon error: {e}")
         return False
 
-import threading
 import time
 import json
 import socket
@@ -368,7 +367,7 @@ def run_standalone_autologin_gui():
 
     root.mainloop()
 
-CURRENT_VERSION = "1.1.200"
+CURRENT_VERSION = "1.1.201"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -594,7 +593,6 @@ def _sync_windows_time():
                 subprocess.run(['w32tm', '/resync', '/force'], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW, timeout=5)
         except Exception:
             pass
-    import threading
     threading.Thread(target=_do_sync, daemon=True).start()
 
 def _take_and_upload_screenshot(central_url, pc_id, db_secret, ssl_context, sct=None, monitor=None, session=None):
@@ -1521,7 +1519,6 @@ class AutoShutdownAppV2:
                             cmd_success = True
                             
                         elif action == 'screenshot':
-                            import threading
                             threading.Thread(
                                 target=_take_and_upload_screenshot,
                                 args=(central_url, pc_id, db_secret, ssl_context),
@@ -2376,7 +2373,6 @@ class AutoShutdownAppV2:
                     ))
             except Exception as e:
                 pass
-        import threading
         threading.Thread(target=_do_restart, daemon=True).start()
 
     def open_autologin_settings(self, icon=None, item=None):
@@ -3336,7 +3332,6 @@ class HeadlessShutdownApp:
                                 cmd_success = True
                             elif action == 'screenshot':
                                 _log("Executing: screenshot")
-                                import threading
                                 threading.Thread(
                                     target=_take_and_upload_screenshot,
                                     args=(central_url, pc_id, db_secret, ssl_context),
@@ -3455,7 +3450,6 @@ class HeadlessShutdownApp:
                                 _log(f"message received in headless - showing ctypes messagebox: {message}")
                                 try:
                                     import ctypes
-                                    import threading
                                     threading.Thread(target=lambda m=message: ctypes.windll.user32.MessageBoxW(0, m, "관리자 메시지", 0x40000), daemon=True).start()
                                 except Exception as e:
                                     _log(f"headless message error: {e}")
