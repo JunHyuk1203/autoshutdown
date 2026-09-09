@@ -2851,7 +2851,7 @@ async function triggerSingleCommand(pcId, action) {
                 return;
             }
             if (result.success) {
-                // 성공 알림 (alert 대신 조용히 처리 - 이미 명령이 전송됨)
+                alert(`[${labels[action] || action}] 명령이 정상적으로 전달되었습니다.`);
                 console.log(`[triggerSingleCommand] ${action} → ${pcId} 전송 성공`);
             } else if (result.error && result.error !== 'auth') {
                 alert("명령 전달 중 오류가 발생했습니다: " + result.error);
