@@ -3,6 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- 브라우저 캐시 방지 및 Firebase 통신 끊김 버그 완화 -->
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <link rel="icon" href="data:,">
 <meta http-equiv="Content-Security-Policy" content="
     default-src 'self';
@@ -1472,27 +1476,6 @@ body {
     </div>
 </div>
 
-<div id="webrtc-modal" class="modal-overlay">
-    <div class="modal-card" style="max-width:1300px; width:95%; height:90vh; display:flex; flex-direction:column;">
-        <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-            <div style="display:flex; align-items:center; gap:8px;">
-                <span id="webrtc-modal-title" style="font-weight: 800;">🌐 원격 화면 제어</span>
-                <span id="webrtc-mode-badge" style="font-size:11px; padding:2px 8px; border-radius:12px; background:rgba(14,165,233,0.2); color:var(--accent-blue); font-weight:600;">WebRTC P2P</span>
-            </div>
-            <div style="display:flex; align-items:center; gap:6px;">
-                <button id="webrtc-mode-p2p-btn" class="action-btn" style="padding:4px 10px; font-size:12px; background:var(--primary); color:white;">🌐 P2P (초고속)</button>
-                <button id="webrtc-mode-stream-btn" class="action-btn" style="padding:4px 10px; font-size:12px; background:rgba(255,255,255,0.08); color:var(--text-muted);">⚡ 스트리밍 (LTE/외부)</button>
-                <button id="webrtc-close-btn" class="modal-btn-cancel" style="padding:4px 10px; font-size:12px;">닫기</button>
-            </div>
-        </div>
-        <div id="webrtc-modal-body" style="flex:1; background:#18181b; display:flex; justify-content:center; align-items:center; position:relative; overflow:hidden; touch-action:none;">
-            <div id="webrtc-status" style="position:absolute; color:white; font-size:14px; text-align:center; padding:14px 20px; background:rgba(0,0,0,0.82); border-radius:10px; z-index:10; max-width:90%; border:1px solid rgba(255,255,255,0.12); line-height:1.5;">⏳ P2P 연결 중...</div>
-            <video id="webrtc-video" autoplay playsinline muted style="max-width:100%; max-height:100%; object-fit:contain; display:none;" tabindex="0"></video>
-            <img id="webrtc-stream-img" src="" alt="원격 화면 스트림" style="max-width:100%; max-height:100%; object-fit:contain; display:none; user-select:none; -webkit-user-drag:none; cursor:crosshair;" tabindex="0" />
-        </div>
-    </div>
-</div>
-
 <!-- ─────────────────────────────────────────────────────────────
    JAVASCRIPT LOGIC (Firebase SDK & REST Hybrid)
    ───────────────────────────────────────────────────────────── -->
@@ -1561,14 +1544,6 @@ let _volumePcId = null;
 let _ssListener = null;
 let _ssPcId = null;
 
-let _webrtcPc = null;
-let _webrtcDc = null;
-let _webrtcInterval = null;
-let _iceCheckTimeout = null;
-let _streamListener = null;
-let _streamPcId = null;
-let _activePcId = null;
-let _webrtcCurrentMode = 'p2p';
 let _mouseMoveThrottleTs = 0;  // mousemove throttle
 let _docKeyHandler = null;     // document-level key handler for stream mode
 
@@ -1592,25 +1567,6 @@ function _removeDocKeyHandler() {
     _docKeyHandler = null;
 }
 
-function closeWebRTCModal() {
-    const modal = document.getElementById('webrtc-modal');
-    modal.style.display = 'none';
-    modal.classList.remove('show');
-    if (_webrtcPc) { _webrtcPc.close(); _webrtcPc = null; }
-    if (_webrtcInterval) { clearInterval(_webrtcInterval); _webrtcInterval = null; }
-    if (_iceCheckTimeout) { clearTimeout(_iceCheckTimeout); _iceCheckTimeout = null; }
-    const video = document.getElementById('webrtc-video');
-    if (video) video.srcObject = null;
-    const img = document.getElementById('webrtc-stream-img');
-    if (img) img.src = '';
-    _removeDocKeyHandler();
-    
-    if (_streamListener && _streamPcId) {
-        firebase.database().ref('/screenshots/' + _streamPcId).off('value', _streamListener);
-        _streamListener = null;
-        writeCommandToDB(_streamPcId, 'stream_stop');
-    }
-}
 
 
 function sendRemoteInput(action, x, y, b, k) {
@@ -1767,172 +1723,6 @@ function switchToP2PMode(pcId) {
     startWebRTC(pcId);
 }
 
-async function startWebRTC(pcId) {
-    _activePcId = pcId;
-    _webrtcCurrentMode = 'p2p';
-    const dbUrl = config.databaseURL;
-    const authParam = config.authKey ? `?auth=${config.authKey}` : '';
-
-    const modal = document.getElementById('webrtc-modal');
-    const video = document.getElementById('webrtc-video');
-    const img = document.getElementById('webrtc-stream-img');
-    const status = document.getElementById('webrtc-status');
-    const badge = document.getElementById('webrtc-mode-badge');
-    const p2pBtn = document.getElementById('webrtc-mode-p2p-btn');
-    const streamBtn = document.getElementById('webrtc-mode-stream-btn');
-    
-    if (badge) {
-        badge.innerText = 'WebRTC P2P';
-        badge.style.background = 'rgba(14,165,233,0.2)';
-        badge.style.color = 'var(--accent-blue)';
-    }
-    if (p2pBtn) { p2pBtn.style.background = 'var(--primary)'; p2pBtn.style.color = 'white'; }
-    if (streamBtn) { streamBtn.style.background = 'rgba(255,255,255,0.08)'; streamBtn.style.color = 'var(--text-muted)'; }
-    
-    modal.style.display = 'flex';
-    modal.classList.add('show');
-    video.style.display = 'none';
-    if (img) img.style.display = 'none';
-    status.style.display = 'block';
-    status.innerText = '⏳ P2P 연결 중 (SDP Offer 생성)...';
-    
-    document.getElementById('webrtc-close-btn').onclick = closeWebRTCModal;
-    if (p2pBtn) p2pBtn.onclick = () => switchToP2PMode(pcId);
-    if (streamBtn) streamBtn.onclick = () => switchToStreamMode(pcId, '⚡ 스트리밍 모드로 전환 중...');
-
-    // Close any prior connections
-    if (_webrtcPc) { _webrtcPc.close(); _webrtcPc = null; }
-    if (_webrtcInterval) { clearInterval(_webrtcInterval); _webrtcInterval = null; }
-    if (_iceCheckTimeout) { clearTimeout(_iceCheckTimeout); _iceCheckTimeout = null; }
-
-    const pc = new RTCPeerConnection({
-        iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun2.l.google.com:19302' },
-            { urls: 'stun:stun.cloudflare.com:3478' },
-            { urls: 'stun:stun.nextcloud.com:443' }
-        ]
-    });
-    _webrtcPc = pc;
-    
-    const dc = pc.createDataChannel("input");
-    _webrtcDc = dc;
-    
-    pc.ontrack = (event) => {
-        if (event.streams && event.streams[0]) {
-            video.srcObject = event.streams[0];
-        } else {
-            video.srcObject = new MediaStream([event.track]);
-        }
-        video.muted = true;
-        video.play().catch(e => console.warn("Video play error:", e));
-    };
-    
-    const showVideo = () => {
-        if (_webrtcCurrentMode === 'p2p') {
-            status.style.display = 'none';
-            video.style.display = 'block';
-            if (img) img.style.display = 'none';
-        }
-    };
-    video.onloadeddata = showVideo;
-    video.onplaying = showVideo;
-    
-    bindMediaElementEvents(video);
-    
-    pc.oniceconnectionstatechange = () => {
-        console.log("ICE state:", pc.iceConnectionState);
-        if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
-            if (_iceCheckTimeout) { clearTimeout(_iceCheckTimeout); _iceCheckTimeout = null; }
-            status.innerText = '✅ P2P 연결 성공! 화면 수신 중...';
-        } else if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
-            if (_webrtcCurrentMode === 'p2p') {
-                console.warn("P2P ICE failed, auto switching to cloud stream fallback...");
-                switchToStreamMode(pcId, '⚠️ 통신사 LTE/방화벽으로 P2P가 차단되었습니다 ➔ 고속 스트리밍으로 전환됨');
-            }
-        }
-    };
-    
-    // 브라우저가 video를 수신할 준비 (offer에 video m-line 포함 필수)
-    const videoTransceiver = pc.addTransceiver('video', { direction: 'recvonly' });
-    
-    // iOS Safari 및 모바일 호환성을 위해 H264 우선 협상 (VP8도 폴백으로 유지)
-    try {
-        if (window.RTCRtpReceiver && RTCRtpReceiver.getCapabilities) {
-            const { codecs } = RTCRtpReceiver.getCapabilities('video');
-            if (codecs && codecs.length > 0) {
-                const h264Codecs = codecs.filter(c => c.mimeType && c.mimeType.toLowerCase() === 'video/h264');
-                const otherCodecs = codecs.filter(c => !c.mimeType || c.mimeType.toLowerCase() !== 'video/h264');
-                if (h264Codecs.length > 0) {
-                    videoTransceiver.setCodecPreferences([...h264Codecs, ...otherCodecs]);
-                }
-            }
-        }
-    } catch(e) { console.warn("setCodecPreferences error:", e); }
-    
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    
-    status.innerText = '⏳ P2P 연결 중 (ICE 정보 수집)...';
-    await new Promise((resolve) => {
-        if (pc.iceGatheringState === 'complete') resolve();
-        else {
-            pc.onicecandidate = (e) => {
-                if (!e.candidate) resolve();
-            };
-            pc.onicegatheringstatechange = () => {
-                if (pc.iceGatheringState === 'complete') resolve();
-            };
-            setTimeout(resolve, 3500);
-        }
-    });
-    
-    status.innerText = '⏳ 타겟 PC에 연결 요청 중...';
-    
-    // offer SDP를 명령 message에 직접 포함 (Firebase auth 없이도 Python이 읽을 수 있도록)
-    await writeCommandToDB(pcId, 'webrtc_start', {
-        sdp: pc.localDescription.sdp,
-        type: pc.localDescription.type
-    });
-    
-    status.innerText = '⏳ 타겟 PC 응답 대기 중...';
-    // answer는 pcs/{pcId}/webrtc_answer 경로에서 읽음 (Python이 인증 없이 쓸 수 있는 경로)
-    const answerUrl = `${dbUrl}/pcs/${pcId}/webrtc_answer.json${authParam}`;
-    let retries = 0;
-    
-    _webrtcInterval = setInterval(async () => {
-        if (retries > 10) {
-            clearInterval(_webrtcInterval);
-            _webrtcInterval = null;
-            if (_webrtcCurrentMode === 'p2p') {
-                switchToStreamMode(pcId, '⚠️ P2P 응답 시간 초과 ➔ 고속 스트리밍으로 전환됨');
-            }
-            return;
-        }
-        retries++;
-        try {
-            const res = await fetch(answerUrl);
-            const ans = await res.json();
-            if (ans && ans.sdp) {
-                clearInterval(_webrtcInterval);
-                _webrtcInterval = null;
-                await pc.setRemoteDescription(new RTCSessionDescription(ans));
-                status.innerText = '✅ P2P 영상 수신 대기 중...';
-                // webrtc_answer 필드 삭제 (NULL로 설정)
-                fetch(answerUrl, { method: 'PUT', body: 'null' });
-                
-                // If P2P does not connect within 6 seconds from answer, auto fallback to stream!
-                _iceCheckTimeout = setTimeout(() => {
-                    if (_webrtcCurrentMode === 'p2p' && pc.iceConnectionState !== 'connected' && pc.iceConnectionState !== 'completed') {
-                        console.warn("P2P checking timeout (>6s), auto switching to stream mode...");
-                        switchToStreamMode(pcId, '⚠️ 통신사 LTE/방화벽 감지 ➔ 고속 스트리밍으로 자동 전환되었습니다.');
-                    }
-                }, 6000);
-            }
-        } catch (e) {}
-    }, 1000);
-}
 
 async function takeScreenshot(pcId) {
     _ssPcId = pcId;
@@ -2185,6 +1975,17 @@ function _attachUserStatusListener(user) {
 }
 
 function _enterDashboard(user) {
+    // 55분마다 토큰 사전 갱신
+    if (window._tokenRefreshInterval) clearInterval(window._tokenRefreshInterval);
+    window._tokenRefreshInterval = setInterval(async () => {
+        try {
+            await user.getIdToken(true);
+            console.log("Auth token refreshed automatically.");
+        } catch (e) {
+            console.error("Token auto-refresh failed:", e);
+        }
+    }, 55 * 60 * 1000);
+
     const lb = document.getElementById("logout-header-btn");
     const ab = document.getElementById("admin-panel-btn");
     if (lb) lb.style.display = "flex";
@@ -4349,11 +4150,7 @@ window.addEventListener('DOMContentLoaded', () => {
             e.stopPropagation();
             takeScreenshot(btn.getAttribute('data-pcid'));
         }
-        if (action === 'startWebRTC') {
-            e.stopPropagation();
-            startWebRTC(btn.getAttribute('data-pcid'));
-        }
-    });
+            });
 
     const el_of_cancel_btn = document.getElementById("of-cancel-btn");
     if (el_of_cancel_btn) el_of_cancel_btn.addEventListener("click", () => { closeOpenFileModal(); });

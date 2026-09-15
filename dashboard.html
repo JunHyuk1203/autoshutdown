@@ -3,6 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- 브라우저 캐시 방지 및 Firebase 통신 끊김 버그 완화 -->
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <meta http-equiv="Content-Security-Policy" content="
     default-src 'self';
     script-src 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com https://accounts.google.com;
@@ -1661,6 +1665,17 @@ function _attachUserStatusListener(user) {
 }
 
 function _enterDashboard(user) {
+    // 55분마다 토큰 사전 갱신
+    if (window._tokenRefreshInterval) clearInterval(window._tokenRefreshInterval);
+    window._tokenRefreshInterval = setInterval(async () => {
+        try {
+            await user.getIdToken(true);
+            console.log("Auth token refreshed automatically.");
+        } catch (e) {
+            console.error("Token auto-refresh failed:", e);
+        }
+    }, 55 * 60 * 1000);
+
     const lb = document.getElementById("logout-header-btn");
     const ab = document.getElementById("admin-panel-btn");
     if (lb) lb.style.display = "flex";

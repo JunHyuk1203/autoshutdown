@@ -1529,13 +1529,7 @@ class AutoShutdownAppV2:
                             if app_instance:
                                 app_instance.root.after(0, lambda: app_instance.add_system_alert("📸 원격 화면 캡처 요청됨"))
                                 
-                        elif action == 'webrtc_start':
-                            import webrtc_handler
-                            offer_dict = message if isinstance(message, dict) else None
-                            webrtc_handler.start_webrtc_session(pc_id, central_url, db_secret, ssl_context, offer_dict=offer_dict)
-                            cmd_success = True
-                            if app_instance:
-                                app_instance.root.after(0, lambda: app_instance.add_system_alert("🌐 WebRTC P2P 연결 요청됨"))
+
                         elif action == 'stream_start':
                             _start_screen_streaming(central_url, pc_id, db_secret, ssl_context)
                             cmd_success = True
@@ -1544,12 +1538,7 @@ class AutoShutdownAppV2:
                         elif action == 'stream_stop':
                             _stop_screen_streaming()
                             cmd_success = True
-                        elif action == 'remote_input' and isinstance(message, dict):
-                            try:
-                                import webrtc_handler
-                                webrtc_handler.handle_input_cmd(message)
-                            except: pass
-                            cmd_success = True
+
                         elif action == 'close_active_window':
                             try:
                                 hwnd = ctypes.windll.user32.GetForegroundWindow()
@@ -3339,12 +3328,7 @@ class HeadlessShutdownApp:
                                     daemon=True
                                 ).start()
                                 cmd_success = True
-                            elif action == 'webrtc_start':
-                                _log("Executing: webrtc_start")
-                                import webrtc_handler
-                                offer_dict = message if isinstance(message, dict) else None
-                                webrtc_handler.start_webrtc_session(pc_id, central_url, db_secret, ssl_context, offer_dict=offer_dict)
-                                cmd_success = True
+
                             elif action == 'stream_start':
                                 _log("Executing: stream_start")
                                 _start_screen_streaming(central_url, pc_id, db_secret, ssl_context)
@@ -3353,12 +3337,7 @@ class HeadlessShutdownApp:
                                 _log("Executing: stream_stop")
                                 _stop_screen_streaming()
                                 cmd_success = True
-                            elif action == 'remote_input' and isinstance(message, dict):
-                                try:
-                                    import webrtc_handler
-                                    webrtc_handler.handle_input_cmd(message)
-                                except: pass
-                                cmd_success = True
+
                             elif action == 'close_active_window':
                                 _log("Executing: close active window")
                                 try:
