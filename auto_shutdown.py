@@ -1081,17 +1081,27 @@ class AutoShutdownAppV2:
                 pc_id = get_pc_id()
                 
                 # 2. WebSocket 연결
-                with websockets.sync.client.connect(ws_url) as ws:
+                connect_kwargs = {}
+                if ws_url.startswith("wss://"):
+                    connect_kwargs["ssl"] = ssl_context
+                    
+                with websockets.sync.client.connect(ws_url, **connect_kwargs) as ws:
                     # 인증 (클라이언트는 토큰 없이 pc_id만 전송)
                     auth_msg = {"type": "auth", "role": "client", "pc_id": pc_id}
                     ws.send(json.dumps(auth_msg))
                     
-                    auth_resp = json.loads(ws.recv())
-                    if auth_resp.get("status") != "success":
+                    try:
+                        # auth_result 응답 대기
+                        auth_resp = json.loads(ws.recv(timeout=10))
+                        if auth_resp.get("status") != "success":
+                            time.sleep(5)
+                            continue
+                    except Exception as e:
                         time.sleep(5)
                         continue
                         
                     last_status_time = 0
+
                     
                     def recv_loop():
                         while self.is_running:
@@ -3261,13 +3271,22 @@ class HeadlessShutdownApp:
                 pc_id = get_pc_id()
                 
                 # 2. WebSocket 연결
-                with websockets.sync.client.connect(ws_url) as ws:
+                connect_kwargs = {}
+                if ws_url.startswith("wss://"):
+                    connect_kwargs["ssl"] = ssl_context
+                    
+                with websockets.sync.client.connect(ws_url, **connect_kwargs) as ws:
                     # 인증 (클라이언트는 토큰 없이 pc_id만 전송)
                     auth_msg = {"type": "auth", "role": "client", "pc_id": pc_id}
                     ws.send(json.dumps(auth_msg))
                     
-                    auth_resp = json.loads(ws.recv())
-                    if auth_resp.get("status") != "success":
+                    try:
+                        # auth_result 응답 대기
+                        auth_resp = json.loads(ws.recv(timeout=10))
+                        if auth_resp.get("status") != "success":
+                            time.sleep(5)
+                            continue
+                    except Exception as e:
                         time.sleep(5)
                         continue
                         
