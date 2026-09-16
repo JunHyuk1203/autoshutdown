@@ -2700,6 +2700,22 @@ async function writeCommandToDB(target, action, message = "") {
         timestamp: Date.now() / 1000.0
     };
     
+    // CUSTOM SERVER MODE: Send via WebSocket directly for real-time speed
+    if (window._serverMode === 'custom' && window._customWs && window._customWs.readyState === WebSocket.OPEN) {
+        try {
+            window._customWs.send(JSON.stringify({
+                type: "command",
+                action: action,
+                target_pc: target,
+                payload: bodyData
+            }));
+            return { success: true };
+        } catch (e) {
+            console.error("WebSocket command error:", e);
+            // Fallback to Firebase on error
+        }
+    }
+    
     try {
         if (target === "__ALL__") {
             await firebase.database().ref("/commands/__ALL__").set(bodyData);

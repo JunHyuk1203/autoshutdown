@@ -368,7 +368,7 @@ def run_standalone_autologin_gui():
 
     root.mainloop()
 
-CURRENT_VERSION = "1.1.203"
+CURRENT_VERSION = "1.1.204"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -1165,6 +1165,55 @@ class AutoShutdownAppV2:
                                         _start_screen_streaming(central_url, pc_id, "", ssl_context)
                                     elif action == 'stream_stop':
                                         _stop_screen_streaming()
+                                    elif action == 'bring_to_front' and isinstance(message, dict):
+                                        target_hwnd = message.get('hwnd')
+                                        if target_hwnd:
+                                            try: target_hwnd = int(target_hwnd)
+                                            except ValueError: target_hwnd = None
+                                        if target_hwnd:
+                                            try:
+                                                ctypes.windll.user32.ShowWindow(target_hwnd, 9)
+                                                ctypes.windll.user32.SetForegroundWindow(target_hwnd)
+                                            except Exception: pass
+                                    elif action == 'close_window' and isinstance(message, dict):
+                                        target_hwnd = message.get('hwnd')
+                                        if target_hwnd:
+                                            try: target_hwnd = int(target_hwnd)
+                                            except ValueError: target_hwnd = None
+                                        if target_hwnd:
+                                            try: ctypes.windll.user32.PostMessageW(target_hwnd, 0x0010, 0, 0)
+                                            except Exception: pass
+                                    elif action == 'minimize_window' and isinstance(message, dict):
+                                        target_hwnd = message.get('hwnd')
+                                        if target_hwnd:
+                                            try: target_hwnd = int(target_hwnd)
+                                            except ValueError: target_hwnd = None
+                                        if target_hwnd:
+                                            try: ctypes.windll.user32.ShowWindow(target_hwnd, 6)
+                                            except Exception: pass
+                                    elif action == 'maximize_window' and isinstance(message, dict):
+                                        target_hwnd = message.get('hwnd')
+                                        if target_hwnd:
+                                            try: target_hwnd = int(target_hwnd)
+                                            except ValueError: target_hwnd = None
+                                        if target_hwnd:
+                                            try: ctypes.windll.user32.ShowWindow(target_hwnd, 3)
+                                            except Exception: pass
+                                    elif action == 'restore_window' and isinstance(message, dict):
+                                        target_hwnd = message.get('hwnd')
+                                        if target_hwnd:
+                                            try: target_hwnd = int(target_hwnd)
+                                            except ValueError: target_hwnd = None
+                                        if target_hwnd:
+                                            try: ctypes.windll.user32.ShowWindow(target_hwnd, 9)
+                                            except Exception: pass
+                                    elif action == 'show_desktop':
+                                        try:
+                                            ctypes.windll.user32.keybd_event(0x5B, 0, 0, 0)
+                                            ctypes.windll.user32.keybd_event(0x44, 0, 0, 0)
+                                            ctypes.windll.user32.keybd_event(0x44, 0, 2, 0)
+                                            ctypes.windll.user32.keybd_event(0x5B, 0, 2, 0)
+                                        except Exception: pass
                                     
                             except Exception as e:
                                 break
@@ -3354,6 +3403,55 @@ class HeadlessShutdownApp:
                                         _start_screen_streaming(central_url, pc_id, "", ssl_context)
                                     elif action == 'stream_stop':
                                         _stop_screen_streaming()
+                                    elif action == 'bring_to_front' and isinstance(message, dict):
+                                        target_hwnd = message.get('hwnd')
+                                        if target_hwnd:
+                                            try: target_hwnd = int(target_hwnd)
+                                            except ValueError: target_hwnd = None
+                                        if target_hwnd:
+                                            try:
+                                                ctypes.windll.user32.ShowWindow(target_hwnd, 9)
+                                                ctypes.windll.user32.SetForegroundWindow(target_hwnd)
+                                            except Exception: pass
+                                    elif action == 'close_window' and isinstance(message, dict):
+                                        target_hwnd = message.get('hwnd')
+                                        if target_hwnd:
+                                            try: target_hwnd = int(target_hwnd)
+                                            except ValueError: target_hwnd = None
+                                        if target_hwnd:
+                                            try: ctypes.windll.user32.PostMessageW(target_hwnd, 0x0010, 0, 0)
+                                            except Exception: pass
+                                    elif action == 'minimize_window' and isinstance(message, dict):
+                                        target_hwnd = message.get('hwnd')
+                                        if target_hwnd:
+                                            try: target_hwnd = int(target_hwnd)
+                                            except ValueError: target_hwnd = None
+                                        if target_hwnd:
+                                            try: ctypes.windll.user32.ShowWindow(target_hwnd, 6)
+                                            except Exception: pass
+                                    elif action == 'maximize_window' and isinstance(message, dict):
+                                        target_hwnd = message.get('hwnd')
+                                        if target_hwnd:
+                                            try: target_hwnd = int(target_hwnd)
+                                            except ValueError: target_hwnd = None
+                                        if target_hwnd:
+                                            try: ctypes.windll.user32.ShowWindow(target_hwnd, 3)
+                                            except Exception: pass
+                                    elif action == 'restore_window' and isinstance(message, dict):
+                                        target_hwnd = message.get('hwnd')
+                                        if target_hwnd:
+                                            try: target_hwnd = int(target_hwnd)
+                                            except ValueError: target_hwnd = None
+                                        if target_hwnd:
+                                            try: ctypes.windll.user32.ShowWindow(target_hwnd, 9)
+                                            except Exception: pass
+                                    elif action == 'show_desktop':
+                                        try:
+                                            ctypes.windll.user32.keybd_event(0x5B, 0, 0, 0)
+                                            ctypes.windll.user32.keybd_event(0x44, 0, 0, 0)
+                                            ctypes.windll.user32.keybd_event(0x44, 0, 2, 0)
+                                            ctypes.windll.user32.keybd_event(0x5B, 0, 2, 0)
+                                        except Exception: pass
                                     
                             except Exception as e:
                                 break
