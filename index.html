@@ -2079,40 +2079,104 @@ function initializeDashboard() {
 function _startCustomServerSync() {
     firebase.database().ref("/update_info/custom_server_url").once("value").then(async snap => {
         const ws_url = snap.val();
-        if (!ws_url) { alert("자체 서버 URL이 설정되지 않았습니다."); return; }
+        if (!ws_url) { alert("자체 서버 URL이 설정되지 않았습니다. Firebase 모드로 연결합니다."); toggleServerMode('firebase'); return; }
         
-        const token = await firebase.auth().currentUser.getIdToken();
-        const ws = new WebSocket(ws_url);
-        window._customWs = ws;
-        
-        ws.onopen = () => {
-            ws.send(JSON.stringify({ type: "auth", role: "admin", token: token }));
-        };
-        
-        ws.onmessage = (e) => {
-            const msg = JSON.parse(e.data);
-            if (msg.type === "full_state") {
-                pcs = msg.data || {};
-                renderPCGrid(Date.now() + serverTimeOffset);
-            } else if (msg.type === "pc_update") {
-                if(msg.pc_id) {
-                    pcs[msg.pc_id] = msg.data;
+        try {
+            const token = await firebase.auth().currentUser.getIdToken();
+            const ws = new WebSocket(ws_url);
+            window._customWs = ws;
+            
+            ws.onopen = () => {
+                ws.send(JSON.stringify({ type: "auth", role: "admin", token: token }));
+            };
+            
+            ws.onmessage = (e) => {
+                const msg = JSON.parse(e.data);
+                if (msg.type === "full_state") {
+                    pcs = msg.data || {};
                     renderPCGrid(Date.now() + serverTimeOffset);
+                } else if (msg.type === "pc_update") {
+                    if(msg.pc_id) {
+                        pcs[msg.pc_id] = msg.data;
+                        renderPCGrid(Date.now() + serverTimeOffset);
+                    }
                 }
-            }
-        };
-        
-        ws.onclose = () => {
-            setTimeout(_startCustomServerSync, 3000);
-        };
+            };
+            
+            ws.onclose = () => {
+                if (window._serverMode === 'custom') {
+                    setTimeout(_startCustomServerSync, 3000);
+                }
+            };
+            ws.onerror = (e) => {
+                console.error("WebSocket error:", e);
+            };
+        } catch(e) {
+            console.error("Auth token error:", e);
+        }
     }).catch(e => {
         console.error(e);
-        alert("자체 서버 연결 실패");
+        alert("자체 서버 URL을 가져오는데 실패했습니다.");
     });
+}
+
+function toggleServerMode(forceMode) {
+    if (forceMode) {
+        window._serverMode = forceMode;
+    } else {
+        window._serverMode = (window._serverMode === 'custom') ? 'firebase' : 'custom';
+    }
+    
+    // UI 업데이트
+    const modeDisplay = document.getElementById("current-mode-display");
+    if (modeDisplay) {
+        if (window._serverMode === 'custom') {
+            modeDisplay.textContent = "🟢 자체 서버 (고속)";
+            modeDisplay.style.color = "#10b981";
+        } else {
+            modeDisplay.textContent = "🔵 Firebase 클라우드";
+            modeDisplay.style.color = "#3b82f6";
+        }
+    }
+    
+    // 기존 리스너 및 연결 정리
+    if (window._pcsListener) {
+        firebase.database().ref("/pcs").off("value", window._pcsListener);
+        window._pcsListener = null;
+    }
+    if (window._customWs) {
+        window._customWs.onclose = null; // 재연결 방지
+        window._customWs.close();
+        window._customWs = null;
+    }
+    
+    // PC 목록 초기화
+    pcs = {};
+    renderPCGrid(Date.now() + serverTimeOffset);
+    
+    // 새 모드로 연결
+    startRealtimeSync();
 }
 
 function startRealtimeSync() {
     if (!config.databaseURL) return;
+    
+    // 기본 모드 설정 (지정 안 되어있으면 firebase)
+    if (!window._serverMode) {
+        window._serverMode = 'firebase';
+    }
+    
+    // UI 업데이트
+    const modeDisplay = document.getElementById("current-mode-display");
+    if (modeDisplay) {
+        if (window._serverMode === 'custom') {
+            modeDisplay.textContent = "🟢 자체 서버 (고속)";
+            modeDisplay.style.color = "#10b981";
+        } else {
+            modeDisplay.textContent = "🔵 Firebase 클라우드";
+            modeDisplay.style.color = "#3b82f6";
+        }
+    }
     
     if (window._serverMode === 'custom') {
         _startCustomServerSync();
