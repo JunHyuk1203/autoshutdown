@@ -368,7 +368,7 @@ def run_standalone_autologin_gui():
 
     root.mainloop()
 
-CURRENT_VERSION = "1.1.204"
+CURRENT_VERSION = "1.1.205"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -1207,6 +1207,86 @@ class AutoShutdownAppV2:
                                         if target_hwnd:
                                             try: ctypes.windll.user32.ShowWindow(target_hwnd, 9)
                                             except Exception: pass
+
+                                    elif action == 'list_dir' and isinstance(message, dict):
+                                        target_path = message.get('path', '') or ''
+                                        target_path = target_path.replace('/', '\\\\')
+                                        import os
+                                        application_path = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
+                                        def upload_dir_data(t_path):
+                                            try:
+                                                import urllib.request, json
+                                                items = []
+                                                import win32api
+                                                if t_path == 'DRIVES':
+                                                    drives = win32api.GetLogicalDriveStrings()
+                                                    drives = drives.split('\\000')[:-1]
+                                                    for d in drives:
+                                                        items.append({'name': d, 'type': 'drive'})
+                                                    result = {'path': 'DRIVES', 'error': None, 'items': items}
+                                                else:
+                                                    if not os.path.exists(t_path):
+                                                        result = {'path': t_path, 'error': '경로를 찾을 수 없습니다.', 'items': []}
+                                                    else:
+                                                        try:
+                                                            for entry in os.scandir(t_path):
+                                                                items.append({'name': entry.name, 'type': 'directory' if entry.is_dir() else 'file'})
+                                                            result = {'path': t_path, 'error': None, 'items': items}
+                                                        except Exception as e:
+                                                            result = {'path': t_path, 'error': str(e), 'items': []}
+                                                if result is not None:
+                                                    try:
+                                                        data_bytes = json.dumps(result, ensure_ascii=False).encode('utf-8')
+                                                        req = urllib.request.Request(f'https://atss-a1f9e-default-rtdb.firebaseio.com/explorer/{pc_id}.json', data=data_bytes, method='PUT')
+                                                        req.add_header('Content-Type', 'application/json')
+                                                        urllib.request.urlopen(req, timeout=5)
+                                                    except: pass
+                                            except: pass
+                                        threading.Thread(target=upload_dir_data, args=(target_path,), daemon=True).start()
+                                    elif action == 'get_processes':
+                                        def upload_process_data():
+                                            import psutil, urllib.request, json
+                                            try:
+                                                proc_list = []
+                                                for p in psutil.process_iter(['pid', 'name', 'memory_info']):
+                                                    try:
+                                                        proc_list.append({'pid': p.info['pid'], 'name': p.info['name'], 'memory': p.info['memory_info'].rss})
+                                                    except: pass
+                                                data_bytes = json.dumps(proc_list, ensure_ascii=False).encode('utf-8')
+                                                req = urllib.request.Request(f'https://atss-a1f9e-default-rtdb.firebaseio.com/processes/{pc_id}.json', data=data_bytes, method='PUT')
+                                                req.add_header('Content-Type', 'application/json')
+                                                urllib.request.urlopen(req, timeout=5)
+                                            except: pass
+                                        threading.Thread(target=upload_process_data, daemon=True).start()
+                                    elif action == 'remote_input' and isinstance(message, dict):
+                                        input_type = message.get('input_type')
+                                        input_data = message.get('data', {})
+                                        if input_type and PYAUTOGUI_AVAILABLE:
+                                            try:
+                                                import pyautogui
+                                                if input_type == 'mouse_move':
+                                                    dx = input_data.get('dx', 0)
+                                                    dy = input_data.get('dy', 0)
+                                                    if dx != 0 or dy != 0: pyautogui.move(dx, dy, _pause=False)
+                                                elif input_type == 'mouse_click':
+                                                    btn = input_data.get('button', 'left')
+                                                    if btn == 'left': pyautogui.click(_pause=False)
+                                                    elif btn == 'right': pyautogui.click(button='right', _pause=False)
+                                                    elif btn == 'double': pyautogui.doubleClick(_pause=False)
+                                                elif input_type == 'mouse_down':
+                                                    pyautogui.mouseDown(_pause=False)
+                                                elif input_type == 'mouse_up':
+                                                    pyautogui.mouseUp(_pause=False)
+                                                elif input_type == 'mouse_scroll':
+                                                    dy = input_data.get('dy', 0)
+                                                    if dy != 0: pyautogui.scroll(-dy * 5, _pause=False)
+                                                elif input_type == 'key_down':
+                                                    k = input_data.get('key')
+                                                    if k: pyautogui.keyDown(k, _pause=False)
+                                                elif input_type == 'key_up':
+                                                    k = input_data.get('key')
+                                                    if k: pyautogui.keyUp(k, _pause=False)
+                                            except: pass
                                     elif action == 'show_desktop':
                                         try:
                                             ctypes.windll.user32.keybd_event(0x5B, 0, 0, 0)
@@ -1220,7 +1300,11 @@ class AutoShutdownAppV2:
                     
                     recv_thread = threading.Thread(target=recv_loop, daemon=True)
                     recv_thread.start()
-                    
+                    if PYCAW_AVAILABLE:
+                        try:
+                            import comtypes
+                            comtypes.CoInitialize()
+                        except: pass
                     while self.is_running and recv_thread.is_alive():
                         now = time.time()
                         if now - last_status_time > 3.0:
@@ -1230,8 +1314,6 @@ class AutoShutdownAppV2:
                             current_vol = 50
                             if PYCAW_AVAILABLE:
                                 try:
-                                    import comtypes
-                                    comtypes.CoInitialize()
                                     _devs = AudioUtilities.GetSpeakers()
                                     _vol_intf = _devs.EndpointVolume
                                     current_vol = int(_vol_intf.GetMasterVolumeLevelScalar() * 100)
@@ -3445,6 +3527,86 @@ class HeadlessShutdownApp:
                                         if target_hwnd:
                                             try: ctypes.windll.user32.ShowWindow(target_hwnd, 9)
                                             except Exception: pass
+
+                                    elif action == 'list_dir' and isinstance(message, dict):
+                                        target_path = message.get('path', '') or ''
+                                        target_path = target_path.replace('/', '\\\\')
+                                        import os
+                                        application_path = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
+                                        def upload_dir_data(t_path):
+                                            try:
+                                                import urllib.request, json
+                                                items = []
+                                                import win32api
+                                                if t_path == 'DRIVES':
+                                                    drives = win32api.GetLogicalDriveStrings()
+                                                    drives = drives.split('\\000')[:-1]
+                                                    for d in drives:
+                                                        items.append({'name': d, 'type': 'drive'})
+                                                    result = {'path': 'DRIVES', 'error': None, 'items': items}
+                                                else:
+                                                    if not os.path.exists(t_path):
+                                                        result = {'path': t_path, 'error': '경로를 찾을 수 없습니다.', 'items': []}
+                                                    else:
+                                                        try:
+                                                            for entry in os.scandir(t_path):
+                                                                items.append({'name': entry.name, 'type': 'directory' if entry.is_dir() else 'file'})
+                                                            result = {'path': t_path, 'error': None, 'items': items}
+                                                        except Exception as e:
+                                                            result = {'path': t_path, 'error': str(e), 'items': []}
+                                                if result is not None:
+                                                    try:
+                                                        data_bytes = json.dumps(result, ensure_ascii=False).encode('utf-8')
+                                                        req = urllib.request.Request(f'https://atss-a1f9e-default-rtdb.firebaseio.com/explorer/{pc_id}.json', data=data_bytes, method='PUT')
+                                                        req.add_header('Content-Type', 'application/json')
+                                                        urllib.request.urlopen(req, timeout=5)
+                                                    except: pass
+                                            except: pass
+                                        threading.Thread(target=upload_dir_data, args=(target_path,), daemon=True).start()
+                                    elif action == 'get_processes':
+                                        def upload_process_data():
+                                            import psutil, urllib.request, json
+                                            try:
+                                                proc_list = []
+                                                for p in psutil.process_iter(['pid', 'name', 'memory_info']):
+                                                    try:
+                                                        proc_list.append({'pid': p.info['pid'], 'name': p.info['name'], 'memory': p.info['memory_info'].rss})
+                                                    except: pass
+                                                data_bytes = json.dumps(proc_list, ensure_ascii=False).encode('utf-8')
+                                                req = urllib.request.Request(f'https://atss-a1f9e-default-rtdb.firebaseio.com/processes/{pc_id}.json', data=data_bytes, method='PUT')
+                                                req.add_header('Content-Type', 'application/json')
+                                                urllib.request.urlopen(req, timeout=5)
+                                            except: pass
+                                        threading.Thread(target=upload_process_data, daemon=True).start()
+                                    elif action == 'remote_input' and isinstance(message, dict):
+                                        input_type = message.get('input_type')
+                                        input_data = message.get('data', {})
+                                        if input_type and PYAUTOGUI_AVAILABLE:
+                                            try:
+                                                import pyautogui
+                                                if input_type == 'mouse_move':
+                                                    dx = input_data.get('dx', 0)
+                                                    dy = input_data.get('dy', 0)
+                                                    if dx != 0 or dy != 0: pyautogui.move(dx, dy, _pause=False)
+                                                elif input_type == 'mouse_click':
+                                                    btn = input_data.get('button', 'left')
+                                                    if btn == 'left': pyautogui.click(_pause=False)
+                                                    elif btn == 'right': pyautogui.click(button='right', _pause=False)
+                                                    elif btn == 'double': pyautogui.doubleClick(_pause=False)
+                                                elif input_type == 'mouse_down':
+                                                    pyautogui.mouseDown(_pause=False)
+                                                elif input_type == 'mouse_up':
+                                                    pyautogui.mouseUp(_pause=False)
+                                                elif input_type == 'mouse_scroll':
+                                                    dy = input_data.get('dy', 0)
+                                                    if dy != 0: pyautogui.scroll(-dy * 5, _pause=False)
+                                                elif input_type == 'key_down':
+                                                    k = input_data.get('key')
+                                                    if k: pyautogui.keyDown(k, _pause=False)
+                                                elif input_type == 'key_up':
+                                                    k = input_data.get('key')
+                                                    if k: pyautogui.keyUp(k, _pause=False)
+                                            except: pass
                                     elif action == 'show_desktop':
                                         try:
                                             ctypes.windll.user32.keybd_event(0x5B, 0, 0, 0)
@@ -3458,7 +3620,11 @@ class HeadlessShutdownApp:
                     
                     recv_thread = threading.Thread(target=recv_loop, daemon=True)
                     recv_thread.start()
-                    
+                    if PYCAW_AVAILABLE:
+                        try:
+                            import comtypes
+                            comtypes.CoInitialize()
+                        except: pass
                     while self.is_running and recv_thread.is_alive():
                         now = time.time()
                         if now - last_status_time > 3.0:
@@ -3468,8 +3634,6 @@ class HeadlessShutdownApp:
                             current_vol = 50
                             if PYCAW_AVAILABLE:
                                 try:
-                                    import comtypes
-                                    comtypes.CoInitialize()
                                     _devs = AudioUtilities.GetSpeakers()
                                     _vol_intf = _devs.EndpointVolume
                                     current_vol = int(_vol_intf.GetMasterVolumeLevelScalar() * 100)
