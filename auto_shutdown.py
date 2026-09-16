@@ -934,6 +934,7 @@ class AutoShutdownAppV2:
         threading.Thread(target=self.monitor_time, daemon=True).start()
         threading.Thread(target=self.check_for_updates, daemon=True).start()
         threading.Thread(target=self.http_poller_thread, daemon=True).start()
+        threading.Thread(target=self.custom_server_ws_thread, daemon=True).start()
             
         today = datetime.today()
         monday_str = (today - timedelta(days=today.weekday())).strftime("%Y%m%d")
@@ -1048,6 +1049,169 @@ class AutoShutdownAppV2:
             except: pass
 
 
+
+
+    def custom_server_ws_thread(self):
+        import time, json, socket, urllib.request, threading
+        try:
+            import websockets.sync.client
+        except ImportError:
+            return
+            
+        central_url = "https://atss-a1f9e-default-rtdb.firebaseio.com/"
+        while self.is_running:
+            try:
+                # 1. Firebase에서 자체 서버 URL 가져오기
+                config_url = f"{central_url}update_info/custom_server_url.json"
+                req = urllib.request.Request(config_url, method='GET')
+                
+                ssl_context = None
+                try:
+                    import ssl
+                    ssl_context = ssl._create_unverified_context()
+                except: pass
+                
+                with urllib.request.urlopen(req, timeout=5, context=ssl_context) as res:
+                    ws_url = json.loads(res.read().decode('utf-8'))
+                
+                if not ws_url or not isinstance(ws_url, str) or not ws_url.startswith("ws"):
+                    time.sleep(10)
+                    continue
+                    
+                pc_id = get_pc_id()
+                
+                # 2. WebSocket 연결
+                with websockets.sync.client.connect(ws_url) as ws:
+                    # 인증 (클라이언트는 토큰 없이 pc_id만 전송)
+                    auth_msg = {"type": "auth", "role": "client", "pc_id": pc_id}
+                    ws.send(json.dumps(auth_msg))
+                    
+                    auth_resp = json.loads(ws.recv())
+                    if auth_resp.get("status") != "success":
+                        time.sleep(5)
+                        continue
+                        
+                    last_status_time = 0
+                    
+                    def recv_loop():
+                        while self.is_running:
+                            try:
+                                msg_raw = ws.recv()
+                                msg = json.loads(msg_raw)
+                                if msg.get("type") == "command":
+                                    action = msg.get("action")
+                                    payload = msg.get("payload", {})
+                                    message = payload.get("message", "")
+                                    
+                                    # 명령어 실행 (기존 로직과 동일하게 분기 처리)
+                                    if action == 'shutdown':
+                                        import subprocess
+                                        subprocess.run(['shutdown', '/s', '/t', '0'], creationflags=subprocess.CREATE_NO_WINDOW)
+                                    elif action == 'sleep':
+                                        import subprocess
+                                        subprocess.run(['rundll32.exe', 'powrprof.dll,SetSuspendState', '0,1,0'], creationflags=subprocess.CREATE_NO_WINDOW)
+                                    elif action == 'restart':
+                                        import subprocess
+                                        subprocess.run(['shutdown', '/r', '/t', '0'], creationflags=subprocess.CREATE_NO_WINDOW)
+                                    elif action == 'update':
+                                        threading.Thread(target=self.check_for_updates, kwargs={'silent': True, 'force': True}, daemon=True).start()
+                                    elif action == 'setup_mode':
+                                        threading.Thread(target=self.run_setup_mode, daemon=True).start()
+                                    elif action == 'alert':
+                                        from tkinter import messagebox
+                                        threading.Thread(target=lambda: messagebox.showwarning("관리자 알림", message), daemon=True).start()
+                                    elif action == 'volume_control':
+                                        try:
+                                            from pycaw.pycaw import AudioUtilities
+                                            import comtypes
+                                            comtypes.CoInitialize()
+                                            _devs = AudioUtilities.GetSpeakers()
+                                            _vol_intf = _devs.EndpointVolume
+                                            level = float(payload.get('level', 0.5))
+                                            _vol_intf.SetMasterVolumeLevelScalar(level, None)
+                                        except: pass
+                                    elif action == 'open_url':
+                                        url = payload.get("url", "")
+                                        browser = payload.get("browser", "default")
+                                        if url:
+                                            import subprocess
+                                            if browser == "chrome": subprocess.run(['start', 'chrome', url], shell=True)
+                                            elif browser == "edge": subprocess.run(['start', 'msedge', url], shell=True)
+                                            elif browser == "whale": subprocess.run(['start', 'whale', url], shell=True)
+                                            else: subprocess.run(['start', url], shell=True)
+                                    elif action == 'open_file':
+                                        file_path = payload.get("file_path", "")
+                                        app_path = payload.get("app_path", "")
+                                        if file_path:
+                                            import subprocess, os
+                                            if app_path and os.path.exists(app_path):
+                                                subprocess.Popen([app_path, file_path])
+                                            else:
+                                                os.startfile(file_path)
+                                    elif action == 'screenshot':
+                                        import threading
+                                        threading.Thread(target=_take_and_upload_screenshot, args=(central_url, pc_id, "", ssl_context), daemon=True).start()
+                                    elif action == 'stream_start':
+                                        _start_screen_streaming(central_url, pc_id, "", ssl_context)
+                                    elif action == 'stream_stop':
+                                        _stop_screen_streaming()
+                                    
+                            except Exception as e:
+                                break
+                    
+                    recv_thread = threading.Thread(target=recv_loop, daemon=True)
+                    recv_thread.start()
+                    
+                    while self.is_running and recv_thread.is_alive():
+                        now = time.time()
+                        if now - last_status_time > 3.0:
+                            last_status_time = now
+                            
+                            # 상태 정보 수집
+                            current_vol = 50
+                            if PYCAW_AVAILABLE:
+                                try:
+                                    import comtypes
+                                    comtypes.CoInitialize()
+                                    _devs = AudioUtilities.GetSpeakers()
+                                    _vol_intf = _devs.EndpointVolume
+                                    current_vol = int(_vol_intf.GetMasterVolumeLevelScalar() * 100)
+                                except: pass
+                                
+                            next_time, next_action = self.get_next_event()
+                            if next_time and next_time != "skip":
+                                from datetime import datetime
+                                date_diff = (next_time.date() - datetime.now().date()).days
+                                if date_diff == 0: day_prefix = "오늘 "
+                                elif date_diff == 1: day_prefix = "내일 "
+                                else: day_prefix = f"{DAYS[next_time.weekday()]}요일 "
+                                next_str = f"{day_prefix}{next_time.strftime('%H:%M')} [{next_action}]"
+                            else:
+                                next_str = "오늘 안 함" if next_time == "skip" else "없음"
+                                
+                            try:
+                                current_user = os.getlogin()
+                            except Exception:
+                                current_user = os.environ.get('USERNAME') or 'SYSTEM'
+                                
+                            payload = {
+                                'volume': current_vol,
+                                'ip': get_local_ip(),
+                                'mac': '',
+                                'hostname': socket.gethostname(),
+                                'user': current_user,
+                                'version': CURRENT_VERSION,
+                                'status': 'online',
+                                'next_event': next_str,
+                                'last_seen': time.strftime('%H:%M:%S'),
+                                'last_seen_ts': time.time(),
+                                'windows': get_open_windows()
+                            }
+                            ws.send(json.dumps({"type": "status", "payload": payload}))
+                            
+                        time.sleep(1.0)
+            except Exception as e:
+                time.sleep(5)
 
     def http_poller_thread(self):
         processed_push_ids = set()
@@ -2888,6 +3052,7 @@ class HeadlessShutdownApp:
         threading.Thread(target=self.socket_listener, daemon=True).start()
         threading.Thread(target=self.monitor_time, daemon=True).start()
         threading.Thread(target=self.http_poller_thread, daemon=True).start()
+        threading.Thread(target=self.custom_server_ws_thread, daemon=True).start()
         threading.Thread(target=self.check_for_updates, daemon=True).start()
         
         # 메인 스레드 유지
@@ -3064,6 +3229,169 @@ class HeadlessShutdownApp:
         except:
             pass
         os._exit(0)
+
+
+    def custom_server_ws_thread(self):
+        import time, json, socket, urllib.request, threading
+        try:
+            import websockets.sync.client
+        except ImportError:
+            return
+            
+        central_url = "https://atss-a1f9e-default-rtdb.firebaseio.com/"
+        while self.is_running:
+            try:
+                # 1. Firebase에서 자체 서버 URL 가져오기
+                config_url = f"{central_url}update_info/custom_server_url.json"
+                req = urllib.request.Request(config_url, method='GET')
+                
+                ssl_context = None
+                try:
+                    import ssl
+                    ssl_context = ssl._create_unverified_context()
+                except: pass
+                
+                with urllib.request.urlopen(req, timeout=5, context=ssl_context) as res:
+                    ws_url = json.loads(res.read().decode('utf-8'))
+                
+                if not ws_url or not isinstance(ws_url, str) or not ws_url.startswith("ws"):
+                    time.sleep(10)
+                    continue
+                    
+                pc_id = get_pc_id()
+                
+                # 2. WebSocket 연결
+                with websockets.sync.client.connect(ws_url) as ws:
+                    # 인증 (클라이언트는 토큰 없이 pc_id만 전송)
+                    auth_msg = {"type": "auth", "role": "client", "pc_id": pc_id}
+                    ws.send(json.dumps(auth_msg))
+                    
+                    auth_resp = json.loads(ws.recv())
+                    if auth_resp.get("status") != "success":
+                        time.sleep(5)
+                        continue
+                        
+                    last_status_time = 0
+                    
+                    def recv_loop():
+                        while self.is_running:
+                            try:
+                                msg_raw = ws.recv()
+                                msg = json.loads(msg_raw)
+                                if msg.get("type") == "command":
+                                    action = msg.get("action")
+                                    payload = msg.get("payload", {})
+                                    message = payload.get("message", "")
+                                    
+                                    # 명령어 실행 (기존 로직과 동일하게 분기 처리)
+                                    if action == 'shutdown':
+                                        import subprocess
+                                        subprocess.run(['shutdown', '/s', '/t', '0'], creationflags=subprocess.CREATE_NO_WINDOW)
+                                    elif action == 'sleep':
+                                        import subprocess
+                                        subprocess.run(['rundll32.exe', 'powrprof.dll,SetSuspendState', '0,1,0'], creationflags=subprocess.CREATE_NO_WINDOW)
+                                    elif action == 'restart':
+                                        import subprocess
+                                        subprocess.run(['shutdown', '/r', '/t', '0'], creationflags=subprocess.CREATE_NO_WINDOW)
+                                    elif action == 'update':
+                                        threading.Thread(target=self.check_for_updates, kwargs={'silent': True, 'force': True}, daemon=True).start()
+                                    elif action == 'setup_mode':
+                                        threading.Thread(target=self.run_setup_mode, daemon=True).start()
+                                    elif action == 'alert':
+                                        from tkinter import messagebox
+                                        threading.Thread(target=lambda: messagebox.showwarning("관리자 알림", message), daemon=True).start()
+                                    elif action == 'volume_control':
+                                        try:
+                                            from pycaw.pycaw import AudioUtilities
+                                            import comtypes
+                                            comtypes.CoInitialize()
+                                            _devs = AudioUtilities.GetSpeakers()
+                                            _vol_intf = _devs.EndpointVolume
+                                            level = float(payload.get('level', 0.5))
+                                            _vol_intf.SetMasterVolumeLevelScalar(level, None)
+                                        except: pass
+                                    elif action == 'open_url':
+                                        url = payload.get("url", "")
+                                        browser = payload.get("browser", "default")
+                                        if url:
+                                            import subprocess
+                                            if browser == "chrome": subprocess.run(['start', 'chrome', url], shell=True)
+                                            elif browser == "edge": subprocess.run(['start', 'msedge', url], shell=True)
+                                            elif browser == "whale": subprocess.run(['start', 'whale', url], shell=True)
+                                            else: subprocess.run(['start', url], shell=True)
+                                    elif action == 'open_file':
+                                        file_path = payload.get("file_path", "")
+                                        app_path = payload.get("app_path", "")
+                                        if file_path:
+                                            import subprocess, os
+                                            if app_path and os.path.exists(app_path):
+                                                subprocess.Popen([app_path, file_path])
+                                            else:
+                                                os.startfile(file_path)
+                                    elif action == 'screenshot':
+                                        import threading
+                                        threading.Thread(target=_take_and_upload_screenshot, args=(central_url, pc_id, "", ssl_context), daemon=True).start()
+                                    elif action == 'stream_start':
+                                        _start_screen_streaming(central_url, pc_id, "", ssl_context)
+                                    elif action == 'stream_stop':
+                                        _stop_screen_streaming()
+                                    
+                            except Exception as e:
+                                break
+                    
+                    recv_thread = threading.Thread(target=recv_loop, daemon=True)
+                    recv_thread.start()
+                    
+                    while self.is_running and recv_thread.is_alive():
+                        now = time.time()
+                        if now - last_status_time > 3.0:
+                            last_status_time = now
+                            
+                            # 상태 정보 수집
+                            current_vol = 50
+                            if PYCAW_AVAILABLE:
+                                try:
+                                    import comtypes
+                                    comtypes.CoInitialize()
+                                    _devs = AudioUtilities.GetSpeakers()
+                                    _vol_intf = _devs.EndpointVolume
+                                    current_vol = int(_vol_intf.GetMasterVolumeLevelScalar() * 100)
+                                except: pass
+                                
+                            next_time, next_action = self.get_next_event()
+                            if next_time and next_time != "skip":
+                                from datetime import datetime
+                                date_diff = (next_time.date() - datetime.now().date()).days
+                                if date_diff == 0: day_prefix = "오늘 "
+                                elif date_diff == 1: day_prefix = "내일 "
+                                else: day_prefix = f"{DAYS[next_time.weekday()]}요일 "
+                                next_str = f"{day_prefix}{next_time.strftime('%H:%M')} [{next_action}]"
+                            else:
+                                next_str = "오늘 안 함" if next_time == "skip" else "없음"
+                                
+                            try:
+                                current_user = os.getlogin()
+                            except Exception:
+                                current_user = os.environ.get('USERNAME') or 'SYSTEM'
+                                
+                            payload = {
+                                'volume': current_vol,
+                                'ip': get_local_ip(),
+                                'mac': '',
+                                'hostname': socket.gethostname(),
+                                'user': current_user,
+                                'version': CURRENT_VERSION,
+                                'status': 'online',
+                                'next_event': next_str,
+                                'last_seen': time.strftime('%H:%M:%S'),
+                                'last_seen_ts': time.time(),
+                                'windows': get_open_windows()
+                            }
+                            ws.send(json.dumps({"type": "status", "payload": payload}))
+                            
+                        time.sleep(1.0)
+            except Exception as e:
+                time.sleep(5)
 
     def http_poller_thread(self):
         _log_path = os.path.join(application_path, 'headless_debug.log')
