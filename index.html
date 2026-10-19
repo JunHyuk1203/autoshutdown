@@ -1121,6 +1121,21 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
     .pc-grid { grid-template-columns:repeat(auto-fill,minmax(216px,1fr)); gap:8px; }.pc-card { padding:12px; }.pc-name { font-size:13px; }.pc-meta { font-size:11px; }.card-action-btn { min-height:30px; font-size:10px; }
     .auth-card { padding:24px; }.auth-input,.form-input { font-size:16px; }
 }
+.slide-confirm { --slide-accent:#d74754; --slide-tint:#fff0f2; margin:22px 0 8px; }
+.slide-confirm[data-tone="restart"] { --slide-accent:#315fdb; --slide-tint:#edf2ff; }
+.slide-confirm-track { --slide-offset:0px; --slide-progress:0; height:60px; border-radius:999px; background:var(--slide-tint); border:1px solid color-mix(in srgb,var(--slide-accent) 15%,transparent); position:relative; overflow:hidden; user-select:none; -webkit-user-select:none; }
+.slide-confirm-fill { position:absolute; inset:0 auto 0 0; width:calc(var(--slide-offset) + 54px); border-radius:999px; background:color-mix(in srgb,var(--slide-accent) 10%,transparent); pointer-events:none; transition:width .18s ease; }
+.slide-confirm-handle { position:absolute; top:5px; left:5px; width:48px; height:48px; display:grid; place-items:center; border-radius:50%; background:white; color:var(--slide-accent); box-shadow:0 2px 8px #26324814; cursor:grab; touch-action:none; transform:translateX(var(--slide-offset)); transition:transform .18s ease; -webkit-user-select:none; user-select:none; }
+.slide-confirm-handle:focus-visible { outline:2px solid var(--slide-accent); outline-offset:-4px; }
+.slide-confirm-handle[aria-disabled="true"] { cursor:default; }
+.slide-confirm-track.is-dragging .slide-confirm-handle { cursor:grabbing; transition:none; }
+.slide-confirm-track.is-dragging .slide-confirm-fill { transition:none; }
+.slide-confirm-track.is-resetting .slide-confirm-handle,.slide-confirm-track.is-resetting .slide-confirm-fill { transition:none; }
+.slide-confirm-label { position:absolute; inset:0 22px 0 58px; display:flex; justify-content:center; align-items:center; color:var(--slide-accent); font-size:13px; font-weight:600; letter-spacing:.2px; pointer-events:none; opacity:calc(1 - var(--slide-progress)*.85); }
+.slide-confirm-end { position:absolute; right:16px; top:50%; transform:translateY(-53%); color:var(--slide-accent); opacity:.35; font-size:26px; pointer-events:none; }
+.slide-confirm-hint { color:var(--text-muted); font-size:10px; line-height:1.6; text-align:center; margin:10px 0 0; }
+#confirm-modal[data-confirmation="slide"] .modal-actions { justify-content:center; margin-top:18px; }
+#confirm-modal[data-confirmation="slide"] .modal-btn-cancel { min-width:80px; background:#f2f4f8; }
 @media(prefers-reduced-motion:reduce) { *,*::before,*::after { animation:none!important; transition:none!important; } }
 </style>
 </head>
@@ -1377,10 +1392,21 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 <!-- ─────────────────────────────────────────────────────────────
    공용 다이얼로그 모달
    ───────────────────────────────────────────────────────────── -->
-<div class="modal-overlay" id="confirm-modal">
+<div class="modal-overlay" id="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" hidden>
     <div class="modal-card">
         <h3 class="modal-title" id="modal-title">확인</h3>
         <p class="modal-msg" id="modal-msg">정말 진행하시겠습니까?</p>
+        <div id="modal-slide-confirm" class="slide-confirm" hidden>
+            <div id="modal-slide-track" class="slide-confirm-track">
+                <div class="slide-confirm-fill" aria-hidden="true"></div>
+                <span id="modal-slide-label" class="slide-confirm-label">밀어서 종료</span>
+                <span class="slide-confirm-end" aria-hidden="true">›</span>
+                <div id="modal-slide-handle" class="slide-confirm-handle" role="slider" tabindex="0" aria-label="밀어서 종료" aria-orientation="horizontal" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-describedby="modal-slide-hint">
+                    <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6.3 5.7a8 8 0 1 0 11.4 0M12 3v8"/></svg>
+                </div>
+            </div>
+            <p id="modal-slide-hint" class="slide-confirm-hint">오른쪽 끝까지 밀면 실행됩니다. 키보드는 오른쪽 방향키를 사용하세요.</p>
+        </div>
         <div class="modal-actions">
             <button class="modal-btn modal-btn-cancel" id="windows-cancel-btn">취소</button>
             <button class="modal-btn modal-btn-confirm" id="modal-ok-btn">실행</button>
@@ -1736,6 +1762,7 @@ let APP_ACCESS_GRANTED = null;
 
 function setAccessGranted(value) {
     if (!value) {
+        closeModal();
         closeLiveScreen();
         closeScreenshotModal();
     }
@@ -3292,7 +3319,8 @@ function triggerCommandAll(action) {
             } else {
                 alert("명령 전달 중 오류가 발생했습니다: " + result.error);
             }
-        }
+        },
+        { slide: action === 'shutdown' || action === 'restart' ? `밀어서 ${labels[action]}` : null, tone: action === 'restart' ? 'restart' : 'shutdown' }
     );
 }
 
@@ -3300,7 +3328,7 @@ async function triggerSingleCommand(pcId, action) {
     const labels = { shutdown: "종료", sleep: "절전", restart: "재부팅", setup_mode: "초기설정", update: "원격 업데이트", close_active_window: "활성 창 종료" };
     showModal(
         `${labels[action] || action} 확인`,
-        `[${(pcs[pcId] && pcs[pcId].hostname) || pcId}] PC로 즉시 [${labels[action] || action}] 명령을 전송하시겠습니까?`,
+        `[${escapeHtml((pcs[pcId] && pcs[pcId].hostname) || pcId)}] PC로 즉시 [${labels[action] || action}] 명령을 전송하시겠습니까?`,
         async () => {
             closeModal();
             let result;
@@ -3320,7 +3348,8 @@ async function triggerSingleCommand(pcId, action) {
             } else if (result.error && result.error !== 'auth') {
                 alert("명령 전달 중 오류가 발생했습니다: " + result.error);
             }
-        }
+        },
+        { slide: action === 'shutdown' || action === 'restart' ? `밀어서 ${labels[action]}` : null, tone: action === 'restart' ? 'restart' : 'shutdown' }
     );
 }
 
@@ -3405,24 +3434,138 @@ async function clearOfflineDevices() {
 }
 
 // ── 다이얼로그 모달 제어 ──
-function showModal(title, msg, onOk) {
+let _modalSlide = null;
+let _modalVersion = 0;
+let _modalExecuting = false;
+let _modalReturnFocus = null;
+
+function resetSlideConfirmation() {
+    const previous = _modalSlide;
+    _modalSlide = null;
+    const track = document.getElementById('modal-slide-track');
+    const handle = document.getElementById('modal-slide-handle');
+    track.classList.remove('is-dragging');
+    track.classList.add('is-resetting');
+    track.style.setProperty('--slide-offset', '0px');
+    track.style.setProperty('--slide-progress', '0');
+    handle.setAttribute('aria-valuenow', '0');
+    handle.setAttribute('aria-disabled', 'false');
+    if (previous && previous.pointerId !== null && handle.hasPointerCapture(previous.pointerId)) handle.releasePointerCapture(previous.pointerId);
+}
+
+function runPendingModalAction() {
+    if (_modalExecuting || typeof pendingAction !== 'function') return;
+    const action = pendingAction;
+    const version = _modalVersion;
+    pendingAction = null;
+    _modalExecuting = true;
+    document.getElementById('modal-ok-btn').disabled = true;
+    document.getElementById('modal-slide-handle').setAttribute('aria-disabled', 'true');
+    Promise.resolve().then(action).catch(err => {
+        alert('처리 중 오류가 발생했습니다: ' + (err.message || String(err)));
+    }).finally(() => {
+        if (version === _modalVersion) _modalExecuting = false;
+    });
+}
+
+function showModal(title, msg, onOk, options = {}) {
+    resetSlideConfirmation();
+    _modalVersion++;
+    _modalExecuting = false;
+    _modalReturnFocus = document.activeElement;
     document.getElementById("modal-title").innerText = title;
     document.getElementById("modal-msg").innerHTML = msg;
     pendingAction = onOk;
 
+    const slider = document.getElementById('modal-slide-confirm');
+    const button = document.getElementById('modal-ok-btn');
+    slider.hidden = !options.slide;
+    document.getElementById('confirm-modal').dataset.confirmation = options.slide ? 'slide' : 'button';
+    slider.dataset.tone = options.tone || 'shutdown';
+    button.hidden = !!options.slide;
+    button.disabled = !!options.slide;
+    document.getElementById('modal-slide-label').textContent = options.slide || '';
+    document.getElementById('modal-slide-handle').setAttribute('aria-label', options.slide || '밀어서 실행');
+    document.getElementById('confirm-modal').hidden = false;
     document.getElementById("confirm-modal").classList.add("show");
-    document.getElementById("modal-ok-btn").onclick = function() {
-        if (typeof pendingAction === "function") {
-            Promise.resolve(pendingAction()).catch(function(err) {
-                alert("처리 중 치명적인 에러 발생:\n" + (err.stack || err.message || String(err)));
-            });
-        }
-    };
+    button.onclick = () => { if (!options.slide) runPendingModalAction(); };
+    (options.slide ? document.getElementById('modal-slide-handle') : button).focus({ preventScroll: true });
 }
 
 function closeModal() {
+    _modalVersion++;
+    pendingAction = null;
+    _modalExecuting = false;
+    resetSlideConfirmation();
     document.getElementById("confirm-modal").classList.remove("show");
+    document.getElementById('confirm-modal').hidden = true;
+    if (_modalReturnFocus && _modalReturnFocus.isConnected) _modalReturnFocus.focus({ preventScroll: true });
 }
+
+window.addEventListener('DOMContentLoaded', () => {
+    const handle = document.getElementById('modal-slide-handle');
+    const track = document.getElementById('modal-slide-track');
+    const visible = () => !document.getElementById('modal-slide-confirm').hidden && document.getElementById('confirm-modal').classList.contains('show');
+    const update = progress => {
+        if (!_modalSlide) return;
+        _modalSlide.progress = Math.max(0, Math.min(1, progress));
+        track.style.setProperty('--slide-offset', (_modalSlide.progress * _modalSlide.travel) + 'px');
+        track.style.setProperty('--slide-progress', String(_modalSlide.progress));
+        handle.setAttribute('aria-valuenow', String(Math.round(_modalSlide.progress * 100)));
+    };
+    const begin = (pointerId, startX) => {
+        const travel = track.clientWidth - handle.offsetWidth - 12;
+        if (!visible() || _modalExecuting || !pendingAction || travel <= 0) return false;
+        _modalSlide = { pointerId, startX, travel, progress: 0, version: _modalVersion };
+        track.classList.remove('is-resetting');
+        track.classList.add('is-dragging');
+        return true;
+    };
+    const finish = () => {
+        if (!_modalSlide) return;
+        const complete = _modalSlide.progress >= .99 && _modalSlide.version === _modalVersion && visible();
+        resetSlideConfirmation();
+        if (complete) runPendingModalAction();
+    };
+    handle.addEventListener('pointerdown', event => {
+        if (!event.isPrimary || event.button !== 0 || !begin(event.pointerId, event.clientX)) return;
+        event.preventDefault();
+        handle.focus({ preventScroll: true });
+        handle.setPointerCapture(event.pointerId);
+    });
+    handle.addEventListener('pointermove', event => {
+        if (!_modalSlide || _modalSlide.pointerId !== event.pointerId) return;
+        event.preventDefault();
+        update((event.clientX - _modalSlide.startX) / _modalSlide.travel);
+    });
+    handle.addEventListener('pointerup', event => {
+        if (!_modalSlide || _modalSlide.pointerId !== event.pointerId) return;
+        finish();
+    });
+    handle.addEventListener('pointercancel', resetSlideConfirmation);
+    handle.addEventListener('lostpointercapture', () => { if (_modalSlide) resetSlideConfirmation(); });
+    handle.addEventListener('keydown', event => {
+        if (!['ArrowRight', 'ArrowLeft', 'Home', 'End', 'Enter', ' '].includes(event.key)) return;
+        event.preventDefault();
+        if (!['ArrowRight', 'ArrowLeft'].includes(event.key)) {
+            if (event.key === 'Home') resetSlideConfirmation();
+            return;
+        }
+        if (_modalSlide && _modalSlide.pointerId !== null) return;
+        if (!_modalSlide && !begin(null, 0)) return;
+        update(_modalSlide.progress + (event.key === 'ArrowRight' ? .125 : -.125));
+    });
+    handle.addEventListener('keyup', event => {
+        if (event.key === 'ArrowRight' && _modalSlide && _modalSlide.pointerId === null && _modalSlide.progress >= .99) finish();
+    });
+    handle.addEventListener('blur', () => { if (_modalSlide && _modalSlide.pointerId === null) resetSlideConfirmation(); });
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && document.getElementById('confirm-modal').classList.contains('show')) closeModal();
+    });
+    document.addEventListener('visibilitychange', () => { if (document.hidden) resetSlideConfirmation(); });
+    window.addEventListener('blur', resetSlideConfirmation);
+    window.addEventListener('resize', resetSlideConfirmation);
+});
 
 // ── 연결 프로그램 프리셋 ─────────────────────────────────────────
 const APP_PRESETS = {

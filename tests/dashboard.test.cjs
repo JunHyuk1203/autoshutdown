@@ -8,10 +8,11 @@ const path = require('path');
   const browser = await chromium.launch({ headless: true, channel: process.env.PLAYWRIGHT_CHANNEL || 'msedge' });
   try {
     for (const entry of ['index.html', 'dashboard.html']) {
-      const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+      const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, hasTouch: true });
       const page = await context.newPage();
       const errors = [];
       page.on('pageerror', error => errors.push(error.message));
+      page.on('dialog', dialog => dialog.dismiss());
       await page.route('**/*', route => {
         if (route.request().url() === 'http://localhost/' + entry) {
           return route.fulfill({ contentType: 'text/html', body: fs.readFileSync(path.join(__dirname, '..', entry), 'utf8') });
@@ -70,6 +71,83 @@ const path = require('path');
       assert(await page.locator('#confirm-modal').isVisible(), 'Global control is bound');
       await page.locator('#windows-cancel-btn').click();
       await page.evaluate(() => {
+        window.powerCommands = [];
+        window.powerOriginalWriter = writeCommandToDB;
+        writeCommandToDB = async (target, action) => { powerCommands.push({ target, action }); return { success: true }; };
+      });
+      const scopes = [
+        { selector: '.action-btn-danger', target: '__ALL__', action: 'shutdown' },
+        { selector: '.action-btn-blue', target: '__ALL__', action: 'restart' },
+        { selector: '#pc-card-PC-01 [data-cmd="shutdown"]', target: 'PC-01', action: 'shutdown' },
+        { selector: '#pc-card-PC-01 [data-cmd="restart"]', target: 'PC-01', action: 'restart', touch: true }
+      ];
+      for (const [index, scope] of scopes.entries()) {
+        await page.locator(scope.selector).click();
+        const handle = page.locator('#modal-slide-handle');
+        assert(await handle.isVisible());
+        assert(!(await page.locator('#modal-ok-btn').isVisible()));
+        await page.evaluate(() => document.getElementById('modal-ok-btn').click());
+        await handle.click();
+        await handle.press('Enter');
+        let track = await page.locator('#modal-slide-track').boundingBox();
+        await page.mouse.click(track.x + track.width - 8, track.y + track.height / 2);
+        assert.equal(await page.evaluate(() => powerCommands.length), index, 'Clicks cannot confirm a power command');
+        let thumb = await handle.boundingBox();
+        let x = thumb.x + thumb.width / 2, y = thumb.y + thumb.height / 2;
+        await page.mouse.move(x, y); await page.mouse.down();
+        await page.mouse.move(x + (track.width - thumb.width - 14) / 2, y, { steps: 5 });
+        await page.mouse.up();
+        assert.equal(await handle.getAttribute('aria-valuenow'), '0', 'Partial slides reset');
+        assert.equal(await page.evaluate(() => powerCommands.length), index);
+        if (index === 0) {
+          await page.locator('#confirm-modal .modal-card').screenshot({ path: path.join(__dirname, '..', 'dashboard-slide-confirm.png'), animations: 'disabled' });
+          // Cancel even after reaching the end, before releasing the pointer.
+          await page.mouse.move(x, y); await page.mouse.down();
+          await page.mouse.move(track.x + track.width - 8, y, { steps: 6 });
+          await page.keyboard.press('Escape'); await page.mouse.up();
+          assert.equal(await page.evaluate(() => powerCommands.length), 0);
+          await page.locator(scope.selector).click();
+        }
+        track = await page.locator('#modal-slide-track').boundingBox();
+        thumb = await handle.boundingBox();
+        x = thumb.x + thumb.width / 2; y = thumb.y + thumb.height / 2;
+        if (scope.touch) {
+          const cdp = await context.newCDPSession(page);
+          await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y, id: 1 }] });
+          await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: track.x + track.width - 8, y, id: 1 }] });
+          await cdp.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] });
+          assert.equal(await page.evaluate(() => powerCommands.length), index, 'Interrupted touch cannot execute');
+          assert.equal(await handle.getAttribute('aria-valuenow'), '0');
+          await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y, id: 1 }] });
+          await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: track.x + track.width - 8, y, id: 1 }] });
+          await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+          await cdp.detach();
+        } else {
+          await page.mouse.move(x, y); await page.mouse.down();
+          await page.mouse.move(track.x + track.width - 8, y, { steps: 8 });
+          await page.mouse.up();
+        }
+        await page.waitForFunction(count => powerCommands.length === count, index + 1, { timeout: 4000 }).catch(async error => {
+          throw new Error('Power slide ' + index + ' did not finish: ' + JSON.stringify(await page.evaluate(() => ({ commands: powerCommands, drag: _modalSlide, pending: !!pendingAction, executing: _modalExecuting, progress: document.getElementById('modal-slide-handle').getAttribute('aria-valuenow') }))) + ' ' + error.message);
+        });
+        assert.deepEqual(await page.evaluate(() => powerCommands.at(-1)), { target: scope.target, action: scope.action });
+        assert(!(await page.locator('#confirm-modal').isVisible()));
+      }
+      await page.locator('.action-btn-blue').click();
+      await page.locator('#modal-slide-handle').focus();
+      for (let i = 0; i < 8; i++) await page.keyboard.down('ArrowRight');
+      await page.keyboard.up('ArrowRight');
+      await page.waitForFunction(() => powerCommands.length === 5);
+      await page.evaluate(() => {
+        window.genericConfirmed = false;
+        showModal('설정 확인', '다른 확인창은 버튼을 유지합니다.', () => { genericConfirmed = true; closeModal(); });
+      });
+      assert(await page.locator('#modal-ok-btn').isVisible());
+      assert(!(await page.locator('#modal-slide-confirm').isVisible()));
+      await page.locator('#modal-ok-btn').click();
+      assert(await page.evaluate(() => genericConfirmed));
+      await page.evaluate(() => { writeCommandToDB = powerOriginalWriter; });
+      await page.evaluate(() => {
         pcs['PC-01'].last_seen_ts = Date.now() - 31000;
         renderPCGrid(Date.now()); updateStatistics(Date.now());
       });
@@ -112,7 +190,7 @@ const path = require('path');
       await page.evaluate(() => { for (const id of Object.keys(pcs).slice(3)) delete pcs[id]; renderPCGrid(Date.now()); updateStatistics(Date.now()); });
       await page.screenshot({ path: path.join(__dirname, '..', 'dashboard-mobile.png'), fullPage: true });
       assert.deepEqual(errors, [], 'No uncaught browser errors');
-      console.log(entry + ': SDK failure/retry, metadata safety, selection, controls, status expiry, responsive layout passed');
+      console.log(entry + ': SDK retry, metadata safety, selection, power slide mouse/touch/keyboard, click/partial/cancel guards, other confirmation buttons, status expiry and responsive layout passed');
       await context.close();
     }
   } finally { await browser.close(); }
