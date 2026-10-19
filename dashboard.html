@@ -10,12 +10,12 @@
 <link rel="icon" href="data:,">
 <meta http-equiv="Content-Security-Policy" content="
     default-src 'self';
-    script-src 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com https://accounts.google.com;
+    script-src 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com https://accounts.google.com https://*.firebaseio.com https://*.firebasedatabase.app;
     style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
     font-src 'self' https://fonts.gstatic.com;
     connect-src 'self' https://*.firebaseio.com wss://*.firebaseio.com https://*.firebasedatabase.app wss://*.firebasedatabase.app wss://*.trycloudflare.com https://*.googleapis.com https://accounts.google.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com https://www.gstatic.com;
     img-src 'self' data: https://www.gstatic.com https://*.googleusercontent.com;
-    frame-src 'self' https://*.firebaseapp.com https://accounts.google.com https://atss-a1f9e.firebaseapp.com;
+    frame-src 'self' https://*.firebaseapp.com https://accounts.google.com https://atss-a1f9e.firebaseapp.com https://*.firebaseio.com https://*.firebasedatabase.app;
 ">
 <title>SmartPower Serverless Dashboard</title>
 <style>
@@ -1013,13 +1013,14 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
 .brand-mark { display:grid; place-items:center; width:28px; height:28px; background:#315fdb; color:white; border-radius:8px; font-size:18px; font-weight:800; }
 .logo-section h1 { font-size:16px; font-weight:750; letter-spacing:-.6px; white-space:nowrap; }
 .logo-section h1 .brand-section { display:inline; font-size:11px; font-weight:500; color:#7d899b; padding-left:12px; margin-left:12px; border-left:1px solid #dfe5ed; }
-.connection-strip { display:flex; align-items:center; flex:1; gap:9px; color:var(--text-muted); font-size:10px; }
+.connection-strip { display:flex; flex-wrap:wrap; align-items:center; flex:1; gap:9px; color:var(--text-muted); font-size:10px; }
 #current-mode-display { font-size:10px!important; font-weight:500!important; margin:0!important; background:#f1f4fb; padding:3px 7px; border-radius:5px; }
 #session-status { display:inline-flex; gap:5px; align-items:center; white-space:nowrap; color:#198567; }
 #session-status::before,.mini-dot { content:''; width:5px; height:5px; border-radius:50%; background:currentColor; display:inline-block; }
 #session-status[data-state="reconnecting"] { color:#a87016; }
 #session-status[data-state="offline"] { color:#738096; }
-.connection-detail { display:none; }
+.connection-detail { display:inline; color:#738096; font-size:10px; }
+.connection-detail[data-state="error"] { color:#bf394a; }
 .header-actions { gap:5px; align-items:center; }
 #signed-in-email { color:var(--text-muted); font-size:10px; max-width:180px; overflow:hidden; text-overflow:ellipsis; margin-right:6px; }
 .btn-icon { width:auto; height:28px; min-width:36px; padding:0 8px; background:#fff; border:1px solid var(--border-light); border-radius:6px; font-size:11px; }
@@ -1356,6 +1357,7 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:2px soli
                 <div class="device-tools">
                     <label class="device-search"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><input id="device-search" type="search" placeholder="기기명, 사용자, IP 검색" aria-label="기기 검색"></label>
                     <select id="device-sort" aria-label="기기 정렬"><option value="name">이름순</option><option value="online">온라인 우선</option></select>
+                    <button id="refresh-devices-btn" class="btn-clear-offline" type="button">새로고침</button>
                 </div>
             </div>
 
@@ -1740,6 +1742,7 @@ function setAccessGranted(value) {
     APP_ACCESS_GRANTED = value;
     if (!value) {
         window._dashboardInitialized = false;
+        stopPCSync();
         if (window._timeOffsetListener && window.firebase) {
             firebase.database().ref('.info/serverTimeOffset').off('value', window._timeOffsetListener);
             window._timeOffsetListener = null;
@@ -2330,7 +2333,10 @@ async function refreshSession(force = false) {
 
 function resumeSession() {
     if (document.hidden || _sessionSigningOut || !_fbAuth || !_fbAuth.currentUser) return;
-    if (navigator.onLine) firebase.database().goOnline();
+    if (navigator.onLine) {
+        firebase.database().goOnline();
+        if (APP_ACCESS_GRANTED === true && window._dashboardInitialized && window._serverMode !== 'custom') startRealtimeSync();
+    }
     refreshSession();
 }
 window.addEventListener('online', resumeSession);
@@ -2417,8 +2423,8 @@ function _enterDashboard(user) {
         _showScreen("dashboard-view");
 
         if (!window._dashboardInitialized) {
-            window._dashboardInitialized = true;
             initializeDashboard();
+            window._dashboardInitialized = true;
         } else {
             startRealtimeSync();
         }
@@ -2476,7 +2482,7 @@ async function _savePending(user) {
 
 // ── 실시간 데이터 모니터링 폴링 ──
 function initializeDashboard() {
-    document.getElementById("label-connected-db").innerText = `연결 주소: ${config.databaseURL}`;
+    showDeviceSyncStatus('기기 목록 연결 중…');
 
     // Server Time Sync
     window._timeOffsetListener = firebase.database().ref('.info/serverTimeOffset').on('value', function(snapshot) {
@@ -2551,6 +2557,7 @@ function _startCustomServerSync() {
 }
 
 function toggleServerMode(forceMode) {
+    stopPCSync();
     window._customSyncGeneration = (window._customSyncGeneration || 0) + 1;
     clearTimeout(window._customRetry);
     if (forceMode) {
@@ -2590,83 +2597,128 @@ function toggleServerMode(forceMode) {
     startRealtimeSync();
 }
 
+let _pcSyncGeneration = 0;
+let _pcFirstReadTimer = null;
+let _pcWatchdog = null;
+let _pcRestRequest = null;
+let _pcRealtimeRevision = 0;
+let _pcLastRealtimeAt = 0;
+
+function showDeviceSyncStatus(message, state = 'loading') {
+    const label = document.getElementById('label-connected-db');
+    label.textContent = message;
+    label.dataset.state = state;
+}
+
+function stopPCSync() {
+    _pcSyncGeneration++;
+    clearTimeout(_pcFirstReadTimer);
+    clearInterval(_pcWatchdog);
+    if (_pcRestRequest) { _pcRestRequest.controller.abort(); _pcRestRequest = null; }
+    if (window._pcsListener && window.firebase && firebase.database) {
+        firebase.database().ref('/pcs').off('value', window._pcsListener);
+        window._pcsListener = null;
+    }
+}
+
+function acceptPCData(data, generation) {
+    if (generation !== _pcSyncGeneration || APP_ACCESS_GRANTED !== true) return;
+    if (data !== null && typeof data !== 'object') throw new Error('잘못된 기기 목록 응답');
+    pcs = data || {};
+    const count = Object.keys(pcs).filter(id => pcs[id] && typeof pcs[id] === 'object').length;
+    showDeviceSyncStatus(count ? `기기 ${count}대 동기화됨` : '등록된 기기 없음', 'connected');
+    scheduleDashboardRender();
+    if (_wmPcId && document.getElementById('windows-modal').classList.contains('show')) {
+        const raw = pcs[_wmPcId] && pcs[_wmPcId].windows;
+        const list = Array.isArray(raw) ? raw : raw && typeof raw === 'object' ? Object.values(raw) : [];
+        if (JSON.stringify(_wmAllWindows) !== JSON.stringify(list)) {
+            _wmAllWindows = list;
+            filterWindowsList();
+        }
+    }
+}
+
 function startRealtimeSync() {
-    if (!config.databaseURL || APP_ACCESS_GRANTED !== true) return;
-
-    // 기본 모드 설정 (지정 안 되어있으면 firebase)
-    if (!window._serverMode) {
-        window._serverMode = 'firebase';
-    }
-
-    // UI 업데이트
-    const modeDisplay = document.getElementById("current-mode-display");
-    if (modeDisplay) {
-        if (window._serverMode === 'custom') {
-            modeDisplay.textContent = "🟢 자체 서버 (고속)";
-            modeDisplay.style.color = "#10b981";
-        } else {
-            modeDisplay.textContent = "🔵 Firebase 클라우드";
-            modeDisplay.style.color = "#3b82f6";
-        }
-    }
-
-    if (window._renderInterval) clearInterval(window._renderInterval);
+    if (!config.databaseURL || APP_ACCESS_GRANTED !== true || !_fbAuth || !_fbAuth.currentUser) return;
+    stopPCSync();
+    const generation = _pcSyncGeneration;
+    _pcLastRealtimeAt = 0;
+    _pcRealtimeRevision = 0;
+    if (!window._serverMode) window._serverMode = 'firebase';
+    const custom = window._serverMode === 'custom';
+    const modeDisplay = document.getElementById('current-mode-display');
+    modeDisplay.textContent = custom ? '자체 서버' : 'Firebase 클라우드';
+    modeDisplay.style.color = custom ? '#198567' : '#315fdb';
+    clearInterval(window._renderInterval);
     window._renderInterval = setInterval(scheduleDashboardRender, 5000);
-    if (window._serverMode === 'custom') {
-        _startCustomServerSync();
-        return;
+    if (custom) { _startCustomServerSync(); return; }
+    showDeviceSyncStatus('기기 목록 연결 중…');
+    // WebSocket/long-poll can stall without invoking the SDK's error callback.
+    _pcFirstReadTimer = setTimeout(() => fetchPCData(), 3000);
+    _pcWatchdog = setInterval(() => {
+        if (!document.hidden && Date.now() - _pcLastRealtimeAt > 30000) fetchPCData();
+    }, 15000);
+    try {
+        window._pcsListener = firebase.database().ref('/pcs').on('value', snapshot => {
+            if (generation !== _pcSyncGeneration) return;
+            _pcLastRealtimeAt = Date.now();
+            _pcRealtimeRevision++;
+            clearTimeout(_pcFirstReadTimer);
+            acceptPCData(snapshot.val(), generation);
+        }, error => {
+            if (generation !== _pcSyncGeneration) return;
+            showDeviceSyncStatus('실시간 연결 재시도 중…');
+            fetchPCData();
+        });
+    } catch (error) {
+        fetchPCData();
     }
-
-    // 이중 가드: 인증 실패 상태면 즉시 차단
-    if (APP_ACCESS_GRANTED !== true) return;
-
-    // Firebase Auth 체크
-    if (!_fbAuth || !_fbAuth.currentUser) {
-        setAccessGranted(false);
-        return;
-    }
-
-    if (window._pcsListener) {
-        firebase.database().ref("/pcs").off("value", window._pcsListener);
-    }
-
-    window._pcsListener = firebase.database().ref("/pcs").on("value", snapshot => {
-        const data = snapshot.val() || {};
-
-        const serverNowMs = Date.now() + serverTimeOffset;
-        pcs = data;
-
-        scheduleDashboardRender();
-
-        if (_wmPcId && document.getElementById('windows-modal').classList.contains('show')) {
-            const pc = pcs[_wmPcId];
-            if (pc) {
-                const raw = pc.windows;
-                let newWindows = [];
-                if (Array.isArray(raw)) {
-                    newWindows = raw;
-                } else if (raw && typeof raw === 'object') {
-                    newWindows = Object.values(raw);
-                }
-
-                if (JSON.stringify(_wmAllWindows) !== JSON.stringify(newWindows)) {
-                    _wmAllWindows = newWindows;
-                    const q = document.getElementById('wm-search-input').value.trim().toLowerCase();
-                    if (q) { filterWindowsList(); } else { renderWindowsList(_wmAllWindows); }
-                }
-            }
-        }
-    }, error => {
-        console.error("Firebase sync error:", error);
-        document.getElementById('label-connected-db').textContent = '연결 실패 · 네트워크와 접근 권한을 확인해주세요';
-    });
-
-
 }
 
 async function fetchPCData() {
-    // Deprecated. Handled by startRealtimeSync.
+    if (APP_ACCESS_GRANTED !== true || _sessionSigningOut || !_fbAuth || !_fbAuth.currentUser || window._serverMode === 'custom') return;
+    if (_pcRestRequest) return _pcRestRequest.promise;
+    const generation = _pcSyncGeneration;
+    const revision = _pcRealtimeRevision;
+    const user = _fbAuth.currentUser;
+    const request = { controller: new AbortController(), promise: null };
+    const timeout = setTimeout(() => request.controller.abort(), 8000);
+    _pcRestRequest = request;
+    request.promise = (async () => {
+        try {
+            const token = await user.getIdToken();
+            if (generation !== _pcSyncGeneration || _fbAuth.currentUser !== user) return;
+            const url = new URL(config.databaseURL.replace(/\/$/, '') + '/pcs.json');
+            url.searchParams.set('auth', token);
+            const response = await fetch(url.href, { signal: request.controller.signal, cache: 'no-store' });
+            if (!response.ok) {
+                const error = new Error(response.status === 401 || response.status === 403 ? '기기 조회 권한 오류 · 승인 상태를 확인해주세요' : `기기 조회 실패 (${response.status})`);
+                throw error;
+            }
+            const data = await response.json();
+            // A delayed HTTP response must not replace a newer realtime snapshot.
+            if (revision === _pcRealtimeRevision) acceptPCData(data, generation);
+        } catch (error) {
+            if (generation !== _pcSyncGeneration || revision !== _pcRealtimeRevision || _sessionSigningOut) return;
+            showDeviceSyncStatus(error.name === 'AbortError' ? '기기 연결 지연 · 새로고침을 눌러주세요' : error.message || '기기 조회 실패 · 네트워크를 확인해주세요', 'error');
+        } finally {
+            clearTimeout(timeout);
+            if (_pcRestRequest === request) _pcRestRequest = null;
+        }
+    })();
+    return request.promise;
 }
+
+window.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('refresh-devices-btn').addEventListener('click', () => {
+        if (APP_ACCESS_GRANTED !== true) return;
+        _deviceFilter = 'all';
+        document.getElementById('device-search').value = '';
+        applyDeviceFilters();
+        startRealtimeSync();
+        fetchPCData();
+    });
+});
 
 // ── UI 렌더링 및 통계 업데이트 ──
 function getPCDiffSeconds(pc, serverNowMs) {
