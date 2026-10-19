@@ -1769,6 +1769,7 @@ function setAccessGranted(value) {
     APP_ACCESS_GRANTED = value;
     if (!value) {
         window._dashboardInitialized = false;
+        clearTimeout(_pcOfflineTimer);
         stopPCSync();
         if (window._timeOffsetListener && window.firebase) {
             firebase.database().ref('.info/serverTimeOffset').off('value', window._timeOffsetListener);
@@ -2748,6 +2749,24 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 // ── UI 렌더링 및 통계 업데이트 ──
+const PC_OFFLINE_SECONDS = 10;
+let _pcOfflineTimer = null;
+
+function isPCOnline(pc, serverNowMs = Date.now() + serverTimeOffset) {
+    return !!pc && pc.status === 'online' && getPCDiffSeconds(pc, serverNowMs) < PC_OFFLINE_SECONDS;
+}
+
+function schedulePCOfflineRefresh(serverNowMs) {
+    clearTimeout(_pcOfflineTimer);
+    if (APP_ACCESS_GRANTED !== true) return;
+    let remaining = Infinity;
+    for (const pc of Object.values(pcs)) {
+        if (isPCOnline(pc, serverNowMs)) remaining = Math.min(remaining, PC_OFFLINE_SECONDS - getPCDiffSeconds(pc, serverNowMs));
+    }
+    // Repaint at the nearest expiry without increasing the regular render rate.
+    if (Number.isFinite(remaining)) _pcOfflineTimer = setTimeout(scheduleDashboardRender, Math.ceil(remaining * 1000) + 1);
+}
+
 function getPCDiffSeconds(pc, serverNowMs) {
     const lastSeenRaw = pc.last_seen_ts || 0;
     if (lastSeenRaw <= 0) return 999999;
@@ -2764,7 +2783,7 @@ function applyDeviceFilters() {
     const grid = document.getElementById('pc-grid-area');
     const cards = Array.from(grid.querySelectorAll('.pc-card'));
     const now = Date.now() + serverTimeOffset;
-    const online = pc => pc && pc.status === 'online' && getPCDiffSeconds(pc, now) < 30;
+    const online = pc => isPCOnline(pc, now);
     cards.sort((left, right) => {
         const a = pcs[left.dataset.pcId] || {}, b = pcs[right.dataset.pcId] || {};
         const status = sort === 'online' ? Number(online(b)) - Number(online(a)) : 0;
@@ -2813,6 +2832,7 @@ function renderPCGrid(serverNowMs) {
                 <div class="empty-desc">학생 PC에서 스마트 전원 관리자가 실행되면 자동으로 여기에 나타납니다.</div>
             </div>`;
         applyDeviceFilters();
+        schedulePCOfflineRefresh(serverNowMs);
         return;
     }
 
@@ -2835,7 +2855,7 @@ function renderPCGrid(serverNowMs) {
         const pc = pcs[pcId];
         const safePcId = escapeHtml(pcId);
         const diffSeconds = getPCDiffSeconds(pc, serverNowMs);
-        const isOnline = (pc.status === "online") && (diffSeconds < 30);
+        const isOnline = isPCOnline(pc, serverNowMs);
 
         // Offline deselect logic removed to allow offline selection
 
@@ -2950,6 +2970,7 @@ function renderPCGrid(serverNowMs) {
         }
     });
     applyDeviceFilters();
+    schedulePCOfflineRefresh(serverNowMs);
 }
 
 function updateStatistics(serverNowMs) {
@@ -2957,11 +2978,7 @@ function updateStatistics(serverNowMs) {
     const pcKeys = Object.keys(pcs).filter(key => pcs[key] && typeof pcs[key] === 'object');
     const total = pcKeys.length;
 
-    const online = pcKeys.filter(k => {
-        const pc = pcs[k];
-        const diffSeconds = getPCDiffSeconds(pc, serverNowMs);
-        return (pc.status === "online") && (diffSeconds < 30);
-    }).length;
+    const online = pcKeys.filter(k => isPCOnline(pcs[k], serverNowMs)).length;
     const offline = total - online;
 
     document.getElementById("stat-total").innerText = total;

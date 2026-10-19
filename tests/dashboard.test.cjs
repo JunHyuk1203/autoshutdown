@@ -147,12 +147,24 @@ const path = require('path');
       await page.locator('#modal-ok-btn').click();
       assert(await page.evaluate(() => genericConfirmed));
       await page.evaluate(() => { writeCommandToDB = powerOriginalWriter; });
+      await page.clock.install();
       await page.evaluate(() => {
-        pcs['PC-01'].last_seen_ts = Date.now() - 31000;
+        pcs['PC-01'].last_seen_ts = Date.now() - 9000;
         renderPCGrid(Date.now()); updateStatistics(Date.now());
       });
-      assert.equal(await page.locator('#stat-online').textContent(), '0', 'Stale heartbeat expires');
+      assert.equal(await page.locator('#stat-online').textContent(), '1', 'A 9-second-old heartbeat is still online');
+      await page.clock.runFor(1100);
+      assert.equal(await page.locator('#stat-online').textContent(), '0', 'Heartbeat expires at 10 seconds without another data event');
+      assert.match(await page.locator('#pc-card-PC-01 .pc-status-txt').textContent(), /오프라인/);
+      assert.equal(await page.locator('#pc-card-PC-01 button:disabled').count(), 6);
+      await page.locator('[data-device-filter="online"]').click();
+      assert.equal(await page.locator('.pc-card:visible').count(), 0, 'The online filter uses the same expiry');
+      await page.locator('[data-device-filter="offline"]').click();
+      assert.equal(await page.locator('.pc-card:visible').count(), 2);
+      await page.locator('[data-device-filter="all"]').click();
+      assert(await page.evaluate(() => !isPCOnline({ status: 'online', last_seen_ts: (Date.now() - 10000) / 1000 }, Date.now())), 'Seconds-format timestamps expire at the exact boundary too');
       await page.evaluate(() => { pcs['PC-01'].last_seen_ts = Date.now(); renderPCGrid(Date.now()); updateStatistics(Date.now()); });
+      assert.equal(await page.locator('#stat-online').textContent(), '1', 'A new heartbeat restores online status');
       await page.evaluate(() => {
         window.testCommands = [];
         window.savedCommandWriter = writeCommandToDB;
