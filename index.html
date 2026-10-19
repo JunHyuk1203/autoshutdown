@@ -993,6 +993,135 @@ button:disabled { opacity:.4; cursor:not-allowed; }
 @media(prefers-reduced-motion:reduce) { *,*::before,*::after { animation:none!important; transition:none!important; scroll-behavior:auto!important; } }
 
 </style>
+<style id="compact-theme">
+:root {
+    color-scheme: light;
+    --bg-dark:#f4f6fa; --bg-card:#fff; --border-light:#e1e6ee;
+    --primary:#315fdb; --primary-glow:transparent; --accent-blue:#315fdb; --accent-purple:#53628b;
+    --text-main:#202a3d; --text-muted:#738096; --success:#198567; --success-glow:transparent;
+    --danger:#cf4251; --danger-glow:transparent; --warning:#a87016;
+}
+body { background:#f4f6fa; color:var(--text-main); font-size:12px; letter-spacing:-.15px; }
+button,input,select,textarea { font-family:inherit; }
+[hidden] { display:none!important; }
+button { box-shadow:none!important; }
+button:disabled { opacity:.38; }
+button:focus-visible,input:focus-visible,select:focus-visible { outline:2px solid #6287ed; outline-offset:2px; }
+.dashboard-layout { min-height:100vh; }
+.top-header { min-height:56px; padding:10px 20px; gap:20px; background:#fff; border-bottom:1px solid var(--border-light); position:static; backdrop-filter:none; }
+.logo-section { display:flex; align-items:center; gap:9px; flex-shrink:0; }
+.brand-mark { display:grid; place-items:center; width:28px; height:28px; background:#315fdb; color:white; border-radius:8px; font-size:18px; font-weight:800; }
+.logo-section h1 { font-size:16px; font-weight:750; letter-spacing:-.6px; white-space:nowrap; }
+.logo-section h1 .brand-section { display:inline; font-size:11px; font-weight:500; color:#7d899b; padding-left:12px; margin-left:12px; border-left:1px solid #dfe5ed; }
+.connection-strip { display:flex; align-items:center; flex:1; gap:9px; color:var(--text-muted); font-size:10px; }
+#current-mode-display { font-size:10px!important; font-weight:500!important; margin:0!important; background:#f1f4fb; padding:3px 7px; border-radius:5px; }
+#session-status { display:inline-flex; gap:5px; align-items:center; white-space:nowrap; color:#198567; }
+#session-status::before,.mini-dot { content:''; width:5px; height:5px; border-radius:50%; background:currentColor; display:inline-block; }
+#session-status[data-state="reconnecting"] { color:#a87016; }
+#session-status[data-state="offline"] { color:#738096; }
+.connection-detail { display:none; }
+.header-actions { gap:5px; align-items:center; }
+#signed-in-email { color:var(--text-muted); font-size:10px; max-width:180px; overflow:hidden; text-overflow:ellipsis; margin-right:6px; }
+.btn-icon { width:auto; height:28px; min-width:36px; padding:0 8px; background:#fff; border:1px solid var(--border-light); border-radius:6px; font-size:11px; }
+.btn-icon:hover { background:#f3f6fc; transform:none; }
+.main-content { max-width:1920px; padding:18px 20px 30px; gap:14px; }
+.top-status-bar { gap:12px; align-items:center; }
+.status-panel { display:flex; gap:8px; flex-shrink:1; }
+.status-chip { min-height:48px; min-width:140px; padding:10px 13px; border:1px solid var(--border-light); background:#fff; color:#65728a; border-radius:8px; gap:8px; cursor:pointer; font-size:11px; }
+.status-chip strong { margin-left:auto; font-size:22px; font-weight:700; color:#202a3d; font-variant-numeric:tabular-nums; }
+.status-chip.active { color:#198567; border-color:var(--border-light); }
+.status-chip.inactive { color:#7e889a; border-color:var(--border-light); }
+.status-chip.is-current { border-color:#99b1ee; background:#f3f6ff; box-shadow:inset 0 0 0 1px #c5d3f6!important; }
+.status-chip.active strong { color:#198567; }
+.status-chip.inactive strong { color:#7e889a; }
+.top-status-bar>div:last-child { align-items:center; gap:6px!important; }
+#selected-count { color:var(--text-muted); font-size:10px; margin-right:4px; }
+.btn-clear-offline { font-size:10px; padding:5px 8px; min-height:27px; background:transparent; color:#718096; border-color:#dfe4ed; border-radius:5px; }
+.btn-clear-offline:hover { background:#fff; color:#cf4251; }
+.control-row { gap:0; }
+.control-panel { display:flex; align-items:center; flex-wrap:wrap; gap:12px; padding:9px 12px; border-radius:8px; background:#fff; border-color:var(--border-light); }
+.panel-title { color:#738096; font-size:10px; margin:0; letter-spacing:0; white-space:nowrap; }
+.btn-row { display:flex; gap:5px; flex-wrap:wrap; }
+.action-btn { min-height:28px; padding:5px 10px; font-size:10px; font-weight:550; border:1px solid #e1e6ee; border-radius:5px; color:#536178; background:#fff; transform:none!important; }
+.action-btn:hover { background:#f1f4fa; color:#315fdb; }
+.action-btn-danger { color:#cf4251; border-color:#f1d4d9; background:#fff6f7; }
+.action-btn-danger:hover { color:#b72c3d; background:#ffebee; }
+.grid-container { gap:0; }
+.grid-header { margin:2px 0 10px; display:flex; gap:12px; align-items:center; }
+.grid-heading { display:flex; align-items:center; gap:9px; }
+.grid-title { font-size:13px; font-weight:700; }
+#visible-device-count { color:var(--text-muted); font-size:10px; }
+.device-tools { display:flex; gap:6px; align-items:center; margin-left:auto; }
+.device-search { display:flex; align-items:center; gap:7px; color:#8a96a8; border:1px solid #dfe5ee; border-radius:6px; background:#fff; padding:0 9px; min-height:30px; }
+.device-search input { width:190px; padding:5px 0; font-size:11px; color:#202a3d; border:0; outline:none; background:transparent; }
+.device-search:focus-within { border-color:#7b9ae8; box-shadow:0 0 0 2px #e8eefc; }
+.device-tools select { height:30px; border:1px solid #dfe5ee; border-radius:6px; background:white; padding:0 7px; color:#65728a; font-size:10px; }
+.pc-grid { grid-template-columns:repeat(auto-fill,minmax(216px,1fr)); gap:10px; align-items:stretch; }
+.pc-card { min-width:0; border:1px solid #e0e6ef; border-radius:8px; padding:11px; background:#fff; box-shadow:0 1px 2px #202a3d03; user-select:text; }
+.pc-card.online,.pc-card.offline { border-top:1px solid #e0e6ef; opacity:1; }
+.pc-card:hover { background:#fff; border-color:#acbee2; transform:none; box-shadow:0 3px 9px #2a446509; }
+.device-card-header { display:flex; align-items:center; gap:7px; margin-bottom:9px; }
+.device-symbol { width:27px; height:27px; display:grid; place-items:center; border-radius:6px; color:#315fdb; background:#eef3fe; flex-shrink:0; }
+.offline .device-symbol { color:#99a3b4; background:#f1f3f7; }
+.device-card-heading { flex:1; min-width:0; }
+.pc-name { margin:0 0 3px; font-size:12px; line-height:1.3; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:#253149; }
+.status-indicator { margin:0; gap:4px; }
+.dot { width:4px; height:4px; box-shadow:none!important; }
+.dot.online { background:#198567; }.dot.offline { background:#9da7b8; }
+.dot.online::after { display:none; }
+.pc-status-txt { font-size:9px; font-weight:500; letter-spacing:0; }
+.pc-status-txt.online { color:#198567; }.pc-status-txt.offline { color:#929daf; }
+.pc-checkbox { width:14px!important; height:14px!important; margin:0!important; accent-color:#315fdb!important; flex-shrink:0; }
+.pc-meta-container { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:4px 6px; }
+.pc-meta { font-size:10px; margin:0; line-height:1.5; color:#7a879b; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.pc-user { color:#52617a; }.pc-ip { font-variant-numeric:tabular-nums; text-align:right; }
+.pc-mac { display:none; }.pc-time { grid-column:1/-1; font-size:9px; }.pc-version { grid-column:2; grid-row:2; font-size:9px; text-align:right; }
+.pc-time { grid-row:2; grid-column:1; padding-right:0; }
+.pc-card[data-selected="true"] { border-color:#7e9eea; box-shadow:0 0 0 1px #b7caf6; }
+.pc-event { grid-column:1/-1; background:#f5f7fb; border:0; border-radius:4px; margin:2px 0 0; padding:4px 6px; min-height:22px; line-height:14px; color:#65758e; font-size:9px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.card-actions { display:grid; grid-template-columns:repeat(4,minmax(0,1fr))!important; gap:4px; margin-top:9px; padding-top:8px; border-top:1px solid #edf0f5; }
+.card-action-btn { min-width:0; min-height:25px; padding:4px 2px; border:1px solid #e5eaf2; background:#fff; color:#65758e; border-radius:4px; font-size:9px; font-weight:500; line-height:1.3; gap:0; }
+.card-action-btn:hover { background:#f1f5ff; border-color:#b8caf3; color:#315fdb; transform:none; }
+.card-action-btn.btn-danger { color:#cf4251; border-color:#f2dce0; background:#fff8f8; }
+.card-action-btn.btn-teal { background:#f1f5ff; color:#315fdb; border-color:#dbe5fb; }
+.card-action-btn[style] { grid-column:auto!important; }.card-action-btn:last-child:not(:disabled) { grid-column:span 2!important; }
+.empty-state,.filter-empty { grid-column:1/-1; padding:44px 16px; text-align:center; background:#fff; color:#8491a6; border:1px dashed #d7dfed; border-radius:8px; }
+.empty-icon { font-size:24px; margin-bottom:10px; }.empty-title { color:#52617a; font-size:13px; }.empty-desc { font-size:11px; }
+.auth-card,.glass-card,.modal-card,.admin-panel-card { color:var(--text-main); background:#fff; border:1px solid var(--border-light); border-radius:12px; backdrop-filter:none; box-shadow:0 12px 50px #20325112; }
+.auth-card { max-width:370px; padding:28px; }.auth-card h2 { font-size:22px!important; }.gradient-text { color:#253149; }
+#auth-view,#pending-view,#verify-email-view,#revoked-view,#banned-view { background:#f4f6fa; padding:20px; overflow:auto; }
+.auth-card { margin:auto; flex-shrink:0; animation:none; }
+.auth-input,.form-input { background:#f8faff; color:#253149; border:1px solid #dfe5ef; min-height:38px; border-radius:6px; font-size:13px; padding:9px 11px; }
+.auth-input:focus,.form-input:focus { border-color:#7e9feb; box-shadow:0 0 0 2px #eef3ff; }
+.auth-btn { min-height:38px; font-size:12px; border-radius:6px; padding:9px 12px; }
+.auth-btn-primary { background:#315fdb!important; color:white; }
+#auth-submit-custom-btn,.auth-btn-google,.auth-btn-outline { background:#fff!important; color:#52617a; border:1px solid #dfe5ee; }
+.auth-divider { color:#9aa4b5; margin:12px 0; }.auth-divider::before,.auth-divider::after { background:#e5eaf2; }
+.auth-link-btn { font-size:10px; color:#738096!important; text-decoration:none; }
+.session-storage-note { margin:11px 0 3px; color:#7e8da3; font-size:10px; line-height:1.6; }
+.auth-error { color:#bb3949; background:#fff1f3; border-color:#f6dce2; font-size:11px; }
+.auth-notice { background:#f3f6fd; color:#65758e; border-color:#e1e8f7; }
+#boot-status { font-size:11px; margin-bottom:10px; }.modal-overlay { background:#1b294a55; padding:12px; backdrop-filter:none; }
+.modal-card { padding:22px; max-height:calc(100dvh - 24px); }.modal-title { font-size:15px; }.modal-msg { font-size:12px; line-height:1.7; color:#65758e; }
+.modal-btn { min-height:32px; font-size:11px; padding:7px 12px; border-radius:6px; }.modal-btn-cancel { color:#65758e; background:#f0f3f8; }.modal-btn-confirm { background:#315fdb; color:white; }
+.form-label { font-size:11px; }.form-group { margin-bottom:12px; }select option { background:#fff; color:#253149; }
+.app-preset-btn { color:#65758e!important; border-color:#dfe5ee!important; background:#f6f8fc!important; }
+.pending-user-row { background:#f7f9fd; border-color:#e1e6ee; }.auth-card strong[style*="color:white"],.modal-card strong[style*="color:white"] { color:#253149!important; }
+.modal-card [style*="background: #0f0f23"],.modal-card [style*="background: rgba(0, 0, 0, 0.2)"] { background:#f6f8fc!important; }
+@media(min-width:1800px) { .pc-grid { grid-template-columns:repeat(auto-fill,minmax(216px,1fr)); } }
+@media(max-width:1000px) { #signed-in-email { display:none; }.connection-strip { gap:6px; }.logo-section h1 .brand-section { display:none; } }
+@media(max-width:640px) {
+    .top-header { padding:10px 12px; gap:8px; flex-wrap:wrap; align-items:center; }.logo-section h1 { font-size:15px; }
+    .connection-strip { order:3; flex-basis:100%; gap:9px; font-size:9px; }.header-actions { margin-left:auto; }
+    .main-content { padding:12px; gap:12px; }.status-panel { width:100%; flex-basis:100%; gap:5px; }.status-chip { min-width:0; flex:1; padding:8px; gap:4px; min-height:42px; font-size:10px; }.status-chip strong { font-size:18px; }
+    .top-status-bar { gap:8px; }.top-status-bar>div:last-child { width:100%; justify-content:flex-end; }.btn-clear-offline { min-height:27px; }
+    .control-panel { gap:7px; padding:9px; }.panel-title { width:100%; }.btn-row { display:flex; gap:5px; }.action-btn { width:auto; min-height:29px; font-size:10px; padding:5px 8px; }
+    .grid-header { gap:8px; }.device-tools { width:100%; }.device-search { flex:1; min-width:0; }.device-search input { width:100%; min-width:0; font-size:16px; padding:3px 0; }.device-tools select { max-width:92px; }
+    .pc-grid { grid-template-columns:repeat(auto-fill,minmax(216px,1fr)); gap:8px; }.pc-card { padding:12px; }.pc-name { font-size:13px; }.pc-meta { font-size:11px; }.card-action-btn { min-height:30px; font-size:10px; }
+    .auth-card { padding:24px; }.auth-input,.form-input { font-size:16px; }
+}
+@media(prefers-reduced-motion:reduce) { *,*::before,*::after { animation:none!important; transition:none!important; } }
+</style>
 </head>
 <body>
 
@@ -1004,15 +1133,17 @@ button:disabled { opacity:.4; cursor:not-allowed; }
 <div id="auth-view" style="display:flex">
   <div class="auth-card">
     <div style="text-align:center; margin-bottom:28px;">
-      <h2 style="font-size:26px; font-weight:800; margin-bottom:6px;">&#x26A1; <span class="gradient-text">SmartPower</span></h2>
-      <p style="color:var(--text-muted); font-size:13px;">원격 PC 관리 시스템에 로그인하세요</p>
+      <div class="brand-mark" style="margin:0 auto 12px">S</div>
+      <h2 style="font-size:26px; font-weight:800; margin-bottom:6px;"><span class="gradient-text">SmartPower</span></h2>
+      <p style="color:var(--text-muted); font-size:12px;">기기 관리를 더 간편하게</p>
     </div>
     <p id="boot-status" role="status" aria-live="polite">연결을 준비하고 있습니다…</p><button class="auth-link-btn" id="boot-retry" hidden>다시 연결</button>
     <div class="auth-error" id="auth-error-msg"></div>
     <input class="auth-input" id="auth-email-input" type="email" name="email" placeholder="이메일" autocomplete="email" required maxlength="100">
     <input class="auth-input" id="auth-pw-input" type="password" name="password" placeholder="비밀번호 (6자리 이상)" autocomplete="current-password" required minlength="6" maxlength="32">
-    <button class="auth-btn auth-btn-primary" id="auth-submit-btn" style="background:#3b82f6; margin-bottom:8px;">🔵 Firebase 클라우드 로그인</button>
-    <button class="auth-btn auth-btn-primary" id="auth-submit-custom-btn" style="background:#10b981;">🟢 자체 서버(고속) 로그인</button>
+    <button class="auth-btn auth-btn-primary" id="auth-submit-btn" style="margin-bottom:7px;">로그인</button>
+    <button class="auth-btn auth-btn-primary" id="auth-submit-custom-btn">자체 서버로 로그인</button>
+    <p id="session-storage-note" class="session-storage-note">이 기기에서 로그인 상태가 자동으로 유지됩니다.</p>
     <div class="auth-divider">또는</div>
     <button class="auth-btn auth-btn-google" id="auth-google-btn">
       <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
@@ -1026,7 +1157,7 @@ button:disabled { opacity:.4; cursor:not-allowed; }
     <div style="text-align:center; margin-top:10px; display:flex; justify-content:center; gap:14px; flex-wrap:wrap;">
       <button class="auth-link-btn" id="auth-reset-pw-btn">비밀번호 재설정</button>
       <span style="color:rgba(255,255,255,0.2)">|</span>
-      <button class="auth-link-btn" style="color:var(--text-muted)" id="auth-reset-api-btn">API키 재설정</button>
+      <button class="auth-link-btn" id="auth-reset-api-btn">연결 다시 시도</button>
     </div>
   </div>
 </div>
@@ -1165,15 +1296,20 @@ button:disabled { opacity:.4; cursor:not-allowed; }
     <!-- 헤더 -->
     <header class="top-header">
         <div class="logo-section">
-            <h1>⚡ <span class="gradient-text">SmartPower Admin</span></h1>
-            <span id="current-mode-display" style="font-size: 13px; font-weight: bold; margin-left: 10px; color: #3b82f6;">☁️ Firebase 클라우드</span>
-            <span id="label-connected-db">연결 중...</span>
+            <div class="brand-mark" aria-hidden="true">S</div>
+            <h1>SmartPower<span class="brand-section">기기 관리</span></h1>
+        </div>
+        <div class="connection-strip">
+            <span id="current-mode-display">클라우드</span>
+            <span id="session-status" data-state="connected" role="status">로그인 확인 중</span>
+            <span id="label-connected-db" class="connection-detail">연결 중…</span>
         </div>
         <div class="header-actions">
+            <span id="signed-in-email"></span>
             <!-- 설정 변경 버튼 -->
-            <button class="btn-icon" id="admin-panel-btn" title="신규 가입 검토 (관리자)" style="display:none">&#x1F6E1;&#xFE0F;</button>
-            <button class="btn-icon" id="account-header-btn" title="계정 관리" style="display:none">&#x1F464;</button>
-            <button class="btn-icon" id="logout-header-btn" title="로그아웃" style="display:none">&#x1F6AA;</button>
+            <button class="btn-icon" id="admin-panel-btn" title="가입 검토" style="display:none">관리</button>
+            <button class="btn-icon" id="account-header-btn" title="계정 관리" style="display:none">계정</button>
+            <button class="btn-icon" id="logout-header-btn" title="로그아웃" style="display:none">로그아웃</button>
                     </div>
     </header>
 
@@ -1182,14 +1318,14 @@ button:disabled { opacity:.4; cursor:not-allowed; }
         <!-- 상단 연결 현황 바 -->
         <div class="top-status-bar">
             <div class="status-panel">
-                <span class="status-title">연결 현황:</span>
-                <span class="status-chip">전체 <strong id="stat-total">0</strong></span>
-                <span class="status-chip active">온라인 <strong id="stat-online">0</strong></span>
-                <span class="status-chip inactive">오프라인 <strong id="stat-offline">0</strong></span>
+                <button class="status-chip is-current" data-device-filter="all" aria-pressed="true">전체 기기 <strong id="stat-total">0</strong></button>
+                <button class="status-chip active" data-device-filter="online" aria-pressed="false"><i class="mini-dot"></i>온라인 <strong id="stat-online">0</strong></button>
+                <button class="status-chip inactive" data-device-filter="offline" aria-pressed="false"><i class="mini-dot"></i>오프라인 <strong id="stat-offline">0</strong></button>
             </div>
             <div style="display: flex; gap: 8px;">
-                <button class="btn-clear-offline" id="clear-selected-btn">🗑 선택된 PC 삭제</button>
-                <button class="btn-clear-offline" id="clear-offline-btn">🗑 오프라인 일괄 삭제</button>
+                <span id="selected-count">0대 선택</span>
+                <button class="btn-clear-offline" id="clear-selected-btn">선택 삭제</button>
+                <button class="btn-clear-offline" id="clear-offline-btn">오프라인 정리</button>
             </div>
         </div>
 
@@ -1197,18 +1333,18 @@ button:disabled { opacity:.4; cursor:not-allowed; }
         <div class="control-row" style="grid-template-columns: 1fr;">
             <!-- 전체 원격 제어 -->
             <div class="control-panel">
-                <h3 class="panel-title">⚡ 전체 PC 제어</h3>
+                <h3 class="panel-title">전체 기기 제어</h3>
                 <div class="btn-row">
                     <button class="action-btn action-btn-danger" onclick="triggerCommandAll('shutdown')">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle;"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
                         전체 종료
                     </button>
-                    <button class="action-btn action-btn-blue" onclick="triggerCommandAll('restart')">🔄 전체 재부팅</button>
-                    <button class="action-btn action-btn-warning" onclick="triggerCommandAll('unlock_screen')">🔓 전체 화면 깨우기</button>
-                    <button class="action-btn action-btn-secondary" onclick="triggerCommandAll('setup_mode')">🚀 전체 초기설정</button>
-                    <button class="action-btn action-btn-warning" onclick="openFileModal('__ALL__')">📂 전체 파일 열기</button>
-                    <button class="action-btn action-btn-dark" onclick="triggerCommandAll('close_active_window')">❌ 전체 창 닫기</button>
-                    <button class="action-btn action-btn-secondary" onclick="openVolumeControl('__ALL__')">🔊 전체 음량제어</button>
+                    <button class="action-btn action-btn-blue" onclick="triggerCommandAll('restart')">재부팅</button>
+                    <button class="action-btn action-btn-warning" onclick="triggerCommandAll('unlock_screen')">화면 깨우기</button>
+                    <button class="action-btn action-btn-secondary" onclick="triggerCommandAll('setup_mode')">초기설정</button>
+                    <button class="action-btn action-btn-warning" onclick="openFileModal('__ALL__')">파일 열기</button>
+                    <button class="action-btn action-btn-dark" onclick="triggerCommandAll('close_active_window')">창 닫기</button>
+                    <button class="action-btn action-btn-secondary" onclick="openVolumeControl('__ALL__')">음량</button>
                 </div>
             </div>
         </div>
@@ -1216,7 +1352,11 @@ button:disabled { opacity:.4; cursor:not-allowed; }
         <!-- 우측 PC 모니터링 그리드 -->
         <section class="grid-container">
             <div class="grid-header">
-                <h2 class="grid-title">모니터링 대상 기기</h2>
+                <div class="grid-heading"><h2 class="grid-title">기기 목록</h2><span id="visible-device-count">0대 표시</span></div>
+                <div class="device-tools">
+                    <label class="device-search"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><input id="device-search" type="search" placeholder="기기명, 사용자, IP 검색" aria-label="기기 검색"></label>
+                    <select id="device-sort" aria-label="기기 정렬"><option value="name">이름순</option><option value="online">온라인 우선</option></select>
+                </div>
             </div>
 
             <div class="pc-grid" id="pc-grid-area">
@@ -1227,6 +1367,7 @@ button:disabled { opacity:.4; cursor:not-allowed; }
                     <div class="empty-desc">학생 PC에서 스마트 전원 관리자가 실행되면 자동으로 여기에 나타납니다.</div>
                 </div>
             </div>
+            <div id="device-filter-empty" class="filter-empty" hidden>조건에 맞는 기기가 없습니다. 검색어나 상태 필터를 바꿔주세요.</div>
         </section>
     </main>
 </div>
@@ -1612,7 +1753,6 @@ function setAccessGranted(value) {
             window._customWs.close();
             window._customWs = null;
         }
-        clearInterval(window._tokenRefreshInterval);
         if (pollerInterval) clearInterval(pollerInterval);
         pollerInterval = null;
         if (window._pcsListener && window.firebase && firebase.database) {
@@ -2044,7 +2184,7 @@ function bootDashboard() {
                 firebase.database ? Promise.resolve() : loadFirebaseScript('database')
             ]);
             status.textContent = '';
-            _initFB("AIzaSyAT5J62NaMZjmz3h6Sb7IGLmVZZR7a-PXk");
+            await _initFB("AIzaSyAT5J62NaMZjmz3h6Sb7IGLmVZZR7a-PXk");
         } catch (error) {
             status.textContent = '연결하지 못했습니다. 네트워크와 Google 서비스 접속을 확인한 뒤 다시 시도해주세요.';
             retry.hidden = false;
@@ -2067,60 +2207,136 @@ function _showScreen(id) {
 }
 
 // ─── Firebase 초기화 ──────────────────────────────────────
+let _authReady = null;
+let _authStateUnsubscribe = null;
+let _tokenStateUnsubscribe = null;
+let _sessionRetry = null;
+let _sessionRefresh = null;
+let _sessionRetryCount = 0;
+let _sessionGeneration = 0;
+let _sessionSigningOut = false;
+let _sessionPersistence = 'local';
+
+function showSessionStatus(message, state = 'connected') {
+    const label = document.getElementById('session-status');
+    if (label) { label.textContent = message; label.dataset.state = state; }
+}
+
 function _initFB(apiKey) {
-    if (window._pcsListener && window.firebase && firebase.database) {
-        try { firebase.database().ref("/pcs").off("value", window._pcsListener); } catch(e) {}
-        window._pcsListener = null;
-    }
-    if (window._userStatusListener && window.firebase && firebase.database) {
-        try { if (window._userStatusRef) window._userStatusRef.off('value', window._userStatusListener); } catch(e) {}
-        window._userStatusListener = null;
-    }
-    window._dashboardInitialized = false;
+    // Reuse the SDK instance and its stored refresh token across retries.
+    if (!_authReady) _authReady = _startAuth(apiKey).catch(error => {
+        _authReady = null;
+        throw error;
+    });
+    return _authReady;
+}
 
-    try {
-        if (window.firebase && firebase.apps && firebase.apps.length > 0) {
-            firebase.app().delete().then(() => _startAuth(apiKey)).catch(() => _startAuth(apiKey));
-        } else {
-            _startAuth(apiKey);
+async function _startAuth(apiKey) {
+    if (!firebase.apps.length) firebase.initializeApp({ apiKey, ...FB_PROJECT });
+    _fbAuth = firebase.auth();
+    if (!window._serverMode) window._serverMode = safeStorage.getItem('sp_server_mode') === 'custom' ? 'custom' : 'firebase';
+    const types = firebase.auth.Auth.Persistence;
+    let persistenceError;
+    // LOCAL survives restarts; restricted browsers can still use their available storage.
+    for (const [name, type] of [['local', types.LOCAL], ['session', types.SESSION], ['none', types.NONE]]) {
+        try { await _fbAuth.setPersistence(type); _sessionPersistence = name; persistenceError = null; break; }
+        catch (error) { persistenceError = error; }
+    }
+    if (persistenceError) throw persistenceError;
+    const note = document.getElementById('session-storage-note');
+    if (note) note.textContent = _sessionPersistence === 'local'
+        ? '이 기기에서 로그인 상태가 자동으로 유지됩니다.'
+        : _sessionPersistence === 'session'
+            ? '브라우저의 저장 제한으로 현재 창을 닫기 전까지만 유지됩니다.'
+            : '이 브라우저는 로그인 저장을 차단하고 있습니다. 페이지를 닫으면 다시 로그인해야 합니다.';
+    if (_authStateUnsubscribe) _authStateUnsubscribe();
+    if (_tokenStateUnsubscribe) _tokenStateUnsubscribe();
+    _authStateUnsubscribe = _fbAuth.onAuthStateChanged(user => {
+        _sessionGeneration++;
+        setAccessGranted(false);
+        window._dashboardEntering = null;
+        clearTimeout(_sessionRetry);
+        _sessionRetryCount = 0;
+        if (window._userStatusRef && window._userStatusListener) {
+            window._userStatusRef.off('value', window._userStatusListener);
+            window._userStatusListener = null;
         }
-    } catch(e) { _startAuth(apiKey); }
+        if (!user) {
+            setAccessGranted(false);
+            config.authKey = '';
+            _showScreen('auth-view');
+            return;
+        }
+        _sessionSigningOut = false;
+        safeStorage.setItem('sp_last_email', user.email || '');
+        const account = document.getElementById('signed-in-email');
+        if (account) account.textContent = user.email || '';
+        if (user.email && user.email.toLowerCase() === MASTER_EMAIL.toLowerCase()) {
+            setAccessGranted(true);
+            _enterDashboard(user);
+        } else _attachUserStatusListener(user);
+    }, error => {
+        _showErr(_fbErrKo(error.code));
+        showSessionStatus('다시 연결 중', 'reconnecting');
+    });
+    _tokenStateUnsubscribe = _fbAuth.onIdTokenChanged(user => {
+        if (user && !_sessionSigningOut) refreshSession();
+    });
+    clearInterval(window._tokenRefreshInterval);
+    window._tokenRefreshInterval = setInterval(() => {
+        if (!document.hidden) refreshSession();
+    }, 10 * 60 * 1000);
+    const emailInput = document.getElementById('auth-email-input');
+    if (emailInput && !emailInput.value) emailInput.value = safeStorage.getItem('sp_last_email') || '';
 }
 
-function _startAuth(apiKey) {
-    try {
-        firebase.initializeApp({ apiKey, ...FB_PROJECT });
-        _fbAuth = firebase.auth();
-        let _authInitialized = false;
-
-        _fbAuth.onAuthStateChanged(async user => {
-            if (!user) {
-                if (_authInitialized) {
-                    setAccessGranted(false);
-                }
-                _showScreen("auth-view");
-                _authInitialized = true;
-                return;
-            }
-            _authInitialized = true;
-            // 마스터 계정은 무조건 통과
-            if (user.email && user.email.toLowerCase() === MASTER_EMAIL.toLowerCase()) {
-                setAccessGranted(true);
-                _enterDashboard(user);
-                return;
-            }
-
-            // ── 3단계: 가입 승인 상태 (실시간 연동) ──
-            _attachUserStatusListener(user);
-
-
-        });
-    } catch(err) {
-        console.error("Firebase init error:", err);
-        _showScreen("auth-view");
-        _showErr("인증 초기화 실패: " + (err.message || err));
-    }
+function scheduleSessionRecovery() {
+    clearTimeout(_sessionRetry);
+    if (_sessionSigningOut || !_fbAuth || !_fbAuth.currentUser) return;
+    const delay = Math.min(60000, 1000 * 2 ** Math.min(_sessionRetryCount++, 6));
+    _sessionRetry = setTimeout(() => refreshSession(), delay);
 }
+
+async function refreshSession(force = false) {
+    if (_sessionSigningOut || !_fbAuth || !_fbAuth.currentUser) return;
+    if (_sessionRefresh) return _sessionRefresh;
+    const user = _fbAuth.currentUser;
+    const generation = _sessionGeneration;
+    _sessionRefresh = (async () => {
+        try {
+            const token = await user.getIdToken(force);
+            if (_sessionSigningOut || generation !== _sessionGeneration || _fbAuth.currentUser !== user) return;
+            config.authKey = token;
+            _sessionRetryCount = 0;
+            clearTimeout(_sessionRetry);
+            showSessionStatus(navigator.onLine ? '로그인 유지 중' : '오프라인 · 로그인 유지', navigator.onLine ? 'connected' : 'offline');
+            if (APP_ACCESS_GRANTED === true) {
+                if (!window._dashboardInitialized) _enterDashboard(user);
+                else if (window._serverMode === 'custom' && (!window._customWs || window._customWs.readyState === WebSocket.CLOSED)) _startCustomServerSync();
+            } else if (!window._userStatusListener) _attachUserStatusListener(user);
+        } catch (error) {
+            if (generation !== _sessionGeneration || _sessionSigningOut) return;
+            if (['auth/user-disabled', 'auth/user-token-expired', 'auth/invalid-user-token'].includes(error.code)) {
+                await signOutAndReset();
+                _showErr('로그인 유효기간이 종료되었습니다. 다시 로그인해주세요.');
+                return;
+            }
+            showSessionStatus('다시 연결 중 · 로그인 유지', 'reconnecting');
+            scheduleSessionRecovery();
+        }
+    })().finally(() => { _sessionRefresh = null; });
+    return _sessionRefresh;
+}
+
+function resumeSession() {
+    if (document.hidden || _sessionSigningOut || !_fbAuth || !_fbAuth.currentUser) return;
+    if (navigator.onLine) firebase.database().goOnline();
+    refreshSession();
+}
+window.addEventListener('online', resumeSession);
+window.addEventListener('pageshow', resumeSession);
+window.addEventListener('offline', () => showSessionStatus('오프라인 · 로그인 유지', 'offline'));
+document.addEventListener('visibilitychange', resumeSession);
 
 function _attachUserStatusListener(user) {
     if (window._userStatusListener) {
@@ -2128,6 +2344,7 @@ function _attachUserStatusListener(user) {
     }
     window._userStatusRef = firebase.database().ref("/users/" + user.uid);
     window._userStatusListener = window._userStatusRef.on("value", snapshot => {
+        if (_sessionSigningOut || !_fbAuth || _fbAuth.currentUser !== user) return;
         const statusObj = snapshot.val();
         const status = statusObj ? statusObj.approved : null;
 
@@ -2164,21 +2381,19 @@ function _attachUserStatusListener(user) {
             document.getElementById("pending-rerequest-btn").style.display = "none";
             _showScreen("pending-view");
         }
+    }, error => {
+        if (_sessionSigningOut || !_fbAuth || _fbAuth.currentUser !== user) return;
+        window._userStatusListener = null;
+        showSessionStatus('권한 확인 재연결 중', 'reconnecting');
+        scheduleSessionRecovery();
     });
 }
 
 function _enterDashboard(user) {
     if (window._dashboardInitialized && APP_ACCESS_GRANTED === true) return;
-    // 55분마다 토큰 사전 갱신
-    if (window._tokenRefreshInterval) clearInterval(window._tokenRefreshInterval);
-    window._tokenRefreshInterval = setInterval(async () => {
-        try {
-            await user.getIdToken(true);
-            console.log("Auth token refreshed automatically.");
-        } catch (e) {
-            console.error("Token auto-refresh failed:", e);
-        }
-    }, 55 * 60 * 1000);
+    if (window._dashboardEntering === user || _sessionSigningOut) return;
+    window._dashboardEntering = user;
+    safeStorage.setItem('sp_server_mode', window._serverMode || 'firebase');
 
     const lb = document.getElementById("logout-header-btn");
     const ab = document.getElementById("admin-panel-btn");
@@ -2196,6 +2411,7 @@ function _enterDashboard(user) {
     user.getIdToken().then(token => {
         if (APP_ACCESS_GRANTED !== true || !_fbAuth || _fbAuth.currentUser !== user) return;
         config.authKey = token;
+        showSessionStatus('로그인 유지 중');
         // 권한이 복구되었을 수 있으므로 제한 해제
         // Device controls retain their online/offline disabled state.
         _showScreen("dashboard-view");
@@ -2233,7 +2449,10 @@ function _enterDashboard(user) {
         }
     }).catch(err => {
         console.error("Token error:", err);
-        alert("인증 토큰을 가져오는데 실패했습니다.");
+        showSessionStatus('다시 연결 중 · 로그인 유지', 'reconnecting');
+        scheduleSessionRecovery();
+    }).finally(() => {
+        if (window._dashboardEntering === user) window._dashboardEntering = null;
     });
 }
 
@@ -2272,6 +2491,7 @@ function initializeDashboard() {
 
 function _startCustomServerSync() {
     if (APP_ACCESS_GRANTED !== true) return;
+    if (window._customWs && window._customWs.readyState <= WebSocket.OPEN) return;
     const generation = window._customSyncGeneration = (window._customSyncGeneration || 0) + 1;
     const active = () => generation === window._customSyncGeneration && APP_ACCESS_GRANTED === true && window._serverMode === 'custom';
     clearTimeout(window._customRetry);
@@ -2457,6 +2677,49 @@ function getPCDiffSeconds(pc, serverNowMs) {
     return Math.max(0, (serverNowMs - lastSeenMs) / 1000.0);
 }
 
+let _deviceFilter = 'all';
+const _deviceNameOrder = new Intl.Collator('ko', { numeric: true, sensitivity: 'base' });
+function applyDeviceFilters() {
+    const query = (document.getElementById('device-search').value || '').trim().toLocaleLowerCase();
+    const sort = document.getElementById('device-sort').value;
+    const grid = document.getElementById('pc-grid-area');
+    const cards = Array.from(grid.querySelectorAll('.pc-card'));
+    const now = Date.now() + serverTimeOffset;
+    const online = pc => pc && pc.status === 'online' && getPCDiffSeconds(pc, now) < 30;
+    cards.sort((left, right) => {
+        const a = pcs[left.dataset.pcId] || {}, b = pcs[right.dataset.pcId] || {};
+        const status = sort === 'online' ? Number(online(b)) - Number(online(a)) : 0;
+        return status || _deviceNameOrder.compare(a.hostname || left.dataset.pcId, b.hostname || right.dataset.pcId);
+    });
+    let visible = 0;
+    cards.forEach((card, index) => {
+        const id = card.dataset.pcId;
+        const pc = pcs[id] || {};
+        const statusMatches = _deviceFilter === 'all' || (_deviceFilter === 'online' ? online(pc) : !online(pc));
+        const searchable = [id, pc.hostname, pc.user, pc.ip, pc.mac, pc.version].join(' ').toLocaleLowerCase();
+        card.hidden = !statusMatches || (query && !searchable.includes(query));
+        card.dataset.selected = String(selectedPcs.has(id));
+        if (!card.hidden) visible++;
+        if (grid.children[index] !== card) grid.insertBefore(card, grid.children[index] || null);
+    });
+    document.getElementById('visible-device-count').textContent = `${visible}대 표시`;
+    document.getElementById('selected-count').textContent = `${selectedPcs.size}대 선택`;
+    document.getElementById('device-filter-empty').hidden = visible > 0 || cards.length === 0;
+    document.querySelectorAll('[data-device-filter]').forEach(button => {
+        const current = button.dataset.deviceFilter === _deviceFilter;
+        button.classList.toggle('is-current', current);
+        button.setAttribute('aria-pressed', String(current));
+    });
+}
+window.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('device-search').addEventListener('input', applyDeviceFilters);
+    document.getElementById('device-sort').addEventListener('change', applyDeviceFilters);
+    document.querySelectorAll('[data-device-filter]').forEach(button => button.addEventListener('click', () => {
+        _deviceFilter = button.dataset.deviceFilter;
+        applyDeviceFilters();
+    }));
+});
+
 function renderPCGrid(serverNowMs) {
     if (!serverNowMs) serverNowMs = Date.now() + serverTimeOffset;
     const gridArea = document.getElementById("pc-grid-area");
@@ -2470,6 +2733,7 @@ function renderPCGrid(serverNowMs) {
                 <div class="empty-title">연결 대기 중</div>
                 <div class="empty-desc">학생 PC에서 스마트 전원 관리자가 실행되면 자동으로 여기에 나타납니다.</div>
             </div>`;
+        applyDeviceFilters();
         return;
     }
 
@@ -2521,6 +2785,7 @@ function renderPCGrid(serverNowMs) {
             // Create card element from scratch
             card = document.createElement("div");
             card.id = `pc-card-${pcId}`;
+            card.dataset.pcId = pcId;
             card.className = cardClass;
             gridArea.appendChild(card);
         } else {
@@ -2537,21 +2802,24 @@ function renderPCGrid(serverNowMs) {
         if (!metaContainer) {
             // Initial build of card contents
             card.innerHTML = `
-                <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div class="device-card-header">
+                    <span class="device-symbol" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8m-4-4v4"/></svg></span>
+                    <div class="device-card-heading">
+                    <div class="pc-name" title="${safePcId}">${escapeHtml(pc.hostname || pcId)}</div>
                     <div class="status-indicator">
                         <span class="dot ${isOnline ? 'online' : 'offline'}"></span>
-                        <span class="pc-status-txt ${isOnline ? 'online' : 'offline'}">${isOnline ? '온라인' : '꺼짐'}</span>
+                        <span class="pc-status-txt ${isOnline ? 'online' : 'offline'}">${isOnline ? '온라인' : '오프라인'}</span>
                     </div>
-                    <input type="checkbox" class="pc-checkbox" data-pcid="${safePcId}" ${selectedPcs.has(pcId) ? 'checked' : ''} style="cursor: pointer; accent-color: var(--danger); width: 14px; height: 14px; margin-top: 2px;">
+                    </div>
+                    <input type="checkbox" class="pc-checkbox" aria-label="${escapeHtml(pc.hostname || pcId)} 선택" data-pcid="${safePcId}" ${selectedPcs.has(pcId) ? 'checked' : ''}>
                 </div>
-                <div class="pc-name" title="${safePcId}">${escapeHtml(pc.hostname || pcId)}</div>
                 <div class="pc-meta-container">
-                    <div class="pc-meta pc-user">👤 ${escapeHtml(pc.user || 'N/A')}</div>
-                    <div class="pc-meta pc-ip">🖥️ IP: ${escapeHtml(pc.ip || 'N/A')}</div>
-                    <div class="pc-meta pc-mac">💾 MAC: ${escapeHtml(pc.mac || 'N/A')}</div>
-                    <div class="pc-meta pc-time">⏳ 응답: ${timeStr} (${calibratedTimeStr})</div>
-                    <div class="pc-meta pc-version">🏷️ 버전: v${escapeHtml(pc.version || 'N/A')}</div>
-                    <div class="pc-event">${pc.next_event && pc.next_event !== '없음' ? `⏰ 예정: ${escapeHtml(pc.next_event)}` : ''}</div>
+                    <div class="pc-meta pc-user">${escapeHtml(pc.user || '사용자 없음')}</div>
+                    <div class="pc-meta pc-ip" title="MAC ${escapeHtml(pc.mac || '미확인')}">${escapeHtml(pc.ip || 'IP 미확인')}</div>
+                    <div class="pc-meta pc-mac">${escapeHtml(pc.mac || '')}</div>
+                    <div class="pc-meta pc-time">응답 ${timeStr} · ${calibratedTimeStr}</div>
+                    <div class="pc-meta pc-version">v${escapeHtml(pc.version || '-')}</div>
+                    <div class="pc-event">${pc.next_event && pc.next_event !== '없음' ? escapeHtml(pc.next_event) : '예정된 작업 없음'}</div>
                 </div>
                 <div class="card-actions" style="grid-template-columns: repeat(3, 1fr);">
                 </div>
@@ -2562,16 +2830,17 @@ function renderPCGrid(serverNowMs) {
             card.querySelector(".dot").className = `dot ${isOnline ? 'online' : 'offline'}`;
             const statusTxt = card.querySelector(".pc-status-txt");
             statusTxt.className = `pc-status-txt ${isOnline ? 'online' : 'offline'}`;
-            statusTxt.textContent = isOnline ? '온라인' : '꺼짐';
+            statusTxt.textContent = isOnline ? '온라인' : '오프라인';
             const cb = card.querySelector("input[type='checkbox']");
             if (cb) cb.checked = selectedPcs.has(pcId);
             card.querySelector(".pc-name").textContent = pc.hostname || pcId;
-            card.querySelector(".pc-user").textContent = `👤 ${pc.user || 'N/A'}`;
-            card.querySelector(".pc-ip").textContent = `🖥️ IP: ${pc.ip || 'N/A'}`;
-            card.querySelector(".pc-mac").textContent = `💾 MAC: ${pc.mac || 'N/A'}`;
-            card.querySelector(".pc-time").textContent = `⏳ 응답: ${timeStr} (${calibratedTimeStr})`;
-            card.querySelector(".pc-version").textContent = `🏷️ 버전: v${pc.version || 'N/A'}`;
-            card.querySelector(".pc-event").textContent = pc.next_event && pc.next_event !== '없음' ? `⏰ 예정: ${escapeHtml(pc.next_event)}` : '';
+            card.querySelector(".pc-user").textContent = pc.user || '사용자 없음';
+            card.querySelector(".pc-ip").textContent = pc.ip || 'IP 미확인';
+            card.querySelector(".pc-ip").title = `MAC ${pc.mac || '미확인'}`;
+            card.querySelector(".pc-mac").textContent = pc.mac || '';
+            card.querySelector(".pc-time").textContent = `응답 ${timeStr} · ${calibratedTimeStr}`;
+            card.querySelector(".pc-version").textContent = `v${pc.version || '-'}`;
+            card.querySelector(".pc-event").textContent = pc.next_event && pc.next_event !== '없음' ? pc.next_event : '예정된 작업 없음';
         }
 
         // Check if action buttons need to be redrawn
@@ -2585,22 +2854,23 @@ function renderPCGrid(serverNowMs) {
                     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 2px; flex-shrink: 0;"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
                     종료
                 </button>
-                <button class="card-action-btn btn-blue" data-action="triggerSingleCommand" data-cmd="restart" data-pcid="${safePcId}" ${isOnline ? '' : 'disabled'} title="원격 재부팅">🔄 재부팅</button>
-                <button class="card-action-btn btn-purple" data-action="triggerSingleCommand" data-cmd="setup_mode" data-pcid="${safePcId}" ${isOnline ? '' : 'disabled'} title="원격 초기설정">🚀 초기화</button>
-                <button class="card-action-btn btn-info" data-action="openConfigModal" data-pcid="${safePcId}" ${isOnline ? '' : 'disabled'} title="원격 환경설정">⚙️ 설정</button>
-                <button class="card-action-btn btn-success" data-action="triggerSingleCommand" data-cmd="update" data-pcid="${safePcId}" ${isOnline ? '' : 'disabled'} title="원격 업데이트">🔼 업뎃</button>
-                <button class="card-action-btn btn-secondary" data-action="triggerSingleMessage" data-pcid="${safePcId}" ${isOnline ? '' : 'disabled'} title="메시지 전송">💬 메시지</button>
+                <button class="card-action-btn btn-blue" data-action="triggerSingleCommand" data-cmd="restart" data-pcid="${safePcId}" ${isOnline ? '' : 'disabled'} title="원격 재부팅">재부팅</button>
+                <button class="card-action-btn btn-purple" data-action="triggerSingleCommand" data-cmd="setup_mode" data-pcid="${safePcId}" ${isOnline ? '' : 'disabled'} title="원격 초기설정">초기설정</button>
+                <button class="card-action-btn btn-info" data-action="openConfigModal" data-pcid="${safePcId}" ${isOnline ? '' : 'disabled'} title="원격 환경설정">설정</button>
+                <button class="card-action-btn btn-success" data-action="triggerSingleCommand" data-cmd="update" data-pcid="${safePcId}" ${isOnline ? '' : 'disabled'} title="원격 업데이트">업데이트</button>
+                <button class="card-action-btn btn-secondary" data-action="triggerSingleMessage" data-pcid="${safePcId}" ${isOnline ? '' : 'disabled'} title="메시지 전송">메시지</button>
                 ${isOnline
-                    ? `<button class="card-action-btn btn-warning" data-action="openFileModal" data-pcid="${safePcId}" title="원격 파일 열기">📂 파일열기</button>
-                       <button class="card-action-btn btn-dark" data-action="openVolumeControl" data-pcid="${safePcId}" title="원격 음량 제어">🔊 음량</button>
-                       <button class="card-action-btn btn-teal" data-action="openWindowsModal" data-pcid="${safePcId}" title="실행 중인 창 목록 보기">🖥️ 실행창</button>
-                       <button class="card-action-btn btn-teal" data-action="takeScreenshot" data-pcid="${safePcId}" title="화면 보기" style="grid-column: 1 / 2;">📷 캡처</button>
-                       <button class="card-action-btn btn-teal" data-action="startWebRTC" data-pcid="${safePcId}" title="기기 화면 확인" style="grid-column: 2 / 4;">🖥 실시간 화면</button>`
+                    ? `<button class="card-action-btn btn-warning" data-action="openFileModal" data-pcid="${safePcId}" title="원격 파일 열기">파일</button>
+                       <button class="card-action-btn btn-dark" data-action="openVolumeControl" data-pcid="${safePcId}" title="원격 음량 제어">음량</button>
+                       <button class="card-action-btn btn-teal" data-action="openWindowsModal" data-pcid="${safePcId}" title="실행 중인 창 목록 보기">실행창</button>
+                       <button class="card-action-btn btn-teal" data-action="takeScreenshot" data-pcid="${safePcId}" title="화면 캡처">캡처</button>
+                       <button class="card-action-btn btn-teal" data-action="startWebRTC" data-pcid="${safePcId}" title="기기 화면 확인">실시간 화면</button>`
                     : ''
                 }
             `;
         }
     });
+    applyDeviceFilters();
 }
 
 function updateStatistics(serverNowMs) {
@@ -2618,6 +2888,7 @@ function updateStatistics(serverNowMs) {
     document.getElementById("stat-total").innerText = total;
     document.getElementById("stat-online").innerText = online;
     document.getElementById("stat-offline").innerText = offline;
+    document.getElementById('selected-count').textContent = `${selectedPcs.size}대 선택`;
 }
 
 // 개별 PC 선택 기능은 카드 내 버튼 통합으로 인해 더 이상 사용하지 않음
@@ -2698,7 +2969,7 @@ function renderScheduleTabs(activeDay) {
         tabsHtml += `
             <button data-action="renderScheduleTabs" data-day="${day}" style="
                 background: ${isActive ? 'var(--accent-blue)' : 'rgba(255,255,255,0.05)'};
-                color: ${isActive ? '#000' : 'var(--text-main)'};
+                color: ${isActive ? '#fff' : 'var(--text-main)'};
                 border: 1px solid ${isActive ? 'var(--accent-blue)' : 'var(--border-light)'};
                 padding: 6px 14px;
                 border-radius: 8px;
@@ -2769,10 +3040,9 @@ async function _isApproved(uid) {
 }
 
 async function _checkAuthPermission() {
+    if (_sessionSigningOut) return false;
     if (!_fbAuth || !_fbAuth.currentUser) {
-        alert("로그인이 필요합니다.");
-        setAccessGranted(false);
-        signOutAndReset();
+        _showErr('로그인을 확인하고 있습니다. 잠시 후 다시 시도해주세요.');
         return false;
     }
     const user = _fbAuth.currentUser;
@@ -2783,6 +3053,7 @@ async function _checkAuthPermission() {
 
     try {
         const snap = await firebase.database().ref("/users/" + user.uid + "/approved").once("value");
+        if (_sessionSigningOut || !_fbAuth || _fbAuth.currentUser !== user) return false;
         const isApproved = snap.val();
         if (isApproved !== true) {
             alert("보안 경고: 계정의 접근 권한이 박탈되었습니다.");
@@ -2793,8 +3064,8 @@ async function _checkAuthPermission() {
         setAccessGranted(true);
         return true;
     } catch(e) {
-        alert("권한 확인 중 오류가 발생했습니다.");
-        setAccessGranted(false);
+        showSessionStatus('권한 확인 재시도 중 · 로그인 유지', 'reconnecting');
+        scheduleSessionRecovery();
         return false;
     }
 }
@@ -3023,6 +3294,7 @@ function triggerSingleMessage(pcId) {
 function togglePCSelection(pcId, isChecked) {
     if (isChecked) selectedPcs.add(pcId);
     else selectedPcs.delete(pcId);
+    applyDeviceFilters();
 }
 
 async function clearSelectedDevices() {
@@ -3758,16 +4030,8 @@ function initAuthWithApiKey() {
 }
 
 function resetApiKeySetup() {
-    showModal("API 키 초기화", "저장된 API 키와 설정 정보를 초기화하시겠습니까?", () => {
-        closeModal();
-        safeStorage.removeItem("sp_fb_apikey");
-        if (_fbAuth) { _fbAuth.signOut().catch(()=>{}); _fbAuth = null; }
-        try { if (firebase.apps && firebase.apps.length) firebase.app().delete(); } catch(e) {}
-        setAccessGranted(false);
-        window._dashboardInitialized = false;
-        _showScreen("auth-view");
-        bootDashboard();
-    });
+    if (_fbAuth && _fbAuth.currentUser) resumeSession();
+    else bootDashboard();
 }
 
 // ─ 탭 전환 ───────────────────────────────────────────────
@@ -3817,7 +4081,10 @@ async function handleEmailAuth() {
     }
     msg.style.display = "none";
     try {
+        await _authReady;
+        _sessionSigningOut = false;
         await firebase.auth().signInWithEmailAndPassword(email, pw);
+        document.getElementById('auth-pw-input').value = '';
     } catch(err) {
         if (err.code === "auth/user-not-found" || err.code === "auth/invalid-credential") {
             msg.textContent = "회원가입은 Google 로그인으로만 가능합니다. 이미 계정이 있다면 비밀번호를 확인해주세요.";
@@ -3834,6 +4101,8 @@ async function handleGoogleAuth() {
     if (!_fbAuth) { _showErr("Firebase가 초기화되지 않았습니다."); return; }
     document.getElementById("auth-error-msg").style.display = "none";
     try {
+        await _authReady;
+        _sessionSigningOut = false;
         const provider = new firebase.auth.GoogleAuthProvider();
         await _fbAuth.signInWithPopup(provider);
         // onAuthStateChanged가 처리 (Google 계정은 기본 인증됨)
@@ -3896,6 +4165,10 @@ async function checkPendingApproval() {
 
 // ─ 로그아웃 ──────────────────────────────────────────────
 async function signOutAndReset() {
+    _sessionSigningOut = true;
+    _sessionGeneration++;
+    clearTimeout(_sessionRetry);
+    window._dashboardEntering = null;
     setAccessGranted(false);
     try {
         if (window._pcsListener && window.firebase && firebase.database) {
@@ -3997,13 +4270,7 @@ function switchAdminTab(tab) {
 }
 
 function _revokeAccess() {
-    if (pollerInterval) clearInterval(pollerInterval);
-    document.querySelectorAll('button').forEach(b => b.disabled = true);
-    // Except logout and re-request
-    const authCard = document.querySelector('#revoked-view .auth-card');
-    if (authCard) {
-        authCard.querySelectorAll('button').forEach(b => b.disabled = false);
-    }
+    setAccessGranted(false);
     _showScreen("revoked-view");
 }
 
