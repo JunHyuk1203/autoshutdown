@@ -57,62 +57,6 @@ def disable_auto_logon():
         print(f"disable_auto_logon error: {e}")
         return False
 
-import base64
-import winreg
-import getpass
-
-def _get_encryption_key():
-    import uuid
-    mac = str(uuid.getnode())
-    return [ord(c) for c in mac]
-
-def encrypt_password(password):
-    if not password: return ""
-    key = _get_encryption_key()
-    encrypted = bytearray()
-    for i, c in enumerate(password.encode('utf-8')):
-        encrypted.append(c ^ key[i % len(key)])
-    return base64.b64encode(encrypted).decode('utf-8')
-
-def decrypt_password(encrypted_b64):
-    if not encrypted_b64: return ""
-    try:
-        key = _get_encryption_key()
-        encrypted = base64.b64decode(encrypted_b64)
-        decrypted = bytearray()
-        for i, c in enumerate(encrypted):
-            decrypted.append(c ^ key[i % len(key)])
-        return decrypted.decode('utf-8')
-    except Exception:
-        return ""
-
-def set_auto_logon(username, password):
-    try:
-        key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon", 0, winreg.KEY_SET_VALUE)
-        winreg.SetValueEx(key, "AutoAdminLogon", 0, winreg.REG_SZ, "1")
-        winreg.SetValueEx(key, "DefaultUserName", 0, winreg.REG_SZ, username)
-        if password:
-            winreg.SetValueEx(key, "DefaultPassword", 0, winreg.REG_SZ, password)
-        winreg.CloseKey(key)
-        return True
-    except Exception as e:
-        print(f"set_auto_logon error: {e}")
-        return False
-
-def disable_auto_logon():
-    try:
-        key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon", 0, winreg.KEY_SET_VALUE)
-        winreg.SetValueEx(key, "AutoAdminLogon", 0, winreg.REG_SZ, "0")
-        try:
-            winreg.DeleteValue(key, "DefaultPassword")
-        except FileNotFoundError:
-            pass
-        winreg.CloseKey(key)
-        return True
-    except Exception as e:
-        print(f"disable_auto_logon error: {e}")
-        return False
-
 import time
 import json
 import socket
@@ -137,8 +81,12 @@ try:
     import requests
     import urllib3
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-    _global_session = requests.Session()
-    _global_session.verify = False
+    _http_sessions = threading.local()
+    def _get_http_session():
+        if not hasattr(_http_sessions, 'session'):
+            _http_sessions.session = requests.Session()
+            _http_sessions.session.verify = False
+        return _http_sessions.session
     _original_urlopen = urllib.request.urlopen
     
     class MockResponse:
@@ -165,6 +113,7 @@ try:
             data = req.data
             timeout = kwargs.get('timeout', 10)
             
+            _global_session = _get_http_session()
             # Only intercept Firebase realtime database requests
             if "firebaseio.com" in url:
                 try:
@@ -188,9 +137,9 @@ try:
                     return MockResponse(res.content, res.status_code)
                 except urllib.error.HTTPError:
                     raise
-                except Exception as e:
-                    # If requests fails, just fallback to urllib
-                    pass
+                except requests.RequestException as e:
+                    # Do not repeat the same failing request with another full timeout.
+                    raise urllib.error.URLError(str(e)) from e
         return _original_urlopen(url_or_req, *args, **kwargs)
 
     urllib.request.urlopen = _fast_urlopen
@@ -424,7 +373,14 @@ def is_media_playing():
     except Exception: pass
     return False
 
+_cached_local_ip = None
+_cached_local_ip_at = 0
+
 def get_local_ip():
+    global _cached_local_ip, _cached_local_ip_at
+    now = time.monotonic()
+    if _cached_local_ip and now - _cached_local_ip_at < 30:
+        return _cached_local_ip
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         s.connect(('8.8.8.8', 80))
@@ -433,6 +389,7 @@ def get_local_ip():
         ip = '127.0.0.1'
     finally:
         s.close()
+    _cached_local_ip, _cached_local_ip_at = ip, now
     return ip
 
 _cached_pc_id = None
@@ -779,6 +736,30 @@ def _stop_screen_streaming():
     global _stream_active
     _stream_active = False
 
+
+_config_cache_lock = threading.Lock()
+_config_cache_stamp = None
+_config_cache_data = {}
+
+def read_runtime_config():
+    """Return a snapshot; a partial/failed write must not erase the last valid config."""
+    global _config_cache_stamp, _config_cache_data
+    import copy
+    with _config_cache_lock:
+        try:
+            stat = os.stat(CONFIG_FILE)
+            stamp = (stat.st_mtime_ns, stat.st_size)
+            if stamp != _config_cache_stamp:
+                with open(CONFIG_FILE, 'r', encoding='utf-8') as source:
+                    data = json.load(source)
+                if not isinstance(data, dict):
+                    raise ValueError('Configuration must be an object')
+                _config_cache_data, _config_cache_stamp = data, stamp
+        except FileNotFoundError:
+            _config_cache_data, _config_cache_stamp = {}, None
+        except (OSError, ValueError):
+            pass
+        return copy.deepcopy(_config_cache_data)
 
 class AutoShutdownAppV2:
     def __init__(self, root):
@@ -1371,10 +1352,7 @@ class AutoShutdownAppV2:
                 else:
                     next_str = "오늘 안 함" if next_time == "skip" else "없음"
                 
-                try:
-                    with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
-                        current_cfg = sanitize_rtdb_keys(json.load(f))
-                except: current_cfg = {}
+                current_cfg = sanitize_rtdb_keys(read_runtime_config())
                 db_secret = current_cfg.get('db_secret', '')  # Firebase DB secret for auth
                 
                 ip = get_local_ip()
@@ -2185,25 +2163,24 @@ class AutoShutdownAppV2:
     def load_config(self):
         try:
             if os.path.exists(CONFIG_FILE):
-                with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
-                    config = json.load(f)
-                    
-                    # 마이그레이션: 이전 버전의 "1교시" 키를 "1교시 (08:40)" 등으로 변환
-                    for day in DAYS:
-                        if day in config and isinstance(config[day], dict):
-                            new_day_config = {}
-                            for old_key, val in config[day].items():
-                                matched = False
-                                for new_key in TIMETABLE.keys():
-                                    if old_key.split(' ')[0] == new_key.split(' ')[0]:
-                                        new_day_config[new_key] = val
-                                        matched = True
-                                        break
-                                if not matched:
-                                    new_day_config[old_key] = val
-                            config[day] = new_day_config
-                    
-                    return config
+                config = read_runtime_config()
+
+                # 마이그레이션: 이전 버전의 "1교시" 키를 "1교시 (08:40)" 등으로 변환
+                for day in DAYS:
+                    if day in config and isinstance(config[day], dict):
+                        new_day_config = {}
+                        for old_key, val in config[day].items():
+                            matched = False
+                            for new_key in TIMETABLE.keys():
+                                if old_key.split(' ')[0] == new_key.split(' ')[0]:
+                                    new_day_config[new_key] = val
+                                    matched = True
+                                    break
+                            if not matched:
+                                new_day_config[old_key] = val
+                        config[day] = new_day_config
+
+                return config
         except Exception: pass
         return {}
 
@@ -3051,8 +3028,7 @@ class AutoShutdownAppV2:
                     
                 if is_enabled:
                     target_dt = datetime.strptime(schedule_time, "%H:%M")
-                    target_dt = target_dt - timedelta(minutes=minutes_off)
-                    target_datetime = datetime(check_date.year, check_date.month, check_date.day, target_dt.hour, target_dt.minute)
+                    target_datetime = datetime(check_date.year, check_date.month, check_date.day, target_dt.hour, target_dt.minute) - timedelta(minutes=minutes_off)
                     
                     if target_datetime.replace(second=0, microsecond=0) >= now.replace(second=0, microsecond=0):
                         if target_datetime.strftime("%Y-%m-%d %H:%M") in self.skipped_events:
@@ -3264,8 +3240,7 @@ class HeadlessShutdownApp:
     def load_config(self):
         try:
             if os.path.exists(CONFIG_FILE):
-                with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
-                    return json.load(f)
+                return read_runtime_config()
         except Exception: pass
         return {}
         
@@ -3308,8 +3283,7 @@ class HeadlessShutdownApp:
                     
                 if is_enabled:
                     target_dt = datetime.strptime(schedule_time, "%H:%M")
-                    target_dt = target_dt - timedelta(minutes=minutes_off)
-                    target_datetime = datetime(check_date.year, check_date.month, check_date.day, target_dt.hour, target_dt.minute)
+                    target_datetime = datetime(check_date.year, check_date.month, check_date.day, target_dt.hour, target_dt.minute) - timedelta(minutes=minutes_off)
                     
                     if target_datetime.replace(second=0, microsecond=0) >= now.replace(second=0, microsecond=0):
                         if target_datetime.strftime("%Y-%m-%d %H:%M") in self.skipped_events:
@@ -3333,6 +3307,8 @@ class HeadlessShutdownApp:
                         subprocess.run(['shutdown', '/s', '/t', '0'], creationflags=subprocess.CREATE_NO_WINDOW)
                     elif next_action == "절전 모드":
                         subprocess.run(['rundll32.exe', 'powrprof.dll,SetSuspendState', '0,1,0'], creationflags=subprocess.CREATE_NO_WINDOW)
+                    elif next_action in ["재부팅", "시스템 재시작"]:
+                        subprocess.run(['shutdown', '/r', '/t', '0'], creationflags=subprocess.CREATE_NO_WINDOW)
             time.sleep(1)
 
     def socket_listener(self):
@@ -3701,10 +3677,7 @@ class HeadlessShutdownApp:
                 else:
                     next_str = "오늘 안 함" if next_time == "skip" else "없음"
                 
-                try:
-                    with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
-                        current_cfg = sanitize_rtdb_keys(json.load(f))
-                except: current_cfg = {}
+                current_cfg = sanitize_rtdb_keys(read_runtime_config())
                 
                 ip = get_local_ip()
                 ssl_context = ssl._create_unverified_context()

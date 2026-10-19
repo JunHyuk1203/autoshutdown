@@ -7,18 +7,17 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
+<link rel="icon" href="data:,">
 <meta http-equiv="Content-Security-Policy" content="
     default-src 'self';
     script-src 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com https://accounts.google.com;
     style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
     font-src 'self' https://fonts.gstatic.com;
-    connect-src 'self' https://*.firebaseio.com wss://*.firebaseio.com https://*.googleapis.com https://accounts.google.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com;
+    connect-src 'self' https://*.firebaseio.com wss://*.firebaseio.com https://*.firebasedatabase.app wss://*.firebasedatabase.app wss://*.trycloudflare.com https://*.googleapis.com https://accounts.google.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com https://www.gstatic.com;
     img-src 'self' data: https://www.gstatic.com https://*.googleusercontent.com;
     frame-src 'self' https://*.firebaseapp.com https://accounts.google.com https://atss-a1f9e.firebaseapp.com;
 ">
 <title>SmartPower Serverless Dashboard</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
 <style>
 /* ─────────────────────────────────────────────────────────────
    GLOBAL STYLES & THEMING (Curated Dark Palette)
@@ -50,7 +49,7 @@
 body {
     font-family: 'Outfit', 'Noto Sans KR', sans-serif;
     background-color: var(--bg-dark);
-    background-image: 
+    background-image:
         radial-gradient(at 0% 0%, rgba(79, 70, 229, 0.15) 0px, transparent 50%),
         radial-gradient(at 100% 100%, rgba(168, 85, 247, 0.1) 0px, transparent 50%);
     background-attachment: fixed;
@@ -926,6 +925,74 @@ body {
 }
 @keyframes pulse-slow { 0%,100%{opacity:1} 50%{opacity:.6} }
 </style>
+<style>
+
+/* SmartPower: quiet surfaces, legible device cards, touch-friendly controls. */
+:root { --bg-dark:#0c1220; --bg-card:#151e2e; --border-light:#2a364a;
+ --primary:#397cf6; --accent-blue:#81b1ff; --accent-purple:#9daefc;
+ --text-main:#edf2fc; --text-muted:#a7b5cb; --success:#52d6ac;
+ --danger:#ff919b; --transition-smooth:background-color .15s,border-color .15s; }
+body { font-family:system-ui,-apple-system,'Segoe UI','Malgun Gothic',sans-serif; background:#0c1220; }
+button,input,select,textarea { font:inherit; }
+button { touch-action:manipulation; }
+button:focus-visible,input:focus-visible,select:focus-visible { outline:3px solid #81b1ff; outline-offset:3px; }
+button:disabled { opacity:.4; cursor:not-allowed; }
+.gradient-text { background:none; -webkit-text-fill-color:currentColor; color:#edf2fc; }
+.top-header { background:#101929; backdrop-filter:none; padding:20px max(24px,calc((100vw - 1440px)/2)); border-bottom:1px solid var(--border-light); gap:16px; }
+.logo-section h1 { font-size:22px; letter-spacing:-.8px; }
+.logo-section span { max-width:100%; font-size:12px; margin-top:6px; }
+.logo-section h1 span { display:inline; font-size:inherit; }
+.header-actions { gap:10px; }
+.btn-icon { width:42px; height:42px; border-radius:12px; }
+.main-content { max-width:1440px; padding:28px 24px 48px; gap:24px; }
+.top-status-bar { background:transparent; border:0; padding:0; backdrop-filter:none; gap:16px; }
+.status-panel { gap:10px; flex-wrap:wrap; }
+.status-title { font-size:13px; }
+.status-chip { padding:12px 18px; background:var(--bg-card); border-radius:12px; gap:16px; font-size:13px; }
+.status-chip strong { font-size:23px; font-variant-numeric:tabular-nums; }
+.btn-clear-offline { min-height:40px; padding:9px 12px; font-size:12px; }
+.control-panel { padding:20px; background:#111b2b; border-radius:16px; backdrop-filter:none; }
+.panel-title { font-size:13px; margin-bottom:14px; letter-spacing:0; color:var(--text-muted); }
+.btn-row { gap:10px; flex-wrap:wrap; }
+.action-btn { box-shadow:none; background-image:none; min-height:42px; padding:10px 16px; border-radius:9px; font-size:13px; }
+.grid-header { margin-bottom:16px; gap:12px; flex-wrap:wrap; }
+.grid-title { font-size:19px; letter-spacing:-.5px; }
+.pc-grid { grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:16px; align-items:start; }
+.pc-card { padding:20px; border-radius:16px; background:var(--bg-card); border:1px solid var(--border-light); box-shadow:none; }
+.pc-card.online { border-top:3px solid #52d6ac; }
+.pc-card.offline { border-top:3px solid #66758e; opacity:.85; }
+.pc-card:hover { background:#192437; border-color:#61738e; transform:none; box-shadow:none; }
+.pc-name { font-size:20px; margin:14px 0 12px; overflow-wrap:anywhere; }
+.pc-meta { font-size:12px; line-height:1.8; overflow-wrap:anywhere; }
+.pc-event { font-size:12px; min-height:22px; margin-top:8px; }
+.pc-status-txt { font-size:12px; letter-spacing:0; }
+.dot { width:7px; height:7px; box-shadow:none!important; }
+.dot.online::after { display:none; }
+.pc-checkbox { width:20px!important; height:20px!important; }
+.card-actions { gap:7px; margin-top:16px; padding-top:14px; border-top:1px solid var(--border-light); }
+.card-action-btn { min-height:36px; font-size:12px; border-radius:7px; padding:7px 4px; }
+.empty-state { background:#111b2b; border:1px dashed #3c4d67; border-radius:16px; padding:64px 20px; }
+.auth-card,.glass-card,.modal-card,.admin-panel-card { background:#151e2e; backdrop-filter:none; border-color:var(--border-light); border-radius:20px; box-shadow:0 20px 60px #0003; }
+.auth-card { padding:36px; width:100%; max-width:440px; }
+.auth-input,.form-input { min-height:46px; font-size:16px; background:#0c1422; }
+.auth-btn { min-height:46px; border-radius:10px; }
+#boot-status { color:var(--text-muted); font-size:13px; line-height:1.7; margin-bottom:12px; }
+#boot-status:empty { display:none; }
+.modal-overlay { padding:16px; }
+.modal-card { max-height:calc(100vh - 32px); max-height:calc(100dvh - 32px); overflow-y:auto; }
+@media(max-width:640px) {
+ .top-header { padding:16px; align-items:flex-start; } .logo-section { min-width:0; }
+ .logo-section h1 { font-size:19px; } #label-connected-db { max-width:190px; }
+ .main-content { padding:20px 16px 32px; gap:20px; } .status-title { width:100%; }
+ .status-panel { width:100%; } .status-chip { flex:1; justify-content:space-between; padding:10px; gap:7px; }
+ .status-chip strong { font-size:21px; } .top-status-bar>div:last-child { flex-wrap:wrap; }
+ .btn-row { display:grid; grid-template-columns:1fr 1fr; } .action-btn { width:100%; font-size:12px; }
+ .pc-grid { grid-template-columns:minmax(0,1fr); } .auth-card { padding:26px 22px; }
+ .btn-icon { width:36px; height:36px; } .header-actions { gap:6px; }
+}
+@media(prefers-reduced-motion:reduce) { *,*::before,*::after { animation:none!important; transition:none!important; scroll-behavior:auto!important; } }
+
+</style>
 </head>
 <body>
 
@@ -934,16 +1001,18 @@ body {
 ══════════════════════════════════════════════════════ -->
 
 <!-- [AUTH] 로그인 / 회원가입 -->
-<div id="auth-view" style="display:none">
+<div id="auth-view" style="display:flex">
   <div class="auth-card">
     <div style="text-align:center; margin-bottom:28px;">
       <h2 style="font-size:26px; font-weight:800; margin-bottom:6px;">&#x26A1; <span class="gradient-text">SmartPower</span></h2>
       <p style="color:var(--text-muted); font-size:13px;">원격 PC 관리 시스템에 로그인하세요</p>
     </div>
+    <p id="boot-status" role="status" aria-live="polite">연결을 준비하고 있습니다…</p><button class="auth-link-btn" id="boot-retry" hidden>다시 연결</button>
     <div class="auth-error" id="auth-error-msg"></div>
     <input class="auth-input" id="auth-email-input" type="email" name="email" placeholder="이메일" autocomplete="email" required maxlength="100">
     <input class="auth-input" id="auth-pw-input" type="password" name="password" placeholder="비밀번호 (6자리 이상)" autocomplete="current-password" required minlength="6" maxlength="32">
-    <button class="auth-btn auth-btn-primary" id="auth-submit-btn">이메일로 로그인</button>
+    <button class="auth-btn auth-btn-primary" id="auth-submit-btn" style="background:#3b82f6; margin-bottom:8px;">🔵 Firebase 클라우드 로그인</button>
+    <button class="auth-btn auth-btn-primary" id="auth-submit-custom-btn" style="background:#10b981;">🟢 자체 서버(고속) 로그인</button>
     <div class="auth-divider">또는</div>
     <button class="auth-btn auth-btn-google" id="auth-google-btn">
       <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
@@ -1007,10 +1076,23 @@ body {
     <p id="pending-email-label" style="font-size:13px; color:var(--accent-blue); margin-bottom:22px; background:rgba(14,165,233,0.08); padding:10px 18px; border-radius:10px; border:1px solid rgba(14,165,233,0.2);">이메일</p>
     <button class="auth-btn auth-btn-primary" id="pending-check-btn" style="margin-bottom:8px;">🔄 새로고침 (승인 확인)</button>
     <button id="pending-rerequest-btn" class="auth-btn auth-btn-google" style="margin-bottom:8px; display:none;">요청 다시 보내기</button>
-    <button class="auth-btn auth-btn-outline" id="signout-btn-1">로그아웃</button>
+    <button class="auth-btn auth-btn-outline" id="signout-btn-pending">로그아웃</button>
   </div>
 </div>
 
+
+
+<!-- [BANNED] 보안 위협 영구 차단 화면 -->
+<div id="banned-view" style="display:none">
+  <div class="auth-card" style="text-align:center;">
+    <div style="font-size:52px; margin-bottom:16px; animation:pulse-slow 2.5s infinite;">☠️</div>
+    <h2 style="font-size:22px; font-weight:800; margin-bottom:10px; color:#ef4444;">보안 위협 감지됨</h2>
+    <p style="color:var(--text-muted); font-size:14px; line-height:1.75; margin-bottom:18px;">
+      비정상적인 접근이 감지되어 시스템에 의해 영구 차단되었습니다.<br>이 계정으로는 더 이상 제어판을 이용할 수 없습니다.
+    </p>
+    <button class="auth-btn auth-btn-outline" id="signout-btn-banned">로그아웃</button>
+  </div>
+</div>
 
 <!-- [REVOKED] 권한 박탈 화면 -->
 <div id="revoked-view" style="display:none">
@@ -1021,7 +1103,7 @@ body {
       관리자에 의해 기기 제어 권한이 박탈되었습니다.<br>더 이상 대시보드에 접근할 수 없습니다.
     </p>
     <button class="auth-btn auth-btn-primary" id="revoked-rerequest-btn" style="margin-bottom:8px;">🔄 권한 재요청</button>
-    <button class="auth-btn auth-btn-outline" id="signout-btn-1">로그아웃</button>
+    <button class="auth-btn auth-btn-outline" id="signout-btn-revoked">로그아웃</button>
   </div>
 </div>
 
@@ -1032,7 +1114,7 @@ body {
       <h2 style="font-size:20px; font-weight:800;">🛡️ 마스터 제어판 <span class="master-badge">MASTER</span></h2>
       <button id="admin-close-btn" style="background:none;border:none;color:var(--text-muted);font-size:22px;cursor:pointer;line-height:1;padding:4px;">✕</button>
     </div>
-    
+
     <div class="admin-tabs" style="display:flex; border-bottom:1px solid rgba(255,255,255,0.1); margin-bottom:16px;">
       <button class="admin-tab-btn active" id="tab-btn-pending"  style="flex:1; padding:10px; background:none; border:none; color:var(--text-main); font-weight:bold; border-bottom:2px solid var(--primary); cursor:pointer;">📋 가입 요청</button>
       <button class="admin-tab-btn" id="tab-btn-approved"  style="flex:1; padding:10px; background:none; border:none; color:var(--text-muted); font-weight:bold; border-bottom:2px solid transparent; cursor:pointer;">👥 계정 관리</button>
@@ -1053,6 +1135,17 @@ body {
     </div>
 
     <!-- 탭 2: 계정 관리 -->
+
+    <!-- 탭 3: 보안 차단 -->
+    <div id="security-list-container" style="display:none;">
+      <p style="font-size:12px; color:var(--text-muted); margin-bottom:16px; line-height:1.6;">
+        보안 위협(비정상 접근, 개발자 도구 등)으로 영구 차단된 사용자 목록입니다.
+      </p>
+      <div id="security-user-list" style="display:flex; flex-direction:column; gap:12px; max-height:400px; overflow-y:auto; padding-right:8px;">
+        <!-- 리스트 동적 렌더링 -->
+      </div>
+    </div>
+
     <div id="admin-tab-approved" style="display:none;">
       <p style="font-size:12px; color:var(--text-muted); margin-bottom:16px; line-height:1.6;">
         ⚠️ 이미 승인된 사용자 목록입니다. 즉시 권한을 박탈할 수 있습니다.
@@ -1073,6 +1166,7 @@ body {
     <header class="top-header">
         <div class="logo-section">
             <h1>⚡ <span class="gradient-text">SmartPower Admin</span></h1>
+            <span id="current-mode-display" style="font-size: 13px; font-weight: bold; margin-left: 10px; color: #3b82f6;">☁️ Firebase 클라우드</span>
             <span id="label-connected-db">연결 중...</span>
         </div>
         <div class="header-actions">
@@ -1105,15 +1199,16 @@ body {
             <div class="control-panel">
                 <h3 class="panel-title">⚡ 전체 PC 제어</h3>
                 <div class="btn-row">
-                    <button class="action-btn action-btn-danger" >
+                    <button class="action-btn action-btn-danger" onclick="triggerCommandAll('shutdown')">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle;"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
                         전체 종료
                     </button>
-                    <button class="action-btn action-btn-blue" >🔄 전체 재부팅</button>
-                    <button class="action-btn action-btn-secondary" >🚀 전체 초기설정</button>
-                    <button class="action-btn action-btn-warning" >📂 전체 파일 열기</button>
-                    <button class="action-btn action-btn-dark" >❌ 전체 창 닫기</button>
-                    <button class="action-btn action-btn-secondary" >🔊 전체 음량제어</button>
+                    <button class="action-btn action-btn-blue" onclick="triggerCommandAll('restart')">🔄 전체 재부팅</button>
+                    <button class="action-btn action-btn-warning" onclick="triggerCommandAll('unlock_screen')">🔓 전체 화면 깨우기</button>
+                    <button class="action-btn action-btn-secondary" onclick="triggerCommandAll('setup_mode')">🚀 전체 초기설정</button>
+                    <button class="action-btn action-btn-warning" onclick="openFileModal('__ALL__')">📂 전체 파일 열기</button>
+                    <button class="action-btn action-btn-dark" onclick="triggerCommandAll('close_active_window')">❌ 전체 창 닫기</button>
+                    <button class="action-btn action-btn-secondary" onclick="openVolumeControl('__ALL__')">🔊 전체 음량제어</button>
                 </div>
             </div>
         </div>
@@ -1123,7 +1218,7 @@ body {
             <div class="grid-header">
                 <h2 class="grid-title">모니터링 대상 기기</h2>
             </div>
-            
+
             <div class="pc-grid" id="pc-grid-area">
                 <!-- 동적으로 기기 추가됨 -->
                 <div class="empty-state">
@@ -1164,7 +1259,7 @@ body {
     <div style="padding-bottom:10px;">
       <label style="display:block; margin-bottom:6px; color:var(--text-muted); font-size:13px; font-weight:600;">현재 로그인된 계정</label>
       <div style="font-weight:600; margin-bottom:20px; color:var(--primary);" id="account-email-display">-</div>
-      
+
       <label style="display:block; margin-bottom:6px; color:var(--text-muted); font-size:13px; font-weight:600;">이메일 로그인용 비밀번호 추가</label>
       <p style="font-size:12px; color:var(--text-muted); margin-bottom:12px; line-height:1.4;">구글 로그인 대신 이메일/비밀번호로도 로그인하려면 아래에 비밀번호를 설정하세요.</p>
       <input type="password" id="account-new-pw" class="auth-input" placeholder="새 비밀번호 (6자리 이상)" style="width:100%; box-sizing:border-box;" minlength="6" maxlength="32">
@@ -1184,7 +1279,7 @@ body {
             <span>⚙️ 원격 환경설정</span>
             <span style="font-size: 12px; color: var(--accent-blue);" id="config-target-pc">PC이름</span>
         </h3>
-        
+
         <div style="display: flex; flex-direction: column; gap: 16px;">
             <!-- 기본 제어 설정 -->
             <div style="border-bottom: 1px solid var(--border-light); padding-bottom: 16px;">
@@ -1254,7 +1349,7 @@ body {
                 </div>
             </div>
         </div>
-        
+
         <div class="modal-actions" style="margin-top: 30px;">
             <button class="modal-btn modal-btn-cancel" id="config-cancel-btn">취소</button>
             <button class="modal-btn modal-btn-confirm" id="config-save-btn" style="background: var(--primary);">설정 전송/적용</button>
@@ -1293,7 +1388,7 @@ body {
         </div>
 
         <div style="border-top: 1px solid var(--border-light); padding-top: 16px; display: flex; flex-direction: column; gap: 12px;">
-            
+
 
 
 
@@ -1418,14 +1513,14 @@ body {
             <span style="font-size: 12px; color: var(--accent-blue);" id="volume-target-label">-</span>
         </h3>
         <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 24px;">슬라이더를 조절하여 대상 PC의 시스템 마스터 볼륨을 설정합니다.</p>
-        
+
         <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 30px;">
             <span style="font-size: 16px;">🔈</span>
             <input type="range" id="volume-slider" min="0" max="100" value="50" style="flex-grow: 1; accent-color: var(--primary); cursor: pointer;">
             <span style="font-size: 16px;">🔊</span>
         </div>
         <div style="text-align: center; font-size: 24px; font-weight: 800; color: var(--accent-blue); margin-bottom: 20px;" id="volume-value-display">50%</div>
-        
+
         <div class="modal-actions">
             <button class="modal-btn modal-btn-cancel" id="vol-cancel-btn">취소</button>
             <button class="modal-btn" id="vol-apply-btn" style="background: var(--primary);">적용</button>
@@ -1434,17 +1529,46 @@ body {
 </div>
 
 <!-- ─────────────────────────────────────────────────────────────
+   스크린샷 보기 모달
+   ───────────────────────────────────────────────────────────── -->
+<div id="live-screen-modal" class="modal-overlay">
+  <div class="modal-card" style="max-width:1100px;width:100%">
+    <div style="display:flex;justify-content:space-between;gap:12px;align-items:center">
+      <h3 id="live-screen-title" class="modal-title">실시간 화면</h3>
+      <button class="modal-btn modal-btn-cancel" data-action="closeLiveScreen">닫기</button>
+    </div>
+    <p id="live-screen-status" role="status" style="color:var(--text-muted);margin:12px 0"></p>
+    <img id="live-screen-image" alt="선택한 기기의 실시간 화면" style="display:block;width:100%;max-height:70vh;object-fit:contain;background:#080e19">
+  </div>
+</div>
+<div id="screenshot-modal" class="modal-overlay">
+    <div class="modal-card" style="max-width:900px; width:95%;">
+        <div class="modal-header">
+            <span id="ss-modal-title" style="font-weight: 800;">📷 화면 보기</span>
+            <button id="ss-close-btn" class="modal-btn-cancel" style="padding: 4px 8px;">✕</button>
+        </div>
+        <div id="ss-modal-body" style="text-align:center; padding:20px;">
+            <div id="ss-loading" style="padding: 40px; font-weight: bold; color: var(--accent-blue);">⏳ 스크린샷 요청 중...</div>
+            <img id="ss-image" src="" alt="스크린샷" style="display:none; max-width:100%; border-radius:8px; margin: 0 auto;" />
+            <div id="ss-meta" style="color:var(--text-muted); font-size:12px; margin-top:12px;"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────
    JAVASCRIPT LOGIC (Firebase SDK & REST Hybrid)
    ───────────────────────────────────────────────────────────── -->
 <!-- Firebase Auth SDK (Compat v10) -->
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js" integrity="sha384-sEVIly94UBRLKWdkYoPpSG7GD/e79YHMrxVyZaOk712Ga7+EAw6w1EFi+xBzBdd+" crossorigin="anonymous">
-</script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js" integrity="sha384-EkqK+ezBWJuvO3hfrSx2iVqr3YQbhmnzn8kPhOpBZ+0GMVU5oGSgptwIu8D84HjE" crossorigin="anonymous">
-</script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js" integrity="sha384-1/m+A1jVWbD3yiK3/vtFvm1+LjK1WLpSoDY+Kaxppwn/yP9BVSgdHTNQVOjrzUO5" crossorigin="anonymous">
-</script>
+
+
+
 
 <script>
+const safeStorage = {
+    getItem(key) { try { return localStorage.getItem(key); } catch (_) { return null; } },
+    setItem(key, value) { try { localStorage.setItem(key, value); } catch (_) {} },
+    removeItem(key) { try { localStorage.removeItem(key); } catch (_) {} }
+};
 function escapeHtml(str) {
     if (!str) return "";
     return String(str)
@@ -1464,23 +1588,64 @@ let pcs = {};
 let selectedPcs = new Set();
 let pollerInterval = null;
 let currentPollerMs = 5000;
+
 let APP_ACCESS_GRANTED = null;
 
 function setAccessGranted(value) {
+    if (!value) {
+        closeLiveScreen();
+        closeScreenshotModal();
+    }
     APP_ACCESS_GRANTED = value;
     if (!value) {
+        window._dashboardInitialized = false;
+        if (window._timeOffsetListener && window.firebase) {
+            firebase.database().ref('.info/serverTimeOffset').off('value', window._timeOffsetListener);
+            window._timeOffsetListener = null;
+        }
+        clearInterval(window._securityScannerInterval);
+        window._securityScannerStarted = false;
+        window._customSyncGeneration = (window._customSyncGeneration || 0) + 1;
+        clearTimeout(window._customRetry);
+        if (window._customWs) {
+            window._customWs.onclose = null;
+            window._customWs.close();
+            window._customWs = null;
+        }
+        clearInterval(window._tokenRefreshInterval);
         if (pollerInterval) clearInterval(pollerInterval);
         pollerInterval = null;
+        if (window._pcsListener && window.firebase && firebase.database) {
+            try { firebase.database().ref("/pcs").off("value", window._pcsListener); } catch(e) {}
+            window._pcsListener = null;
+        }
+        if (window._renderInterval) { clearInterval(window._renderInterval); window._renderInterval = null; }
     }
 }
 
-function setPollerInterval(ms) {
+function setPollerInterval(ms) { return; // Deprecated
     if (currentPollerMs === ms && pollerInterval) return;
     currentPollerMs = ms;
     if (pollerInterval) clearInterval(pollerInterval);
     pollerInterval = setInterval(fetchPCData, currentPollerMs);
 }
 let serverTimeOffset = 0;
+let _renderPending = false;
+function scheduleDashboardRender() {
+    if (_renderPending || document.hidden) return;
+    _renderPending = true;
+    requestAnimationFrame(() => {
+        _renderPending = false;
+        if (APP_ACCESS_GRANTED !== true) return;
+        const now = Date.now() + serverTimeOffset;
+        renderPCGrid(now);
+        updateStatistics(now);
+    });
+}
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) scheduleDashboardRender();
+    else closeLiveScreen();
+});
 
 // 창 목록 모달 상태
 let _wmPcId = null;
@@ -1492,11 +1657,288 @@ let pendingAction = null;
 
 let _volumePcId = null;
 
+let _ssListener = null;
+let _ssPcId = null;
+
+let _mouseMoveThrottleTs = 0;  // mousemove throttle
+let _docKeyHandler = null;     // document-level key handler for stream mode
+
+function _installDocKeyHandler() {
+    if (_docKeyHandler) return;
+    _docKeyHandler = (e) => {
+        const modal = document.getElementById('webrtc-modal');
+        if (!modal || modal.style.display === 'none') return;
+        if (_webrtcCurrentMode !== 'stream') return;
+        // 모달이 표시되고 스트리밍 모드일 때만 키 이벤트 가로채기
+        e.preventDefault();
+        sendRemoteInput(e.type === 'keydown' ? 'keydown' : 'keyup', undefined, undefined, undefined, e.key);
+    };
+    document.addEventListener('keydown', _docKeyHandler, true);
+    document.addEventListener('keyup', _docKeyHandler, true);
+}
+function _removeDocKeyHandler() {
+    if (!_docKeyHandler) return;
+    document.removeEventListener('keydown', _docKeyHandler, true);
+    document.removeEventListener('keyup', _docKeyHandler, true);
+    _docKeyHandler = null;
+}
+
+
+
+function sendRemoteInput(action, x, y, b, k) {
+    const payload = { t: action };
+    if (x !== undefined) payload.x = Math.max(0, Math.min(1, x));
+    if (y !== undefined) payload.y = Math.max(0, Math.min(1, y));
+    if (b !== undefined) payload.b = b;
+    if (k !== undefined) payload.k = k;
+
+    if (_webrtcCurrentMode === 'p2p' && _webrtcDc && _webrtcDc.readyState === "open") {
+        _webrtcDc.send(JSON.stringify(payload));
+    } else if (_activePcId) {
+        writeCommandToDB(_activePcId, 'remote_input', payload);
+    }
+}
+
+function getNormalizedCoords(element, clientX, clientY) {
+    const rect = element.getBoundingClientRect();
+    let vw = element.videoWidth || element.naturalWidth || 1280;
+    let vh = element.videoHeight || element.naturalHeight || 720;
+    let containerRatio = rect.width / rect.height;
+    let mediaRatio = vw / vh;
+    let x, y;
+    if (containerRatio > mediaRatio) {
+        let drawWidth = rect.height * mediaRatio;
+        let margin = (rect.width - drawWidth) / 2;
+        x = (clientX - rect.left - margin) / drawWidth;
+        y = (clientY - rect.top) / rect.height;
+    } else {
+        let drawHeight = rect.width / mediaRatio;
+        let margin = (rect.height - drawHeight) / 2;
+        x = (clientX - rect.left) / rect.width;
+        y = (clientY - rect.top - margin) / drawHeight;
+    }
+    return { x, y };
+}
+
+function bindMediaElementEvents(el) {
+    if (el._hasBoundEvents) return;
+    el._hasBoundEvents = true;
+
+    el.onmousemove = (e) => {
+        // throttle: 스트리밍 모드일 때 mousemove는 50ms마다 한 번만 Firebase로 전송
+        const now = Date.now();
+        if (_webrtcCurrentMode === 'stream' && now - _mouseMoveThrottleTs < 50) return;
+        _mouseMoveThrottleTs = now;
+        const { x, y } = getNormalizedCoords(el, e.clientX, e.clientY);
+        if (x >= 0 && x <= 1 && y >= 0 && y <= 1) {
+            sendRemoteInput('mousemove', x, y);
+        }
+    };
+    el.onmousedown = (e) => {
+        const { x, y } = getNormalizedCoords(el, e.clientX, e.clientY);
+        if (x >= 0 && x <= 1 && y >= 0 && y <= 1) {
+            sendRemoteInput('mousemove', x, y);
+            sendRemoteInput('mousedown', x, y, e.button);
+        }
+        el.focus();
+    };
+    el.onmouseup = (e) => {
+        const { x, y } = getNormalizedCoords(el, e.clientX, e.clientY);
+        sendRemoteInput('mouseup', x, y, e.button);
+    };
+    el.oncontextmenu = (e) => { e.preventDefault(); };
+    el.onkeydown = (e) => {
+        e.preventDefault();
+        sendRemoteInput('keydown', undefined, undefined, undefined, e.key);
+    };
+    el.onkeyup = (e) => {
+        e.preventDefault();
+        sendRemoteInput('keyup', undefined, undefined, undefined, e.key);
+    };
+
+    function handleTouch(e, type) {
+        if (!e.touches || (!e.touches.length && type !== 'mouseup')) return;
+        const touch = e.touches[0] || (e.changedTouches ? e.changedTouches[0] : null);
+        if (!touch) return;
+        const { x, y } = getNormalizedCoords(el, touch.clientX, touch.clientY);
+        if (x >= 0 && x <= 1 && y >= 0 && y <= 1) {
+            if (type === 'mousedown') {
+                sendRemoteInput('mousemove', x, y);
+                sendRemoteInput('mousedown', x, y, 0);
+            } else if (type === 'mousemove') {
+                sendRemoteInput('mousemove', x, y);
+            } else if (type === 'mouseup') {
+                sendRemoteInput('mouseup', x, y, 0);
+            }
+        }
+    }
+    el.ontouchstart = (e) => { e.preventDefault(); handleTouch(e, 'mousedown'); };
+    el.ontouchmove = (e) => { e.preventDefault(); handleTouch(e, 'mousemove'); };
+    el.ontouchend = (e) => { e.preventDefault(); handleTouch(e, 'mouseup'); };
+}
+
+function switchToStreamMode(pcId, noticeText) {
+    _webrtcCurrentMode = 'stream';
+    const video = document.getElementById('webrtc-video');
+    const img = document.getElementById('webrtc-stream-img');
+    const status = document.getElementById('webrtc-status');
+    const badge = document.getElementById('webrtc-mode-badge');
+    const p2pBtn = document.getElementById('webrtc-mode-p2p-btn');
+    const streamBtn = document.getElementById('webrtc-mode-stream-btn');
+
+    if (badge) {
+        badge.innerText = '⚡ 클라우드 스트리밍';
+        badge.style.background = 'rgba(234,179,8,0.2)';
+        badge.style.color = '#eab308';
+    }
+    if (p2pBtn) { p2pBtn.style.background = 'rgba(255,255,255,0.08)'; p2pBtn.style.color = 'var(--text-muted)'; }
+    if (streamBtn) { streamBtn.style.background = 'var(--primary)'; streamBtn.style.color = 'white'; }
+
+    if (video) video.style.display = 'none';
+    if (status) {
+        status.style.display = 'block';
+        status.innerText = noticeText || '⚡ 고속 클라우드 스트리밍 연결 중...';
+    }
+
+    // Close WebRTC interval & timeout
+    if (_webrtcInterval) { clearInterval(_webrtcInterval); _webrtcInterval = null; }
+    if (_iceCheckTimeout) { clearTimeout(_iceCheckTimeout); _iceCheckTimeout = null; }
+
+    bindMediaElementEvents(img);
+    // document-level 키보드 핸들러 설치 (스트리밍 모드 키 입력 활성화)
+    _installDocKeyHandler();
+
+    // Request stream start on PC
+    writeCommandToDB(pcId, 'stream_start');
+
+    // Listen to /screenshots/{pcId}
+    if (_streamListener && _streamPcId) {
+        firebase.database().ref('/screenshots/' + _streamPcId).off('value', _streamListener);
+    }
+    _streamPcId = pcId;
+    _streamListener = firebase.database().ref('/screenshots/' + pcId).on('value', snapshot => {
+        const val = snapshot.val();
+        if (!val || !val.data) return;
+        img.src = 'data:image/jpeg;base64,' + val.data;
+        img.style.display = 'block';
+        if (status) status.style.display = 'none';
+        // 화면 표시 시 자동 포커스 (키보드 입력 즉시 대기)
+        if (document.activeElement !== img) img.focus({ preventScroll: true });
+    });
+}
+
+
+function switchToP2PMode(pcId) {
+    if (_streamListener && _streamPcId) {
+        firebase.database().ref('/screenshots/' + _streamPcId).off('value', _streamListener);
+        _streamListener = null;
+        writeCommandToDB(_streamPcId, 'stream_stop');
+    }
+    const img = document.getElementById('webrtc-stream-img');
+    if (img) img.style.display = 'none';
+    startWebRTC(pcId);
+}
+
+
+// The PC agent already supports cloud streaming; no P2P engine is bundled here.
+let _liveScreen = null;
+async function openLiveScreen(pcId) {
+    await closeLiveScreen();
+    const session = { pcId, ref: firebase.database().ref('/screenshots/' + pcId), listener: null };
+    _liveScreen = session;
+    document.getElementById('live-screen-title').textContent = (pcs[pcId].hostname || pcId) + ' · 실시간 화면';
+    document.getElementById('live-screen-status').textContent = '기기 화면을 연결하고 있습니다…';
+    document.getElementById('live-screen-image').removeAttribute('src');
+    document.getElementById('live-screen-modal').classList.add('show');
+    session.listener = session.ref.on('value', snapshot => {
+        if (_liveScreen !== session) return;
+        const frame = snapshot.val();
+        if (!frame || !frame.data) return;
+        document.getElementById('live-screen-image').src = 'data:image/jpeg;base64,' + frame.data;
+        document.getElementById('live-screen-status').textContent = '화면 연결됨 · 2분 후 자동 종료';
+    });
+    session.timer = setTimeout(closeLiveScreen, 120000);
+    const result = await writeCommandToDB(pcId, 'stream_start');
+    if (_liveScreen === session && !result.success) {
+        document.getElementById('live-screen-status').textContent = '연결 요청에 실패했습니다. 닫은 후 다시 시도해주세요.';
+    }
+}
+async function closeLiveScreen() {
+    const session = _liveScreen;
+    _liveScreen = null;
+    document.getElementById('live-screen-modal').classList.remove('show');
+    document.getElementById('live-screen-image').removeAttribute('src');
+    if (!session) return;
+    clearTimeout(session.timer);
+    session.ref.off('value', session.listener);
+    if (APP_ACCESS_GRANTED === true) await writeCommandToDB(session.pcId, 'stream_stop');
+}
+
+async function takeScreenshot(pcId) {
+    closeScreenshotModal();
+    _ssPcId = pcId;
+    const hostname = (pcs[pcId] && pcs[pcId].hostname) || pcId;
+
+    document.getElementById('ss-modal-title').textContent = `📷 ${hostname} 화면`;
+    document.getElementById('ss-loading').style.display = 'block';
+    document.getElementById('ss-loading').textContent = '⏳ 스크린샷 요청 중...';
+    document.getElementById('ss-image').style.display = 'none';
+    document.getElementById('ss-meta').textContent = '';
+    document.getElementById('screenshot-modal').classList.add('show');
+
+    if (_ssListener) {
+        firebase.database().ref('/screenshots/' + _ssPcId).off('value', _ssListener);
+        _ssListener = null;
+    }
+
+    const requestedAt = Date.now() / 1000;
+    await writeCommandToDB(pcId, 'screenshot');
+
+    const timeout = window._screenshotTimeout = setTimeout(() => {
+        if (_ssListener) {
+            firebase.database().ref('/screenshots/' + _ssPcId).off('value', _ssListener);
+            _ssListener = null;
+        }
+        document.getElementById('ss-loading').textContent = '⚠️ 응답 없음 (20초 초과)';
+    }, 20000);
+
+    _ssListener = firebase.database().ref('/screenshots/' + pcId).on('value', snapshot => {
+        const val = snapshot.val();
+        if (!val || !val.data) return;
+
+        if (val.ts < requestedAt) return;
+
+        clearTimeout(timeout);
+        firebase.database().ref('/screenshots/' + pcId).off('value', _ssListener);
+        _ssListener = null;
+
+        const img = document.getElementById('ss-image');
+        img.src = 'data:image/jpeg;base64,' + val.data;
+        img.style.display = 'block';
+        document.getElementById('ss-loading').style.display = 'none';
+
+        const ts = new Date(val.ts * 1000);
+        const elapsed = ((val.ts - requestedAt) * 1000).toFixed(0);
+        document.getElementById('ss-meta').textContent =
+            `촬영: ${ts.toLocaleTimeString()} | 해상도: ${val.w}×${val.h} | 응답: ${elapsed}ms`;
+    });
+}
+
+function closeScreenshotModal() {
+    clearTimeout(window._screenshotTimeout);
+    if (_ssListener && _ssPcId) {
+        firebase.database().ref('/screenshots/' + _ssPcId).off('value', _ssListener);
+        _ssListener = null;
+    }
+    document.getElementById('screenshot-modal').classList.remove('show');
+    document.getElementById('ss-image').src = '';
+}
+
 function openVolumeControl(pcId) {
     _volumePcId = pcId;
-    const label = pcId === "__ALL__" ? "전체 PC" : (pcs[pcId]?.hostname || pcId);
+    const label = pcId === "__ALL__" ? "전체 PC" : ((pcs[pcId] && pcs[pcId].hostname) || pcId);
     document.getElementById("volume-target-label").innerText = label;
-    
+
     // 기본값 설정 (현재 음량 정보가 있으면 사용, 없으면 50)
     let currentVol = 50;
     if (pcId !== "__ALL__" && pcs[pcId] && typeof pcs[pcId].volume !== "undefined") {
@@ -1504,7 +1946,7 @@ function openVolumeControl(pcId) {
     }
     document.getElementById("volume-slider").value = currentVol;
     document.getElementById("volume-value-display").innerText = currentVol + "%";
-    
+
     document.getElementById("volume-modal").classList.add("show");
 }
 
@@ -1517,7 +1959,7 @@ function applyVolumeControl() {
     if (!_volumePcId) return;
     const vol = parseInt(document.getElementById("volume-slider").value);
     const scalar = vol / 100.0;
-    
+
     if (_volumePcId === "__ALL__") {
         writeCommandToDB("__ALL__", "volume_control", { level: scalar });
         alert("전체 PC에 음량 " + vol + "% 설정 명령을 보냈습니다.");
@@ -1525,7 +1967,7 @@ function applyVolumeControl() {
         writeCommandToDB(_volumePcId, "volume_control", { level: scalar });
         alert("해당 PC에 음량 " + vol + "% 설정 명령을 보냈습니다.");
     }
-    
+
     closeVolumeModal();
 }
 
@@ -1542,11 +1984,11 @@ const FB_PROJECT = {
 // ── SECURITY AUTO-REVOKE ──
 let _devToolsDetectedAt = null;
 const DEVTOOLS_WINDOW_MS = 30 * 60 * 1000; // 30분
-let _lastCmdTime = 0;
+let _cmdTimestamps = [];
 
 async function triggerSecurityViolation(reason) {
-    const user = _fbAuth?.currentUser;
-    if (!user || user.email === MASTER_EMAIL) return; // 관리자 완전 면책
+    const user = _fbAuth && _fbAuth.currentUser;
+    if (!user || user.email && user.email.toLowerCase() === MASTER_EMAIL.toLowerCase()) return; // 관리자 완전 면책
 
     // DevTools 감지 중첩 여부 반영
     if (_devToolsDetectedAt && (Date.now() - _devToolsDetectedAt) < DEVTOOLS_WINDOW_MS) {
@@ -1568,17 +2010,56 @@ async function triggerSecurityViolation(reason) {
     _devToolsDetectedAt = null;
     setAccessGranted(false);
     alert("🚨 보안 위반 감지\n사유: " + reason + "\n계정이 즉시 차단되었습니다.");
-    signOutAndReset();
+    _showScreen("banned-view");
 }
 
-window.onload = function() {
-    const HARDCODED_API_KEY = "AIzaSyAT5J62NaMZjmz3h6Sb7IGLmVZZR7a-PXk";
-    _initFB(HARDCODED_API_KEY);
-};
+const SDK_ROOT = 'https://www.gstatic.com/firebasejs/10.12.0/';
+let _bootPromise = null;
+function loadFirebaseScript(name) {
+    return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = SDK_ROOT + 'firebase-' + name + '-compat.js';
+        const timer = setTimeout(() => finish(new Error('연결 시간 초과')), 10000);
+        function finish(error) {
+            clearTimeout(timer);
+            script.onload = script.onerror = null;
+            if (error) { script.remove(); reject(error); } else resolve();
+        }
+        script.onload = () => finish();
+        script.onerror = () => finish(new Error('인증 서비스에 연결할 수 없습니다'));
+        document.head.appendChild(script);
+    });
+}
+function bootDashboard() {
+    if (_bootPromise) return _bootPromise;
+    const status = document.getElementById('boot-status');
+    const retry = document.getElementById('boot-retry');
+    retry.hidden = true;
+    status.textContent = '인증 서비스에 연결하고 있습니다…';
+    _bootPromise = (async () => {
+        try {
+            if (!window.firebase) await loadFirebaseScript('app');
+            await Promise.all([
+                firebase.auth ? Promise.resolve() : loadFirebaseScript('auth'),
+                firebase.database ? Promise.resolve() : loadFirebaseScript('database')
+            ]);
+            status.textContent = '';
+            _initFB("AIzaSyAT5J62NaMZjmz3h6Sb7IGLmVZZR7a-PXk");
+        } catch (error) {
+            status.textContent = '연결하지 못했습니다. 네트워크와 Google 서비스 접속을 확인한 뒤 다시 시도해주세요.';
+            retry.hidden = false;
+        } finally { _bootPromise = null; }
+    })();
+    return _bootPromise;
+}
+window.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('boot-retry').addEventListener('click', bootDashboard);
+    bootDashboard();
+});
 
 // ─── 화면 전환 ────────────────────────────────────────────
 function _showScreen(id) {
-    ["auth-view","verify-email-view","pending-view","revoked-view","dashboard-view"]
+    ["auth-view","verify-email-view","pending-view","revoked-view","dashboard-view","banned-view"]
         .forEach(v => {
             const el = document.getElementById(v);
             if (el) el.style.display = (v === id) ? "flex" : "none";
@@ -1587,6 +2068,16 @@ function _showScreen(id) {
 
 // ─── Firebase 초기화 ──────────────────────────────────────
 function _initFB(apiKey) {
+    if (window._pcsListener && window.firebase && firebase.database) {
+        try { firebase.database().ref("/pcs").off("value", window._pcsListener); } catch(e) {}
+        window._pcsListener = null;
+    }
+    if (window._userStatusListener && window.firebase && firebase.database) {
+        try { if (window._userStatusRef) window._userStatusRef.off('value', window._userStatusListener); } catch(e) {}
+        window._userStatusListener = null;
+    }
+    window._dashboardInitialized = false;
+
     try {
         if (window.firebase && firebase.apps && firebase.apps.length > 0) {
             firebase.app().delete().then(() => _startAuth(apiKey)).catch(() => _startAuth(apiKey));
@@ -1601,7 +2092,7 @@ function _startAuth(apiKey) {
         firebase.initializeApp({ apiKey, ...FB_PROJECT });
         _fbAuth = firebase.auth();
         let _authInitialized = false;
-        
+
         _fbAuth.onAuthStateChanged(async user => {
             if (!user) {
                 if (_authInitialized) {
@@ -1613,36 +2104,57 @@ function _startAuth(apiKey) {
             }
             _authInitialized = true;
             // 마스터 계정은 무조건 통과
-            if (user.email === MASTER_EMAIL) { 
+            if (user.email && user.email.toLowerCase() === MASTER_EMAIL.toLowerCase()) {
                 setAccessGranted(true);
-                _enterDashboard(user); 
-                return; 
+                _enterDashboard(user);
+                return;
             }
 
             // ── 3단계: 가입 승인 상태 (실시간 연동) ──
             _attachUserStatusListener(user);
+
+
+        });
+    } catch(err) {
+        console.error("Firebase init error:", err);
+        _showScreen("auth-view");
+        _showErr("인증 초기화 실패: " + (err.message || err));
+    }
+}
+
 function _attachUserStatusListener(user) {
     if (window._userStatusListener) {
-        firebase.database().ref("/users/" + user.uid).off("value", window._userStatusListener);
+        if (window._userStatusRef) window._userStatusRef.off("value", window._userStatusListener);
     }
-    window._userStatusListener = firebase.database().ref("/users/" + user.uid).on("value", snapshot => {
+    window._userStatusRef = firebase.database().ref("/users/" + user.uid);
+    window._userStatusListener = window._userStatusRef.on("value", snapshot => {
         const statusObj = snapshot.val();
         const status = statusObj ? statusObj.approved : null;
-        
+
+        if (statusObj && statusObj.role === 'master') {
+            setAccessGranted(true);
+            _enterDashboard(user);
+            return;
+        }
+
         if (status === true) {
             setAccessGranted(true);
             _enterDashboard(user);
         } else if (status === false) {
             setAccessGranted(false);
-            if (statusObj.revokedAt) {
-                _revokeAccess();
-            } else {
-                document.getElementById("pending-email-label").textContent = user.email;
-                document.getElementById("pending-title").textContent = "가입 거부됨";
-                document.getElementById("pending-desc").innerHTML = "관리자가 가입을 거부했습니다.";
-                document.getElementById("pending-rerequest-btn").style.display = "block";
-                _showScreen("pending-view");
-            }
+            firebase.database().ref("/security_logs/" + user.uid).once("value").then(secSnap => {
+                if (secSnap.exists()) {
+                    _showScreen("banned-view");
+                } else if (statusObj.revokedAt) {
+                    _revokeAccess();
+                } else {
+                    document.getElementById("pending-email-label").textContent = user.email;
+                    document.getElementById("pending-title").textContent = "가입 거부됨";
+                    document.getElementById("pending-desc").innerHTML = "관리자가 가입을 거부했습니다.";
+                    document.getElementById("pending-rerequest-btn").style.display = "block";
+                    _showScreen("pending-view");
+                }
+            });
         } else {
             setAccessGranted(false);
             _savePending(user);
@@ -1655,16 +2167,8 @@ function _attachUserStatusListener(user) {
     });
 }
 
-        });
-    } catch(err) {
-        console.error("Firebase init error:", err);
-        const el = document.getElementById("setup-error");
-        if (el) { el.textContent = "Firebase 초기화 실패: " + (err.message||err); el.style.display="block"; }
-        _showScreen("setup-view");
-    }
-}
-
 function _enterDashboard(user) {
+    if (window._dashboardInitialized && APP_ACCESS_GRANTED === true) return;
     // 55분마다 토큰 사전 갱신
     if (window._tokenRefreshInterval) clearInterval(window._tokenRefreshInterval);
     window._tokenRefreshInterval = setInterval(async () => {
@@ -1688,33 +2192,30 @@ function _enterDashboard(user) {
     }
 
     config.databaseURL = FB_PROJECT.databaseURL;
-    
-    user.getIdToken(true).then(token => {
+
+    user.getIdToken().then(token => {
+        if (APP_ACCESS_GRANTED !== true || !_fbAuth || _fbAuth.currentUser !== user) return;
         config.authKey = token;
         // 권한이 복구되었을 수 있으므로 제한 해제
-        document.querySelectorAll('button').forEach(b => b.disabled = false);
+        // Device controls retain their online/offline disabled state.
         _showScreen("dashboard-view");
-        
+
         if (!window._dashboardInitialized) {
             window._dashboardInitialized = true;
             initializeDashboard();
         } else {
-            if (!pollerInterval) {
-                fetchPCData();
-                setPollerInterval(currentPollerMs);
-            }
+            startRealtimeSync();
         }
 
         // ── 보안 스캐너 시작 (마스터 제외, 대시보드 진입 이후에만) ──
-        if (user.email !== MASTER_EMAIL && !window._securityScannerStarted) {
+        if (user.email && user.email.toLowerCase() !== MASTER_EMAIL.toLowerCase() && !window._securityScannerStarted) {
             window._securityScannerStarted = true;
             const _fnSig_checkAuth = _checkAuthPermission.toString();
             const _fnSig_writeCmd = writeCommandToDB.toString();
 
-            setInterval(() => {
+            window._securityScannerInterval = setInterval(() => {
                 if (!APP_ACCESS_GRANTED) return;
-                if (_fbAuth?.currentUser?.email === MASTER_EMAIL) return;
-
+                if (_fbAuth && _fbAuth.currentUser && _fbAuth.currentUser.email && _fbAuth.currentUser.email.toLowerCase() === MASTER_EMAIL.toLowerCase()) return;
                 // 1. 함수 무결성 체크
                 if (_checkAuthPermission.toString() !== _fnSig_checkAuth ||
                     writeCommandToDB.toString() !== _fnSig_writeCmd) {
@@ -1757,37 +2258,166 @@ async function _savePending(user) {
 // ── 실시간 데이터 모니터링 폴링 ──
 function initializeDashboard() {
     document.getElementById("label-connected-db").innerText = `연결 주소: ${config.databaseURL}`;
-    
-    // 첫 조회 실행
-    fetchPCData();
-    
-    // 기본적으로 5초마다 REST API 호출 (트래픽 절약), 창 관리 시 1초로 가속
-    setPollerInterval(5000);
+
+    // Server Time Sync
+    window._timeOffsetListener = firebase.database().ref('.info/serverTimeOffset').on('value', function(snapshot) {
+        serverTimeOffset = snapshot.val() || 0;
+    });
+
+    // Real-time synchronization
+    startRealtimeSync();
 }
 
-// REST API로 Firebase DB의 pcs 노드 동기화
-async function fetchPCData() {
-    if (!config.databaseURL) return;
-    
+// Realtime Firebase DB sync
+
+function _startCustomServerSync() {
+    if (APP_ACCESS_GRANTED !== true) return;
+    const generation = window._customSyncGeneration = (window._customSyncGeneration || 0) + 1;
+    const active = () => generation === window._customSyncGeneration && APP_ACCESS_GRANTED === true && window._serverMode === 'custom';
+    clearTimeout(window._customRetry);
+    firebase.database().ref("/update_info/custom_server_url").once("value").then(async snap => {
+        if (!active()) return;
+        const ws_url = snap.val();
+        if (!ws_url) { alert("자체 서버 URL이 설정되지 않았습니다. Firebase 모드로 연결합니다."); toggleServerMode('firebase'); return; }
+
+        try {
+            const token = await firebase.auth().currentUser.getIdToken();
+            if (!active()) return;
+            const address = new URL(ws_url);
+            if (!['ws:', 'wss:'].includes(address.protocol)) throw new Error('잘못된 서버 주소');
+            const ws = new WebSocket(ws_url);
+            const connectionTimeout = setTimeout(() => {
+                if (active()) toggleServerMode('firebase');
+            }, 8000);
+            window._customWs = ws;
+
+            ws.onopen = () => {
+                if (!active()) { ws.close(); return; }
+                ws.send(JSON.stringify({ type: "auth", role: "admin", token: token }));
+            };
+
+            ws.onmessage = (e) => {
+                if (!active()) return;
+                let msg;
+                try { msg = JSON.parse(e.data); } catch (_) { return; }
+                if (msg.type === 'auth_result' || msg.type === 'full_state') clearTimeout(connectionTimeout);
+                if (msg.type === 'auth_result' && msg.status !== 'success') { toggleServerMode('firebase'); return; }
+                if (msg.type === "full_state") {
+                    pcs = msg.data || {};
+                    scheduleDashboardRender();
+                } else if (msg.type === "pc_update") {
+                    if(msg.pc_id) {
+                        pcs[msg.pc_id] = msg.data;
+                        scheduleDashboardRender();
+                    }
+                }
+            };
+
+            ws.onclose = () => {
+                clearTimeout(connectionTimeout);
+                if (active()) window._customRetry = setTimeout(_startCustomServerSync, 3000);
+            };
+            ws.onerror = (e) => {
+                console.error("WebSocket error:", e);
+            };
+        } catch(e) {
+            console.error("Auth token error:", e);
+            if (active()) toggleServerMode('firebase');
+        }
+    }).catch(e => {
+        console.error(e);
+        if (active()) toggleServerMode('firebase');
+    });
+}
+
+function toggleServerMode(forceMode) {
+    window._customSyncGeneration = (window._customSyncGeneration || 0) + 1;
+    clearTimeout(window._customRetry);
+    if (forceMode) {
+        window._serverMode = forceMode;
+    } else {
+        window._serverMode = (window._serverMode === 'custom') ? 'firebase' : 'custom';
+    }
+
+    // UI 업데이트
+    const modeDisplay = document.getElementById("current-mode-display");
+    if (modeDisplay) {
+        if (window._serverMode === 'custom') {
+            modeDisplay.textContent = "🟢 자체 서버 (고속)";
+            modeDisplay.style.color = "#10b981";
+        } else {
+            modeDisplay.textContent = "🔵 Firebase 클라우드";
+            modeDisplay.style.color = "#3b82f6";
+        }
+    }
+
+    // 기존 리스너 및 연결 정리
+    if (window._pcsListener) {
+        firebase.database().ref("/pcs").off("value", window._pcsListener);
+        window._pcsListener = null;
+    }
+    if (window._customWs) {
+        window._customWs.onclose = null; // 재연결 방지
+        window._customWs.close();
+        window._customWs = null;
+    }
+
+    // PC 목록 초기화
+    pcs = {};
+    renderPCGrid(Date.now() + serverTimeOffset);
+
+    // 새 모드로 연결
+    startRealtimeSync();
+}
+
+function startRealtimeSync() {
+    if (!config.databaseURL || APP_ACCESS_GRANTED !== true) return;
+
+    // 기본 모드 설정 (지정 안 되어있으면 firebase)
+    if (!window._serverMode) {
+        window._serverMode = 'firebase';
+    }
+
+    // UI 업데이트
+    const modeDisplay = document.getElementById("current-mode-display");
+    if (modeDisplay) {
+        if (window._serverMode === 'custom') {
+            modeDisplay.textContent = "🟢 자체 서버 (고속)";
+            modeDisplay.style.color = "#10b981";
+        } else {
+            modeDisplay.textContent = "🔵 Firebase 클라우드";
+            modeDisplay.style.color = "#3b82f6";
+        }
+    }
+
+    if (window._renderInterval) clearInterval(window._renderInterval);
+    window._renderInterval = setInterval(scheduleDashboardRender, 5000);
+    if (window._serverMode === 'custom') {
+        _startCustomServerSync();
+        return;
+    }
+
     // 이중 가드: 인증 실패 상태면 즉시 차단
     if (APP_ACCESS_GRANTED !== true) return;
-    
+
     // Firebase Auth 체크
     if (!_fbAuth || !_fbAuth.currentUser) {
         setAccessGranted(false);
         return;
     }
-    
-    try {
-        const snapshot = await firebase.database().ref("/pcs").once("value");
+
+    if (window._pcsListener) {
+        firebase.database().ref("/pcs").off("value", window._pcsListener);
+    }
+
+    window._pcsListener = firebase.database().ref("/pcs").on("value", snapshot => {
         const data = snapshot.val() || {};
-        
+
         const serverNowMs = Date.now() + serverTimeOffset;
         pcs = data;
-        
-        renderPCGrid(serverNowMs);
-        updateStatistics(serverNowMs);
-        
+
+        scheduleDashboardRender();
+
         if (_wmPcId && document.getElementById('windows-modal').classList.contains('show')) {
             const pc = pcs[_wmPcId];
             if (pc) {
@@ -1798,7 +2428,7 @@ async function fetchPCData() {
                 } else if (raw && typeof raw === 'object') {
                     newWindows = Object.values(raw);
                 }
-                
+
                 if (JSON.stringify(_wmAllWindows) !== JSON.stringify(newWindows)) {
                     _wmAllWindows = newWindows;
                     const q = document.getElementById('wm-search-input').value.trim().toLowerCase();
@@ -1806,9 +2436,16 @@ async function fetchPCData() {
                 }
             }
         }
-    } catch (e) {
-        console.error("fetchPCData error:", e);
-    }
+    }, error => {
+        console.error("Firebase sync error:", error);
+        document.getElementById('label-connected-db').textContent = '연결 실패 · 네트워크와 접근 권한을 확인해주세요';
+    });
+
+
+}
+
+async function fetchPCData() {
+    // Deprecated. Handled by startRealtimeSync.
 }
 
 // ── UI 렌더링 및 통계 업데이트 ──
@@ -1823,8 +2460,9 @@ function getPCDiffSeconds(pc, serverNowMs) {
 function renderPCGrid(serverNowMs) {
     if (!serverNowMs) serverNowMs = Date.now() + serverTimeOffset;
     const gridArea = document.getElementById("pc-grid-area");
-    const pcKeys = Object.keys(pcs);
-    
+    const pcKeys = Object.keys(pcs).filter(key => pcs[key] && typeof pcs[key] === 'object');
+    for (const key of selectedPcs) if (!pcs[key]) selectedPcs.delete(key);
+
     if (pcKeys.length === 0) {
         gridArea.innerHTML = `
             <div class="empty-state">
@@ -1834,12 +2472,12 @@ function renderPCGrid(serverNowMs) {
             </div>`;
         return;
     }
-    
+
     // Remove empty state if it exists
     if (gridArea.querySelector(".empty-state")) {
         gridArea.innerHTML = "";
     }
-    
+
     // Remove any DOM elements for PCs that are no longer in the list
     const currentCardIds = new Set(pcKeys.map(k => `pc-card-${k}`));
     const existingCards = gridArea.querySelectorAll(".pc-card");
@@ -1848,15 +2486,16 @@ function renderPCGrid(serverNowMs) {
             card.remove();
         }
     });
-    
+
     // Sort and iterate through keys
     pcKeys.sort().forEach(pcId => {
         const pc = pcs[pcId];
+        const safePcId = escapeHtml(pcId);
         const diffSeconds = getPCDiffSeconds(pc, serverNowMs);
         const isOnline = (pc.status === "online") && (diffSeconds < 30);
-        
+
         // Offline deselect logic removed to allow offline selection
-        
+
         // Calculate time strings
         let timeStr = "-";
         let calibratedTimeStr = pc.last_seen || "-";
@@ -1865,7 +2504,7 @@ function renderPCGrid(serverNowMs) {
             else if (diffSeconds < 60) timeStr = `${Math.floor(diffSeconds)}초 전`;
             else if (diffSeconds < 3600) timeStr = `${Math.floor(diffSeconds / 60)}분 전`;
             else timeStr = `${Math.floor(diffSeconds / 3600)}시간 전`;
-            
+
             try {
                 const calibratedDate = new Date(Date.now() - diffSeconds * 1000);
                 const hrs = String(calibratedDate.getHours()).padStart(2, '0');
@@ -1874,10 +2513,10 @@ function renderPCGrid(serverNowMs) {
                 calibratedTimeStr = `${hrs}:${mins}:${secs}`;
             } catch(e) {}
         }
-        
+
         let card = document.getElementById(`pc-card-${pcId}`);
         const cardClass = isOnline ? "pc-card online" : "pc-card offline";
-        
+
         if (!card) {
             // Create card element from scratch
             card = document.createElement("div");
@@ -1890,7 +2529,10 @@ function renderPCGrid(serverNowMs) {
                 card.className = cardClass;
             }
         }
-        
+
+        const signature = JSON.stringify([isOnline, pc.hostname, pc.user, pc.ip, pc.mac, pc.version, pc.next_event, timeStr, calibratedTimeStr, selectedPcs.has(pcId)]);
+        if (card._renderSignature === signature) return;
+        card._renderSignature = signature;
         let metaContainer = card.querySelector(".pc-meta-container");
         if (!metaContainer) {
             // Initial build of card contents
@@ -1900,16 +2542,16 @@ function renderPCGrid(serverNowMs) {
                         <span class="dot ${isOnline ? 'online' : 'offline'}"></span>
                         <span class="pc-status-txt ${isOnline ? 'online' : 'offline'}">${isOnline ? '온라인' : '꺼짐'}</span>
                     </div>
-                    <input type="checkbox" class="pc-checkbox" data-pcid="${pcId}" ${selectedPcs.has(pcId) ? 'checked' : ''} style="cursor: pointer; accent-color: var(--danger); width: 14px; height: 14px; margin-top: 2px;">
+                    <input type="checkbox" class="pc-checkbox" data-pcid="${safePcId}" ${selectedPcs.has(pcId) ? 'checked' : ''} style="cursor: pointer; accent-color: var(--danger); width: 14px; height: 14px; margin-top: 2px;">
                 </div>
-                <div class="pc-name" title="${pcId}">${pc.hostname || pcId}</div>
+                <div class="pc-name" title="${safePcId}">${escapeHtml(pc.hostname || pcId)}</div>
                 <div class="pc-meta-container">
-                    <div class="pc-meta pc-user">👤 ${pc.user || 'N/A'}</div>
-                    <div class="pc-meta pc-ip">🖥️ IP: ${pc.ip || 'N/A'}</div>
-                    <div class="pc-meta pc-mac">💾 MAC: ${pc.mac || 'N/A'}</div>
+                    <div class="pc-meta pc-user">👤 ${escapeHtml(pc.user || 'N/A')}</div>
+                    <div class="pc-meta pc-ip">🖥️ IP: ${escapeHtml(pc.ip || 'N/A')}</div>
+                    <div class="pc-meta pc-mac">💾 MAC: ${escapeHtml(pc.mac || 'N/A')}</div>
                     <div class="pc-meta pc-time">⏳ 응답: ${timeStr} (${calibratedTimeStr})</div>
-                    <div class="pc-meta pc-version">🏷️ 버전: v${pc.version || 'N/A'}</div>
-                    <div class="pc-event">${pc.next_event && pc.next_event !== '없음' ? `⏰ 예정: ${pc.next_event}` : ''}</div>
+                    <div class="pc-meta pc-version">🏷️ 버전: v${escapeHtml(pc.version || 'N/A')}</div>
+                    <div class="pc-event">${pc.next_event && pc.next_event !== '없음' ? `⏰ 예정: ${escapeHtml(pc.next_event)}` : ''}</div>
                 </div>
                 <div class="card-actions" style="grid-template-columns: repeat(3, 1fr);">
                 </div>
@@ -1920,38 +2562,40 @@ function renderPCGrid(serverNowMs) {
             card.querySelector(".dot").className = `dot ${isOnline ? 'online' : 'offline'}`;
             const statusTxt = card.querySelector(".pc-status-txt");
             statusTxt.className = `pc-status-txt ${isOnline ? 'online' : 'offline'}`;
-            statusTxt.innerText = isOnline ? '온라인' : '꺼짐';
+            statusTxt.textContent = isOnline ? '온라인' : '꺼짐';
             const cb = card.querySelector("input[type='checkbox']");
             if (cb) cb.checked = selectedPcs.has(pcId);
-            card.querySelector(".pc-name").innerText = pc.hostname || pcId;
-            card.querySelector(".pc-user").innerText = `👤 ${pc.user || 'N/A'}`;
-            card.querySelector(".pc-ip").innerText = `🖥️ IP: ${pc.ip || 'N/A'}`;
-            card.querySelector(".pc-mac").innerText = `💾 MAC: ${pc.mac || 'N/A'}`;
-            card.querySelector(".pc-time").innerText = `⏳ 응답: ${timeStr} (${calibratedTimeStr})`;
-            card.querySelector(".pc-version").innerText = `🏷️ 버전: v${pc.version || 'N/A'}`;
-            card.querySelector(".pc-event").innerText = pc.next_event && pc.next_event !== '없음' ? `⏰ 예정: ${pc.next_event}` : '';
+            card.querySelector(".pc-name").textContent = pc.hostname || pcId;
+            card.querySelector(".pc-user").textContent = `👤 ${pc.user || 'N/A'}`;
+            card.querySelector(".pc-ip").textContent = `🖥️ IP: ${pc.ip || 'N/A'}`;
+            card.querySelector(".pc-mac").textContent = `💾 MAC: ${pc.mac || 'N/A'}`;
+            card.querySelector(".pc-time").textContent = `⏳ 응답: ${timeStr} (${calibratedTimeStr})`;
+            card.querySelector(".pc-version").textContent = `🏷️ 버전: v${pc.version || 'N/A'}`;
+            card.querySelector(".pc-event").textContent = pc.next_event && pc.next_event !== '없음' ? `⏰ 예정: ${escapeHtml(pc.next_event)}` : '';
         }
-        
+
         // Check if action buttons need to be redrawn
         let actionArea = card.querySelector(".card-actions");
         const lastOnlineState = card.getAttribute("data-online") === "true";
-        
-        if (actionArea.innerHTML === "" || lastOnlineState !== isOnline) {
+
+        if (!card.hasAttribute("data-online") || lastOnlineState !== isOnline) {
             card.setAttribute("data-online", isOnline ? "true" : "false");
             actionArea.innerHTML = `
-                <button class="card-action-btn btn-danger" data-action="triggerSingleCommand" data-cmd="shutdown" data-pcid="${pcId}" ${isOnline ? '' : 'disabled'} title="원격 종료">
+                <button class="card-action-btn btn-danger" data-action="triggerSingleCommand" data-cmd="shutdown" data-pcid="${safePcId}" ${isOnline ? '' : 'disabled'} title="원격 종료">
                     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 2px; flex-shrink: 0;"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
                     종료
                 </button>
-                <button class="card-action-btn btn-blue" data-action="triggerSingleCommand" data-cmd="restart" data-pcid="${pcId}" ${isOnline ? '' : 'disabled'} title="원격 재부팅">🔄 재부팅</button>
-                <button class="card-action-btn btn-purple" data-action="triggerSingleCommand" data-cmd="setup_mode" data-pcid="${pcId}" ${isOnline ? '' : 'disabled'} title="원격 초기설정">🚀 초기화</button>
-                <button class="card-action-btn btn-info" data-action="openConfigModal" data-pcid="${pcId}" ${isOnline ? '' : 'disabled'} title="원격 환경설정">⚙️ 설정</button>
-                <button class="card-action-btn btn-success" data-action="triggerSingleCommand" data-cmd="update" data-pcid="${pcId}" ${isOnline ? '' : 'disabled'} title="원격 업데이트">🔼 업뎃</button>
-                <button class="card-action-btn btn-secondary" data-action="triggerSingleMessage" data-pcid="${pcId}" ${isOnline ? '' : 'disabled'} title="메시지 전송">💬 메시지</button>
-                ${isOnline 
-                    ? `<button class="card-action-btn btn-warning" data-action="openFileModal" data-pcid="${pcId}" title="원격 파일 열기" style="grid-column: 1 / 2;">📂 파일 열기</button>
-                       <button class="card-action-btn btn-dark" data-action="openVolumeControl" data-pcid="${pcId}" ${isOnline ? '' : 'disabled'} title="원격 음량 제어" style="grid-column: 2 / 3;">🔊 음량조절</button>
-                       <button class="card-action-btn btn-teal" data-action="openWindowsModal" data-pcid="${pcId}" title="실행 중인 창 목록 보기" style="grid-column: 3 / 4;">🖥️ 실행 창</button>`
+                <button class="card-action-btn btn-blue" data-action="triggerSingleCommand" data-cmd="restart" data-pcid="${safePcId}" ${isOnline ? '' : 'disabled'} title="원격 재부팅">🔄 재부팅</button>
+                <button class="card-action-btn btn-purple" data-action="triggerSingleCommand" data-cmd="setup_mode" data-pcid="${safePcId}" ${isOnline ? '' : 'disabled'} title="원격 초기설정">🚀 초기화</button>
+                <button class="card-action-btn btn-info" data-action="openConfigModal" data-pcid="${safePcId}" ${isOnline ? '' : 'disabled'} title="원격 환경설정">⚙️ 설정</button>
+                <button class="card-action-btn btn-success" data-action="triggerSingleCommand" data-cmd="update" data-pcid="${safePcId}" ${isOnline ? '' : 'disabled'} title="원격 업데이트">🔼 업뎃</button>
+                <button class="card-action-btn btn-secondary" data-action="triggerSingleMessage" data-pcid="${safePcId}" ${isOnline ? '' : 'disabled'} title="메시지 전송">💬 메시지</button>
+                ${isOnline
+                    ? `<button class="card-action-btn btn-warning" data-action="openFileModal" data-pcid="${safePcId}" title="원격 파일 열기">📂 파일열기</button>
+                       <button class="card-action-btn btn-dark" data-action="openVolumeControl" data-pcid="${safePcId}" title="원격 음량 제어">🔊 음량</button>
+                       <button class="card-action-btn btn-teal" data-action="openWindowsModal" data-pcid="${safePcId}" title="실행 중인 창 목록 보기">🖥️ 실행창</button>
+                       <button class="card-action-btn btn-teal" data-action="takeScreenshot" data-pcid="${safePcId}" title="화면 보기" style="grid-column: 1 / 2;">📷 캡처</button>
+                       <button class="card-action-btn btn-teal" data-action="startWebRTC" data-pcid="${safePcId}" title="기기 화면 확인" style="grid-column: 2 / 4;">🖥 실시간 화면</button>`
                     : ''
                 }
             `;
@@ -1961,16 +2605,16 @@ function renderPCGrid(serverNowMs) {
 
 function updateStatistics(serverNowMs) {
     if (!serverNowMs) serverNowMs = Date.now() + serverTimeOffset;
-    const pcKeys = Object.keys(pcs);
+    const pcKeys = Object.keys(pcs).filter(key => pcs[key] && typeof pcs[key] === 'object');
     const total = pcKeys.length;
-    
+
     const online = pcKeys.filter(k => {
         const pc = pcs[k];
         const diffSeconds = getPCDiffSeconds(pc, serverNowMs);
         return (pc.status === "online") && (diffSeconds < 30);
     }).length;
     const offline = total - online;
-    
+
     document.getElementById("stat-total").innerText = total;
     document.getElementById("stat-online").innerText = online;
     document.getElementById("stat-offline").innerText = offline;
@@ -1983,7 +2627,7 @@ let activeConfigTarget = null;
 let cfgActiveSchedule = {}; // 임시 저장용 요일별 교시 스케줄 객체
 const DAYS_LIST = ["월", "화", "수", "목", "금", "토", "일"];
 const PERIODS_LIST = [
-    "1교시 (08:40)", "2교시 (09:40)", "3교시 (10:40)", "4교시 (11:40)", 
+    "1교시 (08:40)", "2교시 (09:40)", "3교시 (10:40)", "4교시 (11:40)",
     "점심시간 (12:40)", "5교시 (13:30)", "6교시 (14:30)", "7교시 (15:30)", "방과후/기타 (16:30)"
 ];
 
@@ -1992,22 +2636,22 @@ function openConfigModal(pcId) {
         if (selectedPcs.size !== 1) return;
         pcId = Array.from(selectedPcs)[0];
     }
-    
+
     const pc = pcs[pcId];
     if (!pc) return;
-    
+
     activeConfigTarget = pcId;
     document.getElementById("config-target-pc").innerText = pc.hostname || pcId;
-    
+
     // PC가 보고한 로컬 config 로드 (없을 시 빈값 처리)
     const cfg = pc.config || {};
     const school = cfg.school_info || {};
-    
-    
+
+
     document.getElementById("cfg-minutes-before").value = cfg.minutes_before !== undefined ? cfg.minutes_before : 5;
     document.getElementById("cfg-autostart").checked = cfg.autostart !== undefined ? cfg.autostart : true;
     document.getElementById("cfg-popup-alert").checked = cfg.show_popup_alert !== undefined ? cfg.show_popup_alert : false;
-    
+
     document.getElementById("cfg-school-name").value = school.name || "";
     document.getElementById("cfg-office-code").value = school.office_code || "";
     document.getElementById("cfg-school-kind").value = school.school_kind || "고등학교";
@@ -2015,15 +2659,15 @@ function openConfigModal(pcId) {
     document.getElementById("cfg-class").value = school.class_nm || "1";
     document.getElementById("cfg-api-key").value = school.api_key || "";
 
-    
-    
-    
+
+
+
     // 요일 스케줄 데이터 Deep Copy 및 로드
     cfgActiveSchedule = {};
     DAYS_LIST.forEach(day => {
         cfgActiveSchedule[day] = {};
         const daySchedule = cfg[day] || {};
-        
+
         PERIODS_LIST.forEach(period => {
             let sanitizedPeriod = period;
             [".", "$", "#", "[", "]", "/"].forEach(char => {
@@ -2036,17 +2680,17 @@ function openConfigModal(pcId) {
             };
         });
     });
-    
+
     // 요일 탭 버튼 및 스케줄 초기 렌더링 ("월")
     renderScheduleTabs("월");
-    
+
     document.getElementById("config-modal").classList.add("show");
 }
 
 function renderScheduleTabs(activeDay) {
     const tabsContainer = document.getElementById("cfg-day-tabs");
     const listContainer = document.getElementById("cfg-schedule-list");
-    
+
     // 요일 탭 그리기
     let tabsHtml = "";
     DAYS_LIST.forEach(day => {
@@ -2066,13 +2710,13 @@ function renderScheduleTabs(activeDay) {
             ">${day}</button>`;
     });
     tabsContainer.innerHTML = tabsHtml;
-    
+
     // 선택된 요일의 9개 시간대(교시) 목록 렌더링
     let listHtml = "";
     PERIODS_LIST.forEach(period => {
         const item = cfgActiveSchedule[activeDay][period];
         const isChecked = item.enabled;
-        
+
         listHtml += `
             <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.04); border-radius: 8px; padding: 8px 12px;">
                 <label style="display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 600; cursor: pointer;">
@@ -2132,11 +2776,11 @@ async function _checkAuthPermission() {
         return false;
     }
     const user = _fbAuth.currentUser;
-    if (user.email === MASTER_EMAIL) {
+    if (user.email && user.email.toLowerCase() === MASTER_EMAIL.toLowerCase()) {
         setAccessGranted(true);
         return true;
     }
-    
+
     try {
         const snap = await firebase.database().ref("/users/" + user.uid + "/approved").once("value");
         const isApproved = snap.val();
@@ -2161,7 +2805,7 @@ async function _checkAdminPermission() {
         signOutAndReset();
         return false;
     }
-    if (_fbAuth.currentUser.email !== MASTER_EMAIL) {
+    if (_fbAuth.currentUser.email && _fbAuth.currentUser.email.toLowerCase() !== MASTER_EMAIL.toLowerCase()) {
         alert("보안 경고: 관리자 권한이 없습니다.");
         return false;
     }
@@ -2171,11 +2815,16 @@ async function _checkAdminPermission() {
 async function applyRemoteConfig() {
     if (!(await _checkAuthPermission())) return;
     if (!activeConfigTarget) return;
-    
-    const minutesBefore = parseInt(document.getElementById("cfg-minutes-before").value) || 5;
+
+    const rawMinutes = Number(document.getElementById("cfg-minutes-before").value);
+    if (!Number.isInteger(rawMinutes) || rawMinutes < 0 || rawMinutes > 1440) {
+        alert('종료 전 시간은 0~1440분 사이의 정수로 입력해주세요.');
+        return;
+    }
+    const minutesBefore = rawMinutes;
     const autostart = document.getElementById("cfg-autostart").checked;
     const popupAlert = document.getElementById("cfg-popup-alert").checked;
-    
+
     const schoolName = document.getElementById("cfg-school-name").value.trim();
     const officeCode = document.getElementById("cfg-office-code").value.trim();
     const schoolKind = document.getElementById("cfg-school-kind").value;
@@ -2183,9 +2832,9 @@ async function applyRemoteConfig() {
     const classNm = document.getElementById("cfg-class").value.trim();
     const apiKey = document.getElementById("cfg-api-key").value.trim();
 
-    
-    
-    
+
+
+
     // Firebase 키 이름 제한 우회: 요일 스케줄 데이터의 키 슬래시(/)를 언더바(_)로 치환하여 Sanitization
     const sanitizedSchedule = {};
     for (const day in cfgActiveSchedule) {
@@ -2195,7 +2844,7 @@ async function applyRemoteConfig() {
             sanitizedSchedule[day][cleanPeriod] = cfgActiveSchedule[day][period];
         }
     }
-    
+
     // 기본 설정 + 학교 정보 + 요일별 교시 스케줄 병합하여 Payload 구성
     const configPayload = {
         minutes_before: minutesBefore,
@@ -2212,7 +2861,7 @@ async function applyRemoteConfig() {
 
         ...sanitizedSchedule // 슬래시가 제거된 스케줄 데이터 주입!
     };
-    
+
     showModal(
         "원격 설정 변경 확인",
         `[${pcs[activeConfigTarget].hostname || activeConfigTarget}] PC의 환경설정 및 자동 종료 스케줄을 즉시 원격 변경하여 적용하시겠습니까?`,
@@ -2220,7 +2869,7 @@ async function applyRemoteConfig() {
             const targetPc = activeConfigTarget;
             closeModal();
             closeConfigModal();
-            
+
             const result = await writeCommandToDB(targetPc, "set_config", configPayload);
             if (result.success) {
                 alert("원격 설정 및 종료 스케줄 변경 명령이 성공적으로 전송되었습니다! PC가 수초 내에 이를 적용합니다.");
@@ -2236,21 +2885,31 @@ async function applyRemoteConfig() {
 
 // ── 전원 제어 명령 작성 기능 ──
 async function writeCommandToDB(target, action, message = "") {
-    if (!(await _checkAuthPermission())) return;
-    
-    // Security: Rate Limit
-    const now = Date.now();
-    if (now - _lastCmdTime < 2000 && _fbAuth?.currentUser?.email !== MASTER_EMAIL) {
-        triggerSecurityViolation("비정상 연속 제어 명령 감지 (2초 내 2회)");
-        return { success: false };
-    }
-    _lastCmdTime = now;
+    if (!(await _checkAuthPermission())) return { success: false, error: 'auth' };
 
-    // Security: XSS Pattern Check
-    const xssPattern = /<script|javascript:|on[a-z]+=|eval\(|document\.|window\./i;
-    if (xssPattern.test(message) || xssPattern.test(action) || xssPattern.test(target)) {
-        triggerSecurityViolation("XSS 패턴 입력 감지");
-        return { success: false };
+    // Rate Limit (remote_input은 스트리밍 실시간 입력이므로 rate limit 제외)
+    if (action !== "list_dir" && action !== "get_processes" && action !== "remote_input") {
+        const now = Date.now();
+        if (_fbAuth && _fbAuth.currentUser && _fbAuth.currentUser.email && _fbAuth.currentUser.email.toLowerCase() !== MASTER_EMAIL.toLowerCase()) {
+            _cmdTimestamps.push(now);
+            // 10초가 지난 타임스탬프는 제거
+            _cmdTimestamps = _cmdTimestamps.filter(t => now - t <= 10000);
+
+            // 10초 내 20회 이상 발생 시 차단
+            if (_cmdTimestamps.length >= 20) {
+                triggerSecurityViolation("비정상 연속 제어 명령 감지 (10초 내 20회 이상)");
+                return { success: false };
+            }
+        }
+    }
+
+    // Security: XSS Pattern Check (remote_input은 구조화된 객체라 스킵)
+    if (action !== "remote_input") {
+        const xssPattern = /<script|javascript:|on[a-z]+=|eval\(|document\.|window\./i;
+        if (xssPattern.test(message) || xssPattern.test(action) || xssPattern.test(target)) {
+            triggerSecurityViolation("XSS 패턴 입력 감지");
+            return { success: false };
+        }
     }
 
     const bodyData = {
@@ -2258,7 +2917,23 @@ async function writeCommandToDB(target, action, message = "") {
         message: message,
         timestamp: Date.now() / 1000.0
     };
-    
+
+    // CUSTOM SERVER MODE: Send via WebSocket directly for real-time speed
+    if (window._serverMode === 'custom' && window._customWs && window._customWs.readyState === WebSocket.OPEN) {
+        try {
+            window._customWs.send(JSON.stringify({
+                type: "command",
+                action: action,
+                target_pc: target,
+                payload: bodyData
+            }));
+            return { success: true };
+        } catch (e) {
+            console.error("WebSocket command error:", e);
+            // Fallback to Firebase on error
+        }
+    }
+
     try {
         if (target === "__ALL__") {
             await firebase.database().ref("/commands/__ALL__").set(bodyData);
@@ -2270,10 +2945,8 @@ async function writeCommandToDB(target, action, message = "") {
         console.error("writeCommandToDB error:", e);
 
         if (e.code === 'PERMISSION_DENIED') {
-            if (_fbAuth?.currentUser?.email !== MASTER_EMAIL) {
-                triggerSecurityViolation("비인가 Firebase 직접 접근 시도");
-            }
-            alert("명령 전송 실패: 권한이 없습니다 (관리자 로그인 필요).");
+            // Do NOT trigger security violation just for a permission denied error, it could be a stale rule or UI glitch
+            alert("명령 전송 실패: 권한이 없습니다 (관리자 승인 필요).");
         } else {
 
             alert("명령 전송 실패: " + e.message);
@@ -2284,7 +2957,7 @@ async function writeCommandToDB(target, action, message = "") {
 
 // ── 컨트롤 패널 이벤트 액션 ──
 function triggerCommandAll(action) {
-    const labels = { shutdown: "전체 종료", sleep: "전체 절전", restart: "전체 재부팅", setup_mode: "전체 초기설정", close_active_window: "전체 활성 창 종료" };
+    const labels = { unlock_screen: "전체 화면 깨우기", shutdown: "전체 종료", sleep: "전체 절전", restart: "전체 재부팅", setup_mode: "전체 초기설정", close_active_window: "전체 활성 창 종료" };
     showModal(
         `${labels[action]} 확인`,
         `현재 등록된 모든 PC로 즉시 [${labels[action]}] 명령을 전송하시겠습니까?`,
@@ -2303,14 +2976,25 @@ function triggerCommandAll(action) {
 async function triggerSingleCommand(pcId, action) {
     const labels = { shutdown: "종료", sleep: "절전", restart: "재부팅", setup_mode: "초기설정", update: "원격 업데이트", close_active_window: "활성 창 종료" };
     showModal(
-        `${labels[action]} 확인`,
-        `[${pcs[pcId]?.hostname || pcId}] PC로 즉시 [${labels[action]}] 명령을 전송하시겠습니까?`,
+        `${labels[action] || action} 확인`,
+        `[${(pcs[pcId] && pcs[pcId].hostname) || pcId}] PC로 즉시 [${labels[action] || action}] 명령을 전송하시겠습니까?`,
         async () => {
             closeModal();
-            const result = await writeCommandToDB(pcId, action);
+            let result;
+            try {
+                result = await writeCommandToDB(pcId, action);
+            } catch(e) {
+                alert("명령 전달 중 예외 발생: " + (e.message || String(e)));
+                return;
+            }
+            if (!result) {
+                alert("명령 전달 실패: 서버 응답 없음");
+                return;
+            }
             if (result.success) {
-                alert("명령이 성공적으로 전달되었습니다.");
-            } else {
+                alert(`[${labels[action] || action}] 명령이 정상적으로 전달되었습니다.`);
+                console.log(`[triggerSingleCommand] ${action} → ${pcId} 전송 성공`);
+            } else if (result.error && result.error !== 'auth') {
                 alert("명령 전달 중 오류가 발생했습니다: " + result.error);
             }
         }
@@ -2320,10 +3004,10 @@ async function triggerSingleCommand(pcId, action) {
 function triggerSingleMessage(pcId) {
     const msg = prompt("PC로 보낼 메시지를 입력하세요:");
     if (!msg || !msg.trim()) return;
-    
+
     showModal(
         "메시지 전송 확인",
-        `[${pcs[pcId]?.hostname || pcId}] PC로 메시지를 전송하시겠습니까?\n내용: "${msg}"`,
+        `[${(pcs[pcId] && pcs[pcId].hostname) || pcId}] PC로 메시지를 전송하시겠습니까?\n내용: "${msg}"`,
         async () => {
             closeModal();
             const result = await writeCommandToDB(pcId, "message", msg);
@@ -2348,7 +3032,7 @@ async function clearSelectedDevices() {
         return;
     }
     if (!confirm(`정말 선택된 ${selectedPcs.size}대의 기기를 목록에서 완전히 삭제하시겠습니까?`)) return;
-    
+
     let toDelete = Array.from(selectedPcs);
     let errs = 0;
     for (const pcId of toDelete) {
@@ -2362,7 +3046,7 @@ async function clearSelectedDevices() {
             errs++;
         }
     }
-    
+
     alert(`선택된 기기 정리가 완료되었습니다. (성공: ${toDelete.length - errs}대)`);
     selectedPcs.clear();
     fetchPCData();
@@ -2372,13 +3056,13 @@ async function clearSelectedDevices() {
 async function clearOfflineDevices() {
     if (!(await _checkAuthPermission())) return;
     if (!confirm("정말 오프라인인 기기들을 목록에서 완전히 삭제하시겠습니까?")) return;
-    
+
     let toDelete = Object.keys(pcs).filter(k => pcs[k].status === "offline");
     if (toDelete.length === 0) {
         alert("삭제할 오프라인 기기가 없습니다.");
         return;
     }
-    
+
     let errs = 0;
     for (const pcId of toDelete) {
         let url = `${config.databaseURL}/pcs/${pcId}.json`;
@@ -2391,7 +3075,7 @@ async function clearOfflineDevices() {
             errs++;
         }
     }
-    
+
     alert(`오프라인 기기 정리가 완료되었습니다. (성공: ${toDelete.length - errs}대)`);
     fetchPCData();
 }
@@ -2401,7 +3085,7 @@ function showModal(title, msg, onOk) {
     document.getElementById("modal-title").innerText = title;
     document.getElementById("modal-msg").innerHTML = msg;
     pendingAction = onOk;
-    
+
     document.getElementById("confirm-modal").classList.add("show");
     document.getElementById("modal-ok-btn").onclick = function() {
         if (typeof pendingAction === "function") {
@@ -2511,13 +3195,13 @@ let expectedExplorerPath = ""; // '__ALL__' 또는 특정 pcId
 /** 즐겨찾기 배열 읽기 */
 function loadFavorites() {
     try {
-        return JSON.parse(localStorage.getItem(FAV_STORAGE_KEY)) || [];
+        return JSON.parse(safeStorage.getItem(FAV_STORAGE_KEY)) || [];
     } catch(e) { return []; }
 }
 
 /** 즐겨찾기 배열 저장 */
 function saveFavorites(favs) {
-    localStorage.setItem(FAV_STORAGE_KEY, JSON.stringify(favs));
+    safeStorage.setItem(FAV_STORAGE_KEY, JSON.stringify(favs));
     syncFavoritesToFirebase(favs); // Firebase 원격 실시간 동기화
 }
 
@@ -2538,7 +3222,7 @@ async function loadFavoritesFromServer() {
         const snap = await firebase.database().ref("/explorer_favorites/" + openFileTarget).once("value");
         const favs = snap.val();
         if (favs && Array.isArray(favs)) {
-            localStorage.setItem(FAV_STORAGE_KEY, JSON.stringify(favs));
+            safeStorage.setItem(FAV_STORAGE_KEY, JSON.stringify(favs));
             renderFavorites();
         }
     } catch (e) {
@@ -2652,7 +3336,7 @@ function loadExplorerPath(path = null) {
     const targetPath = path !== null ? path : document.getElementById("explorer-path").value.trim();
     const finalPath = targetPath || "DRIVES";
     expectedExplorerPath = finalPath; // Set the expected path
-    
+
     document.getElementById("explorer-list").innerHTML = '<div style="text-align: center; padding-top: 80px; font-size: 12px;">로딩 중...</div>';
 
     writeCommandToDB(openFileTarget, "list_dir", { path: finalPath }).then(() => {
@@ -2669,7 +3353,7 @@ function normalizePath(p) {
 
 function pollExplorerData() {
     if (!openFileTarget || openFileTarget === "__ALL__") return;
-    
+
     firebase.database().ref("/explorer/" + openFileTarget).once("value").then(snap => {
         const data = snap.val();
         if (data) {
@@ -2693,25 +3377,25 @@ function renderExplorerList(data) {
     if (data.path && document.activeElement !== pathInput) {
         pathInput.value = data.path;
     }
-    
+
     if (data.error) {
         container.innerHTML = `<div style="color:var(--danger); padding:10px; font-size:12px;">오류: ${escapeHtml(data.error)}</div>`;
         return;
     }
-    
+
     if (!data.items || data.items.length === 0) {
         container.innerHTML = '<div style="text-align:center; color:var(--text-muted); padding-top:80px; font-size:12px;">빈 폴더입니다.</div>';
         return;
     }
-    
+
     let html = '';
     data.items.forEach(item => {
         const isFolder = item.type === "folder";
         const icon = isFolder ? "📁" : "📄";
         const sizeStr = isFolder ? "" : (item.size > 1024*1024 ? (item.size/(1024*1024)).toFixed(1)+'MB' : Math.ceil(item.size/1024)+'KB');
-        
+
         const safeName = item.name.replace(/\\/g, "\\\\").replace(/'/g, "\\\'").replace(/"/g, "&quot;");
-        
+
         html += `
             <div style="display:flex; justify-content:space-between; padding:6px 8px; border-bottom:1px solid var(--border-light); cursor:pointer; font-size:12px;"
                  onmouseover="this.style.background='var(--hover-bg)'" onmouseout="this.style.background='transparent'"
@@ -2724,10 +3408,10 @@ function renderExplorerList(data) {
             </div>
         `;
     });
-    
+
     container.innerHTML = html;
     currentExplorerPath = data.path || "";
-    
+
     if (data.status === "done") {
         if (explorerInterval) {
             clearInterval(explorerInterval);
@@ -2779,16 +3463,16 @@ function openWindowsModal(pcId) {
     // Firebase는 배열을 인덱스 객체로 저장하므로 Object.values()로 변환
     const raw = pc.windows;
     if (Array.isArray(raw)) {
-        _wmAllWindows = raw;
+        _wmAllWindows = raw.filter(w => w);
     } else if (raw && typeof raw === 'object') {
-        _wmAllWindows = Object.values(raw);
+        _wmAllWindows = Object.values(raw).filter(w => w);
     } else {
         _wmAllWindows = [];
     }
 
     renderWindowsList(_wmAllWindows);
     document.getElementById('windows-modal').classList.add('show');
-    
+
     // 창 닫기 후 즉시 반영을 위해 0.3초 간격으로 빠르게 폴링
     setPollerInterval(300);
 }
@@ -2797,9 +3481,9 @@ function closeWindowsModal() {
     document.getElementById('windows-modal').classList.remove('show');
     _wmPcId = null;
     _wmAllWindows = [];
-    
+
     // 창 관리 모달이 닫히면 다시 5초 간격으로 원복 (트래픽 절약)
-    setPollerInterval(5000);
+
 }
 
 function renderWindowsList(list) {
@@ -2819,7 +3503,7 @@ function renderWindowsList(list) {
         const title = (w.title || '(제목 없음)').replace(/</g, '&lt;');
         const pid = w.pid;
         const hwnd = w.hwnd;
-        
+
         let actions = '';
         if (pid && hwnd) {
             const escapedTitle = title.replace(/'/g, "\\'").replace(/"/g, '&quot;');
@@ -2834,7 +3518,7 @@ function renderWindowsList(list) {
                 </div>
             `;
         }
-        
+
         return `
             <div class="window-row" style="display: flex; align-items: center; gap: 8px;">
                 <span class="exe-badge" title="${exe}" style="flex-shrink: 0;">${exe}</span>
@@ -2927,7 +3611,7 @@ async function reRequestApproval() {
         await firebase.database().ref("/users/" + user.uid + "/approved").remove();
         await firebase.database().ref("/pending_users/" + user.uid).set({ email: user.email, displayName: user.displayName || user.email.split("@")[0], requestedAt: Date.now(), requestType: "re-request" });
         alert("승인을 다시 요청했습니다.");
-        
+
         document.getElementById("pending-title").textContent = "관리자 확인 대기중";
         document.getElementById("pending-desc").innerHTML = "이메일 인증이 완료되었습니다.<br>보안을 위해 관리자 승인이 필요합니다.";
         document.getElementById("pending-rerequest-btn").style.display = "none";
@@ -2941,9 +3625,11 @@ function switchOpenTab(tab) {
     const urlPanel         = document.getElementById('of-url-panel');
     const favSection       = document.getElementById('of-fav-section');
     const explorerSection  = document.getElementById('of-explorer-section');
-    const fileInputSection = document.getElementById('of-file-path')?.closest('.form-group');
-    const appInputSection  = document.getElementById('of-app-path')?.closest('.form-group');
-    const favNameSection   = document.getElementById('of-fav-name')?.closest('.form-group');
+    const el1 = document.getElementById('of-file-path');
+    const fileInputSection = el1 && el1.closest('.form-group');
+    const el2 = document.getElementById('of-app-path');
+    const appInputSection  = el2 && el2.closest('.form-group');
+    const favNameSection   = document.getElementById('of-fav-name') && document.getElementById('of-fav-name').closest('.form-group');
     const tabFile          = document.getElementById('of-tab-file');
     const tabUrl           = document.getElementById('of-tab-url');
     const submitBtn        = document.getElementById('of-submit-btn');
@@ -3001,7 +3687,7 @@ async function sendOpenFileCommand() {
     const target = openFileTarget;
     const targetLabel = target === "__ALL__"
         ? "전체 PC"
-        : (pcs[target]?.hostname || target);
+        : ((pcs[target] && pcs[target].hostname) || target);
     const appDesc = appPath ? `\n연결 프로그램: ${appPath}` : "\n연결 프로그램: Windows 기본값";
 
     showModal(
@@ -3033,7 +3719,7 @@ async function sendOpenUrlCommand() {
     const target = openFileTarget;
     const targetLabel = target === "__ALL__"
         ? "전체 PC"
-        : (pcs[target]?.hostname || target);
+        : ((pcs[target] && pcs[target].hostname) || target);
     const browserDesc = browserPath ? `\n브라우저: ${browserPath}` : "\n브라우저: 기본 브라우저";
 
     showModal(
@@ -3067,17 +3753,20 @@ function initAuthWithApiKey() {
         errEl.textContent = "올바른 Firebase 웹 API 키를 입력해주세요. (AIza 로 시작합니다)";
         errEl.style.display = "block"; return;
     }
-    localStorage.setItem("sp_fb_apikey", key);
+    safeStorage.setItem("sp_fb_apikey", key);
     _initFB(key);
 }
 
 function resetApiKeySetup() {
     showModal("API 키 초기화", "저장된 API 키와 설정 정보를 초기화하시겠습니까?", () => {
         closeModal();
-        localStorage.removeItem("sp_fb_apikey");
+        safeStorage.removeItem("sp_fb_apikey");
         if (_fbAuth) { _fbAuth.signOut().catch(()=>{}); _fbAuth = null; }
         try { if (firebase.apps && firebase.apps.length) firebase.app().delete(); } catch(e) {}
-        _showScreen("setup-view");
+        setAccessGranted(false);
+        window._dashboardInitialized = false;
+        _showScreen("auth-view");
+        bootDashboard();
     });
 }
 
@@ -3087,7 +3776,10 @@ function switchAuthTab(mode) {
     _isLoginMode = (mode === "login");
     document.getElementById("tab-login-btn").classList.toggle("active", _isLoginMode);
     document.getElementById("tab-signup-btn").classList.toggle("active", !_isLoginMode);
-    document.getElementById("auth-submit-btn").textContent = _isLoginMode ? "로그인" : "회원가입";
+    document.getElementById("auth-submit-btn").textContent = _isLoginMode ? "🔵 Firebase 클라우드 로그인" : "회원가입";
+    if(document.getElementById("auth-submit-custom-btn")) {
+        document.getElementById("auth-submit-custom-btn").style.display = _isLoginMode ? "block" : "none";
+    }
     document.getElementById("auth-error-msg").style.display = "none";
 }
 
@@ -3114,6 +3806,7 @@ function _fbErrKo(code) {
 
 // ─ 이메일/비밀번호 로그인/회원가입 ──────────────────────
 async function handleEmailAuth() {
+    if (!_fbAuth) { _showErr('인증 서비스 연결 후 다시 시도해주세요.'); return; }
     const email = document.getElementById("auth-email-input").value.trim();
     const pw = document.getElementById("auth-pw-input").value;
     const msg = document.getElementById("auth-error-msg");
@@ -3129,7 +3822,7 @@ async function handleEmailAuth() {
         if (err.code === "auth/user-not-found" || err.code === "auth/invalid-credential") {
             msg.textContent = "회원가입은 Google 로그인으로만 가능합니다. 이미 계정이 있다면 비밀번호를 확인해주세요.";
         } else {
-            msg.textContent = _translateAuthError(err.code);
+            msg.textContent = _fbErrKo(err.code);
         }
         msg.style.display = "block";
     }
@@ -3137,6 +3830,7 @@ async function handleEmailAuth() {
 
 // ─ Google 로그인 ────────────────────────────────────────
 async function handleGoogleAuth() {
+    if (!_fbAuth) { _showErr('인증 서비스 연결 후 다시 시도해주세요.'); return; }
     if (!_fbAuth) { _showErr("Firebase가 초기화되지 않았습니다."); return; }
     document.getElementById("auth-error-msg").style.display = "none";
     try {
@@ -3202,7 +3896,24 @@ async function checkPendingApproval() {
 
 // ─ 로그아웃 ──────────────────────────────────────────────
 async function signOutAndReset() {
+    setAccessGranted(false);
     try {
+        if (window._pcsListener && window.firebase && firebase.database) {
+            try { firebase.database().ref("/pcs").off("value", window._pcsListener); } catch(e) {}
+            window._pcsListener = null;
+        }
+        if (window._userStatusListener && window.firebase && firebase.database) {
+            const uid = _fbAuth && _fbAuth.currentUser && _fbAuth.currentUser.uid;
+            if (uid) { try { firebase.database().ref("/users/" + uid).off("value", window._userStatusListener); } catch(e) {} }
+            window._userStatusListener = null;
+        }
+        if (window._renderInterval) { clearInterval(window._renderInterval); window._renderInterval = null; }
+
+        window._dashboardInitialized = false;
+        window._securityScannerStarted = false;
+        pcs = {};
+        selectedPcs = new Set();
+
         if (_fbAuth) await _fbAuth.signOut();
         const lb = document.getElementById("logout-header-btn");
         const ab = document.getElementById("admin-panel-btn");
@@ -3210,12 +3921,14 @@ async function signOutAndReset() {
         if (ab) ab.style.display = "none";
         closeAdminPanel();
         if (pollerInterval) clearInterval(pollerInterval);
-        
+
         if (_revokedListener && _fbAuth && _fbAuth.currentUser && window.firebase && firebase.database) {
             firebase.database().ref("/users/" + _fbAuth.currentUser.uid + "/approved").off("value", _revokedListener);
             _revokedListener = null;
         }
-        
+
+        detachAdminListeners();
+
         _showScreen("auth-view");
     } catch(e) { console.error(e); }
 }
@@ -3240,14 +3953,14 @@ function detachAdminListeners() {
 
 function switchAdminTab(tab) {
     detachAdminListeners();
-    
+
     const btnPending = document.getElementById('tab-btn-pending');
     const btnApproved = document.getElementById('tab-btn-approved');
     const btnSecurity = document.getElementById('tab-btn-security');
     const viewPending = document.getElementById('admin-tab-pending');
     const viewApproved = document.getElementById('admin-tab-approved');
     const viewSecurity = document.getElementById('security-list-container');
-    
+
     btnPending.style.borderBottomColor = 'transparent';
     btnPending.style.color = 'var(--text-muted)';
     btnApproved.style.borderBottomColor = 'transparent';
@@ -3256,7 +3969,7 @@ function switchAdminTab(tab) {
         btnSecurity.style.borderBottomColor = 'transparent';
         btnSecurity.style.color = 'var(--text-muted)';
     }
-    
+
     viewPending.style.display = 'none';
     viewApproved.style.display = 'none';
     if (viewSecurity) viewSecurity.style.display = 'none';
@@ -3294,30 +4007,76 @@ function _revokeAccess() {
     _showScreen("revoked-view");
 }
 
+
+let adminSecurityListener = null;
+function renderSecurityLogs() {
+    const listEl = document.getElementById("security-user-list");
+    if (!listEl) return;
+    if (adminSecurityListener) return;
+
+    listEl.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:20px 0;">⏳ 데이터 로딩 중...</p>';
+    adminSecurityListener = firebase.database().ref("/security_logs").on("value", async snapshot => {
+        try {
+            const data = snapshot.val() || {};
+            if (Object.keys(data).length === 0) {
+                listEl.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:28px 0;">✅ 보안 차단된 사용자가 없습니다.</p>';
+                return;
+            }
+            listEl.innerHTML = "";
+            for (const [uid, info] of Object.entries(data)) {
+                const time = info.revoked_at ? new Date(info.revoked_at * 1000).toLocaleString("ko-KR") : "시간 미상";
+                const safeEmail = escapeHtml(info.email || "알 수 없음");
+                const safeReason = escapeHtml(info.reason || "알 수 없음");
+                const row = document.createElement("div");
+                row.className = "approved-user-row";
+                row.innerHTML = `
+                    <div class="pending-user-info">
+                        <div class="pending-user-email">
+                            ${safeEmail}
+                            <span style="background:var(--danger); color:white; font-size:10px; padding:2px 6px; border-radius:4px; margin-left:4px;">영구 차단됨</span>
+                        </div>
+                        <div class="pending-user-time">차단 사유: <span style="color:#fca5a5;">${safeReason}</span></div>
+                        <div class="pending-user-time">차단 일시: ${time}</div>
+                    </div>
+                    <button class="btn-approve" onclick="restoreUser('${uid}', '${safeEmail.replace(/'/g, "\'")}')">♻️ 차단 해제 및 권한 복구</button>
+                `;
+                listEl.appendChild(row);
+            }
+        } catch (e) {
+            console.error("renderSecurityLogs 에러:", e);
+            if (e.code === 'PERMISSION_DENIED') {
+                listEl.innerHTML = '<p style="color:#fca5a5;text-align:center;padding:20px 0;">에러: 관리자 권한이 없습니다.</p>';
+            } else {
+                listEl.innerHTML = `<p style="color:#fca5a5;text-align:center;padding:20px 0;">에러: ${escapeHtml(e.message)}</p>`;
+            }
+        }
+    });
+}
+
 function loadApprovedUsers() {
     const listEl = document.getElementById("approved-user-list");
-    
+
     if (adminUsersListener) return;
-    
+
     listEl.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:20px 0;">⏳ 실시간 데이터 로딩 중...</p>';
     adminUsersListener = firebase.database().ref("/users").on("value", async snapshot => {
         try {
             const usersData = snapshot.val() || {};
             listEl.innerHTML = "";
             let count = 0;
-            
+
             for (const [uid, info] of Object.entries(usersData)) {
                 // Show all users in the account management tab, including revoked ones
-                const isMaster = info.email === MASTER_EMAIL || info.role === "master";
-                
+                const isMaster = info.email && info.email.toLowerCase() === MASTER_EMAIL.toLowerCase() || info.role === "master";
+
                 count++;
-                const time = info.approvedAt ? new Date(info.approvedAt).toLocaleString("ko-KR") : 
+                const time = info.approvedAt ? new Date(info.approvedAt).toLocaleString("ko-KR") :
                              (info.revokedAt ? new Date(info.revokedAt).toLocaleString("ko-KR") : "시간 미상");
                 const safeEmail = escapeHtml(info.email || "알 수 없음");
                 const safeUid = escapeHtml(uid);
                 const row = document.createElement("div");
                 row.className = "pending-user-row";
-                
+
                 if (isMaster) {
                     const masterBadge = document.createElement("span");
                     masterBadge.style.cssText = "color:#f59e0b; font-size:12px; font-weight:bold; padding:6px 12px;";
@@ -3344,14 +4103,14 @@ function loadApprovedUsers() {
                     });
                     row.appendChild(restoreBtn);
                 }
-                
+
                 const infoDiv = document.createElement("div");
                 infoDiv.className = "pending-user-info";
-                const badgeHtml = info.approved === true 
+                const badgeHtml = info.approved === true
                     ? '<span style="background:#10b981; color:white; font-size:10px; padding:2px 6px; border-radius:4px; margin-left:4px;">승인됨</span>'
                     : '<span style="background:#ef4444; color:white; font-size:10px; padding:2px 6px; border-radius:4px; margin-left:4px;">박탈됨</span>';
                 const timeLabel = info.approved === true ? "승인 일시" : "박탈 일시";
-                
+
                 infoDiv.innerHTML = `
                     <div class="pending-user-email">
                         ${safeEmail} ${badgeHtml}
@@ -3359,7 +4118,7 @@ function loadApprovedUsers() {
                     <div class="pending-user-time">${timeLabel} ${escapeHtml(time)}</div>
                 `;
                 row.insertBefore(infoDiv, row.firstChild);
-                
+
                 listEl.appendChild(row);
             }
             if (count === 0) {
@@ -3398,7 +4157,7 @@ async function restoreUser(uid, email) {
         if (document.getElementById('security-list-container').style.display === 'block') {
             renderSecurityLogs();
         } else {
-            renderApprovedUsers();
+            loadApprovedUsers();
         }
     } catch (e) {
         alert("복구 실패: " + e.message);
@@ -3415,29 +4174,29 @@ function closeAdminPanel() {
 
 function loadPendingUsers() {
     const listEl = document.getElementById("pending-user-list");
-    
+
     if (adminPendingListener) return;
-    
+
     listEl.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:20px 0;">⏳ 실시간 데이터 로딩 중...</p>';
     adminPendingListener = firebase.database().ref("/pending_users").on("value", async snapshot => {
         try {
             const data = snapshot.val() || {};
             const usersSnap = await firebase.database().ref("/users").once("value");
             const usersData = usersSnap.val() || {};
-            
+
             if (Object.keys(data).length === 0) {
                 listEl.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:28px 0;">✅ 대기 중인 가입 요청이 없습니다.</p>';
                 return;
             }
             listEl.innerHTML = "";
             let hasPending = false;
-            
+
             for (const [uid, info] of Object.entries(data)) {
                 if (usersData[uid] && usersData[uid].approved === true) {
                     firebase.database().ref("/pending_users/" + uid).remove().catch(()=>{});
                     continue;
                 }
-                
+
                 hasPending = true;
                 const time = info.requestedAt ? new Date(info.requestedAt).toLocaleString("ko-KR") : "시간 미상";
                 const safeEmail = escapeHtml(info.email || "알 수 없음");
@@ -3447,7 +4206,7 @@ function loadPendingUsers() {
                     <div class="pending-user-info">
                         <div class="pending-user-email">
                             ${safeEmail}
-                            ${info.requestType === 'reactivation' 
+                            ${info.requestType === 'reactivation'
                                 ? '<span style="background:#f59e0b; color:white; font-size:10px; padding:2px 6px; border-radius:4px; margin-left:4px;">복구 요청</span>'
                                 : (info.requestType === 're-request'
                                     ? '<span style="background:#10b981; color:white; font-size:10px; padding:2px 6px; border-radius:4px; margin-left:4px;">재가입 요청</span>'
@@ -3460,7 +4219,7 @@ function loadPendingUsers() {
                 `;
                 listEl.appendChild(row);
             }
-            
+
             if (!hasPending) {
                 listEl.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:28px 0;">✅ 대기 중인 가입 요청이 없습니다.</p>';
             }
@@ -3510,7 +4269,7 @@ function openAccountModal() {
     document.getElementById("account-error-msg").style.display = "none";
     document.getElementById("account-new-pw").value = "";
     document.getElementById("account-new-pw-confirm").value = "";
-    
+
     const modal = document.getElementById("account-modal");
     if(modal) {
         modal.classList.add("show");
@@ -3527,11 +4286,11 @@ function closeAccountModal() {
 async function addPasswordToAccount() {
     const user = _fbAuth ? _fbAuth.currentUser : null;
     if (!user) return;
-    
+
     const pw1 = document.getElementById("account-new-pw").value;
     const pw2 = document.getElementById("account-new-pw-confirm").value;
     const msg = document.getElementById("account-error-msg");
-    
+
     if (!pw1 || pw1.length < 6) {
         msg.textContent = "비밀번호는 6자리 이상이어야 합니다.";
         msg.style.display = "block";
@@ -3542,7 +4301,7 @@ async function addPasswordToAccount() {
         msg.style.display = "block";
         return;
     }
-    
+
     msg.style.display = "none";
     try {
         await user.updatePassword(pw1);
@@ -3576,13 +4335,15 @@ async function addPasswordToAccount() {
                 errDiv.innerHTML += `<div><b>Promise Rejection:</b> ${e.reason}</div><hr>`;
             }
         });
-    
+
 // --- Auto-generated Event Bindings ---
 function bindStaticEvents() {
     const el_auth_submit_btn = document.getElementById("auth-submit-btn");
-    if (el_auth_submit_btn) el_auth_submit_btn.addEventListener("click", function(e) { handleEmailAuth(); });
+    if (el_auth_submit_btn) el_auth_submit_btn.addEventListener("click", function(e) { window._serverMode = 'firebase'; handleEmailAuth(); });
+    const el_auth_submit_custom_btn = document.getElementById("auth-submit-custom-btn");
+    if (el_auth_submit_custom_btn) el_auth_submit_custom_btn.addEventListener("click", function(e) { window._serverMode = 'custom'; handleEmailAuth(); });
     const el_auth_google_btn = document.getElementById("auth-google-btn");
-    if (el_auth_google_btn) el_auth_google_btn.addEventListener("click", function(e) { handleGoogleAuth(); });
+    if (el_auth_google_btn) el_auth_google_btn.addEventListener("click", function(e) { window._serverMode = "firebase"; handleGoogleAuth(); });
     const el_auth_reset_pw_btn = document.getElementById("auth-reset-pw-btn");
     if (el_auth_reset_pw_btn) el_auth_reset_pw_btn.addEventListener("click", function(e) { handlePasswordReset(); });
     const el_auth_reset_api_btn = document.getElementById("auth-reset-api-btn");
@@ -3593,12 +4354,18 @@ function bindStaticEvents() {
     if (el_verify_resend_btn) el_verify_resend_btn.addEventListener("click", function(e) { resendVerificationEmail(); });
     const el_signout_btn_1 = document.getElementById("signout-btn-1");
     if (el_signout_btn_1) el_signout_btn_1.addEventListener("click", function(e) { signOutAndReset(); });
+    const el_signout_btn_pending = document.getElementById("signout-btn-pending");
+    if (el_signout_btn_pending) el_signout_btn_pending.addEventListener("click", function(e) { signOutAndReset(); });
+    const el_signout_btn_revoked = document.getElementById("signout-btn-revoked");
+    if (el_signout_btn_revoked) el_signout_btn_revoked.addEventListener("click", function(e) { signOutAndReset(); });
+    const el_signout_btn_banned = document.getElementById("signout-btn-banned");
+    if (el_signout_btn_banned) el_signout_btn_banned.addEventListener("click", function(e) { signOutAndReset(); });
     const el_pending_check_btn = document.getElementById("pending-check-btn");
     if (el_pending_check_btn) el_pending_check_btn.addEventListener("click", function(e) { checkPendingApproval(); });
     const el_pending_rerequest_btn = document.getElementById("pending-rerequest-btn");
     if (el_pending_rerequest_btn) el_pending_rerequest_btn.addEventListener("click", function(e) { reRequestApproval(); });
     const el_revoked_rerequest_btn = document.getElementById("revoked-rerequest-btn");
-    if (el_revoked_rerequest_btn) el_revoked_rerequest_btn.addEventListener("click", function(e) { reRequestReactivation(); });
+    if (el_revoked_rerequest_btn) el_revoked_rerequest_btn.addEventListener("click", function(e) { reRequestApproval(); });
     const el_admin_panel_btn = document.getElementById("admin-panel-btn");
     if (el_admin_panel_btn) el_admin_panel_btn.addEventListener("click", function(e) { openAdminPanel(); });
     const el_account_header_btn = document.getElementById("account-header-btn");
@@ -3609,6 +4376,14 @@ function bindStaticEvents() {
     if (el_admin_panel_overlay) el_admin_panel_overlay.addEventListener("click", function(e) { if(e.target===this) closeAdminPanel(); });
     const el_admin_close_btn = document.getElementById("admin-close-btn");
     if (el_admin_close_btn) el_admin_close_btn.addEventListener("click", function(e) { closeAdminPanel(); });
+    const el_tab_btn_pending = document.getElementById("tab-btn-pending");
+    const el_tab_btn_approved = document.getElementById("tab-btn-approved");
+    const el_tab_btn_security = document.getElementById("tab-btn-security");
+
+    if (el_tab_btn_pending) el_tab_btn_pending.addEventListener("click", () => { switchAdminTab('pending'); });
+    if (el_tab_btn_approved) el_tab_btn_approved.addEventListener("click", () => { switchAdminTab('approved'); });
+    if (el_tab_btn_security) el_tab_btn_security.addEventListener("click", () => { switchAdminTab('security'); });
+
     const el_account_close_btn = document.getElementById("account-close-btn");
     if (el_account_close_btn) el_account_close_btn.addEventListener("click", function(e) { closeAccountModal(); });
     const el_account_cancel_btn = document.getElementById("account-cancel-btn");
@@ -3637,36 +4412,15 @@ window.addEventListener('DOMContentLoaded', () => {
     if (el_explorer) el_explorer.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') loadExplorerPath();
     });
-    
+
     const el_wm_search = document.getElementById('wm-search-input');
     if (el_wm_search) el_wm_search.addEventListener('input', (e) => {
         filterWindowsList();
     });
 });
 
-window.addEventListener('DOMContentLoaded', () => {
-    // Delegation for PC Grid
-    document.addEventListener('click', (e) => {
-        const btn = e.target.closest('[data-action]');
-        if (!btn) return;
-        const action = btn.getAttribute('data-action');
-        const pcId = btn.getAttribute('data-pcid');
-        const hwnd = btn.getAttribute('data-hwnd');
-        
-        if (action === 'shutdown' && pcId) triggerCommand(pcId, 'shutdown');
-        if (action === 'restart' && pcId) triggerCommand(pcId, 'restart');
-        if (action === 'openFileModal' && pcId) openFileModal(pcId);
-        if (action === 'openVolumeControl' && pcId) openVolumeControl(pcId);
-        if (action === 'openWindowsControl' && pcId) openWindowsControl(pcId);
-        
-        if (action === 'restore_window' && hwnd) {
-            triggerCommand(_wmPcId, 'restore_window', {hwnd: parseInt(hwnd)});
-        }
-        if (action === 'close_window' && hwnd) {
-            triggerCommand(_wmPcId, 'close_window', {hwnd: parseInt(hwnd)});
-        }
-    });
 
+window.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('change', (e) => {
         if (e.target.classList.contains('pc-checkbox')) {
             const pcId = e.target.getAttribute('data-pcid');
@@ -3692,7 +4446,7 @@ window.addEventListener('DOMContentLoaded', () => {
         const action = btn.getAttribute('data-admin');
         const uid = btn.getAttribute('data-uid');
         const email = btn.getAttribute('data-email');
-        
+
         if (action === 'approve') approveUser(uid, email);
         if (action === 'reject') rejectUser(uid, email);
         if (action === 'revoke') revokeUser(uid, email);
@@ -3706,19 +4460,19 @@ window.addEventListener('DOMContentLoaded', () => {
         const btn = e.target.closest('[data-action]');
         if (!btn) return;
         const action = btn.getAttribute('data-action');
-        
+
         if (action === 'renderScheduleTabs') renderScheduleTabs(btn.getAttribute('data-day'));
         if (action === 'loadFavorite') loadFavorite(parseInt(btn.getAttribute('data-idx')));
         if (action === 'deleteFavorite') deleteFavorite(parseInt(btn.getAttribute('data-idx')));
         if (action === 'selectExplorerItem') selectExplorerItem(btn.getAttribute('data-name'), btn.getAttribute('data-isfolder') === 'true');
-        
+
         if (action === 'triggerWindowCommand') {
             triggerWindowCommand(_wmPcId, btn.getAttribute('data-cmd'), {hwnd: parseInt(btn.getAttribute('data-hwnd'))}, btn.getAttribute('data-title'), btn.getAttribute('data-msg'));
         }
-        
+
         if (action === 'approveUser') approveUser(btn.getAttribute('data-uid'), btn.getAttribute('data-email'));
         if (action === 'rejectUser') rejectUser(btn.getAttribute('data-uid'), btn.getAttribute('data-email'));
-        
+
         if (action === 'triggerSingleCommand') {
             e.stopPropagation();
             triggerSingleCommand(btn.getAttribute('data-pcid'), btn.getAttribute('data-cmd'));
@@ -3743,7 +4497,13 @@ window.addEventListener('DOMContentLoaded', () => {
             e.stopPropagation();
             openWindowsModal(btn.getAttribute('data-pcid'));
         }
-    });
+        if (action === 'startWebRTC') openLiveScreen(btn.getAttribute('data-pcid'));
+        if (action === 'closeLiveScreen') closeLiveScreen();
+        if (action === 'takeScreenshot') {
+            e.stopPropagation();
+            takeScreenshot(btn.getAttribute('data-pcid'));
+        }
+            });
 
     const el_of_cancel_btn = document.getElementById("of-cancel-btn");
     if (el_of_cancel_btn) el_of_cancel_btn.addEventListener("click", () => { closeOpenFileModal(); });
@@ -3755,6 +4515,8 @@ window.addEventListener('DOMContentLoaded', () => {
     if (el_vol_cancel_btn) el_vol_cancel_btn.addEventListener("click", () => { closeVolumeModal(); });
     const el_vol_apply_btn = document.getElementById("vol-apply-btn");
     if (el_vol_apply_btn) el_vol_apply_btn.addEventListener("click", () => { applyVolumeControl(); });
+    const el_ss_close_btn = document.getElementById("ss-close-btn");
+    if (el_ss_close_btn) el_ss_close_btn.addEventListener("click", () => { closeScreenshotModal(); });
 
 });
 

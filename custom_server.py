@@ -115,22 +115,20 @@ async def _broadcast_to_admins(msg_dict):
     if not _admin_connections:
         return
     payload = json.dumps(msg_dict, ensure_ascii=False)
-    dead = set()
-    for ws in _admin_connections:
+    async def send_one(ws):
         try:
-            await ws.send(payload)
+            await asyncio.wait_for(ws.send(payload), timeout=3)
         except Exception:
-            dead.add(ws)
-    for ws in dead:
-        _admin_connections.discard(ws)
+            _admin_connections.discard(ws)
+    await asyncio.gather(*(send_one(ws) for ws in tuple(_admin_connections)))
 
 async def _send_to_client(pc_id, msg_dict):
     payload = json.dumps(msg_dict, ensure_ascii=False)
     dead = []
-    for ws, info in _client_connections.items():
+    for ws, info in tuple(_client_connections.items()):
         if info.get('pc_id') == pc_id:
             try:
-                await ws.send(payload)
+                await asyncio.wait_for(ws.send(payload), timeout=3)
             except Exception:
                 dead.append(ws)
     for ws in dead:
@@ -154,7 +152,8 @@ async def handler(ws):
 
         token = auth_msg.get("token", "")
         role_req = auth_msg.get("role", "client")
-        is_valid, info = _check_auth(token, role_req)
+        # Public-key and approval requests must not block every live connection.
+        is_valid, info = await asyncio.to_thread(_check_auth, token, role_req)
 
         if not is_valid:
             await ws.send(json.dumps({"type": "auth_result", "status": "fail", "reason": info}))
@@ -209,9 +208,9 @@ async def handler(ws):
                         if target_pc == "__ALL__":
                             payload_str = json.dumps(cmd_msg, ensure_ascii=False)
                             dead = []
-                            for c_ws in _client_connections.keys():
+                            for c_ws in tuple(_client_connections):
                                 try:
-                                    await c_ws.send(payload_str)
+                                    await asyncio.wait_for(c_ws.send(payload_str), timeout=3)
                                 except Exception:
                                     dead.append(c_ws)
                             for c_ws in dead:
