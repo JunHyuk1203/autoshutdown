@@ -14,6 +14,7 @@ import os
 import time
 import urllib.request
 import ssl
+from security import validate_download_url
 import subprocess
 import ctypes
 
@@ -46,7 +47,7 @@ def main():
         sys.exit(1)
 
     pid        = int(sys.argv[1])
-    dl_url     = sys.argv[2]
+    dl_url     = validate_download_url(sys.argv[2])
     target_exe = sys.argv[3]
     extra_args = sys.argv[4:]  # 예: ["--headless"]
 
@@ -73,13 +74,11 @@ def main():
 
     # 2. 다운로드
     tmp_path = target_exe + f".{int(time.time())}.tmp"
-    no_cache = dl_url + ("&" if "?" in dl_url else "?") + f"t={int(time.time())}"
+    no_cache = validate_download_url(dl_url) + ("&" if "?" in dl_url else "?") + f"t={int(time.time())}"
     log(f"Downloading: {no_cache}")
 
     try:
-        ctx = ssl._create_unverified_context()
-        ctx.verify_mode = ssl.CERT_NONE
-        ctx.check_hostname = False
+        ctx = ssl.create_default_context()
     except Exception:
         ctx = None
 

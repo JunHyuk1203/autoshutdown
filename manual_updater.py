@@ -17,6 +17,7 @@ import json
 import threading
 import urllib.request
 import ssl
+from security import validate_download_url
 import subprocess
 import ctypes
 import tkinter as tk
@@ -27,9 +28,7 @@ EXE_NAME     = "auto_shutdown.exe"
 FIREBASE_URL = "https://atss-a1f9e-default-rtdb.firebaseio.com/update_info.json"
 
 try:
-    _ssl_ctx = ssl._create_unverified_context()
-    _ssl_ctx.verify_mode = ssl.CERT_NONE
-    _ssl_ctx.check_hostname = False
+    _ssl_ctx = ssl.create_default_context()
 except Exception:
     _ssl_ctx = None
 
@@ -108,7 +107,7 @@ class ManualUpdaterApp:
                 raise RuntimeError("다운로드 URL을 가져오지 못했습니다.")
 
             # 2. 다운로드
-            no_cache = dl_url + ("&" if "?" in dl_url else "?") + f"t={int(time.time())}"
+            no_cache = validate_download_url(dl_url) + ("&" if "?" in dl_url else "?") + f"t={int(time.time())}"
             req2 = urllib.request.Request(no_cache, headers={"User-Agent": "ManualUpdater/1.0"})
             self._set("새 버전 다운로드 중...", 10)
 

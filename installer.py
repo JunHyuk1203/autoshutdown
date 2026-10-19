@@ -18,6 +18,7 @@ import json
 import threading
 import urllib.request
 import ssl
+from security import validate_download_url
 import subprocess
 import ctypes
 import tkinter as tk
@@ -31,9 +32,7 @@ FIREBASE_URL = "https://atss-a1f9e-default-rtdb.firebaseio.com/update_info.json"
 
 # ─── SSL 컨텍스트 ───────────────────────────────────────────────────────────────
 try:
-    _ssl_ctx = ssl._create_unverified_context()
-    _ssl_ctx.verify_mode = ssl.CERT_NONE
-    _ssl_ctx.check_hostname = False
+    _ssl_ctx = ssl.create_default_context()
 except Exception:
     _ssl_ctx = None
 
@@ -64,8 +63,9 @@ oLink.WorkingDirectory = "{os.path.dirname(target_path)}"
 oLink.Description = "{description}"
 oLink.Save
 """
-    vbs_path = os.path.join(os.environ.get("TEMP", INSTALL_DIR), "_create_shortcut.vbs")
-    with open(vbs_path, "w", encoding="utf-8") as f:
+    import tempfile
+    fd, vbs_path = tempfile.mkstemp(suffix='.vbs')
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
         f.write(vbs)
     subprocess.run(["wscript.exe", vbs_path], check=True,
                    creationflags=subprocess.CREATE_NO_WINDOW)
@@ -183,7 +183,7 @@ class InstallerApp:
             target_exe = os.path.join(INSTALL_DIR, EXE_NAME)
 
             # 3. 다운로드
-            no_cache = dl_url + ("&" if "?" in dl_url else "?") + f"t={int(time.time())}"
+            no_cache = validate_download_url(dl_url) + ("&" if "?" in dl_url else "?") + f"t={int(time.time())}"
             req = urllib.request.Request(no_cache, headers={"User-Agent": "SmartPower-Installer/1.0"})
             self._set_status("프로그램 파일 다운로드 중...", 15)
 

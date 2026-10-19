@@ -8,7 +8,7 @@ async def handler(ws):
     print('Client connected!')
     try:
         msg = await asyncio.wait_for(ws.recv(), timeout=5)
-        print('Received:', msg)
+        print('Received authentication message (redacted)')
         await ws.send(json.dumps({'type': 'auth_result', 'status': 'success'}))
         print('Auth sent!')
         async for m in ws:
@@ -17,7 +17,7 @@ async def handler(ws):
         print('Handler error:', e)
 
 async def serve():
-    async with websockets.serve(handler, '0.0.0.0', 9999):
+    async with websockets.serve(handler, '127.0.0.1', 9999):
         print('Server started on port 9999')
         await asyncio.Future()
 

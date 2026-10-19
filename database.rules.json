@@ -1,50 +1,71 @@
 {
   "rules": {
+    ".read": false,
+    ".write": false,
     "pcs": {
-      ".read": "auth != null && (root.child('users').child(auth.uid).child('approved').val() === true || auth.token.email === 'tntgame1203@gmail.com')",
-      ".write": "true"
+      ".read": "auth != null && auth.token.email_verified === true && (auth.token.email === 'tntgame1203@gmail.com' || root.child('users').child(auth.uid).child('approved').val() === true)",
+      "$pc_id": {
+        ".write": true
+      }
     },
     "commands": {
-      ".read": "true",
-      ".write": "auth != null && (root.child('users').child(auth.uid).child('approved').val() === true || auth.token.email === 'tntgame1203@gmail.com')",
+      ".write": "auth != null && auth.token.email_verified === true && (auth.token.email === 'tntgame1203@gmail.com' || root.child('users').child(auth.uid).child('approved').val() === true)",
       "$pc_id": {
-        ".write": "newData.val() === null",
+        ".read": true,
+        ".write": "!newData.exists()",
         "$cmd_id": {
-          ".write": "newData.val() === null"
+          ".write": "!newData.exists()"
         }
       }
     },
     "users": {
-      ".read": "auth != null && auth.token.email === 'tntgame1203@gmail.com'",
+      ".read": "auth != null && auth.token.email_verified === true && auth.token.email === 'tntgame1203@gmail.com'",
       "$uid": {
-        ".read": "auth != null && (auth.uid === $uid || auth.token.email === 'tntgame1203@gmail.com')",
-        ".write": "auth != null && auth.token.email === 'tntgame1203@gmail.com'",
+        ".read": "(auth != null && auth.uid === $uid) || (auth != null && auth.token.email_verified === true && auth.token.email === 'tntgame1203@gmail.com')",
+        ".write": "auth != null && auth.token.email_verified === true && auth.token.email === 'tntgame1203@gmail.com'",
         "approved": {
           ".write": "auth != null && auth.uid === $uid && newData.val() === false"
         }
       }
     },
     "pending_users": {
-      ".read": "auth != null && auth.token.email === 'tntgame1203@gmail.com'",
+      ".read": "auth != null && auth.token.email_verified === true && auth.token.email === 'tntgame1203@gmail.com'",
       "$uid": {
-        ".write": "auth != null && auth.uid === $uid"
+        ".write": "(auth != null && auth.token.email_verified === true && auth.token.email === 'tntgame1203@gmail.com') || (auth != null && auth.uid === $uid && auth.token.email_verified === true)",
+        ".validate": "newData.hasChildren(['email', 'requestedAt']) && newData.child('email').isString() && newData.child('requestedAt').isNumber()"
       }
     },
     "security_logs": {
-      ".read": "auth != null && auth.token.email === 'tntgame1203@gmail.com'",
+      ".read": "auth != null && auth.token.email_verified === true && auth.token.email === 'tntgame1203@gmail.com'",
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",
-        ".write": "auth != null && (auth.uid === $uid || auth.token.email === 'tntgame1203@gmail.com')"
+        ".write": "(auth != null && auth.token.email_verified === true && auth.token.email === 'tntgame1203@gmail.com') || (auth != null && auth.uid === $uid)"
       }
     },
     "update_info": {
-      ".read": "true",
-      ".write": "true"
+      ".read": true,
+      ".write": "auth != null && auth.token.email_verified === true && auth.token.email === 'tntgame1203@gmail.com'"
+    },
+    "file_favorites": {
+      ".read": "auth != null && auth.token.email_verified === true && (auth.token.email === 'tntgame1203@gmail.com' || root.child('users').child(auth.uid).child('approved').val() === true)",
+      ".write": "auth != null && auth.token.email_verified === true && (auth.token.email === 'tntgame1203@gmail.com' || root.child('users').child(auth.uid).child('approved').val() === true)"
     },
     "screenshots": {
       "$pc_id": {
-        ".read": "auth != null",
-        ".write": "true"
+        ".read": "auth != null && auth.token.email_verified === true && (auth.token.email === 'tntgame1203@gmail.com' || root.child('users').child(auth.uid).child('approved').val() === true)",
+        ".write": true
+      }
+    },
+    "explorer": {
+      "$pc_id": {
+        ".read": "auth != null && auth.token.email_verified === true && (auth.token.email === 'tntgame1203@gmail.com' || root.child('users').child(auth.uid).child('approved').val() === true)",
+        ".write": true
+      }
+    },
+    "explorer_favorites": {
+      "$pc_id": {
+        ".read": "auth != null && auth.token.email_verified === true && (auth.token.email === 'tntgame1203@gmail.com' || root.child('users').child(auth.uid).child('approved').val() === true)",
+        ".write": true
       }
     }
   }

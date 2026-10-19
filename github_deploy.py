@@ -6,6 +6,7 @@ import time
 import sys
 import urllib.request
 import urllib.error
+import urllib.parse
 import ssl
 
 # Windows CMD 인코딩 강제 설정
@@ -34,7 +35,7 @@ git_exe         = r"C:\Program Files\Git\cmd\git.exe"
 
 # ── SSL 컨텍스트 ─────────────────────────────────────────────────────────────
 try:
-    _ssl = ssl._create_unverified_context()
+    _ssl = ssl.create_default_context()
 except Exception:
     _ssl = None
 
@@ -268,6 +269,10 @@ with open(version_path, "w", encoding="utf-8") as f:
     json.dump(version_data, f, indent=4)
 
 firebase_url     = "https://atss-a1f9e-default-rtdb.firebaseio.com/update_info.json"
+admin_token = os.environ.get('SMARTPOWER_ADMIN_ID_TOKEN')
+if not admin_token:
+    raise RuntimeError('SMARTPOWER_ADMIN_ID_TOKEN is required to publish update metadata')
+firebase_url += '?auth=' + urllib.parse.quote(admin_token, safe='')
 version_payload  = json.dumps(version_data).encode("utf-8")
 fb_req = urllib.request.Request(
     firebase_url, data=version_payload, method="PUT",

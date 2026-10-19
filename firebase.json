@@ -1,0 +1,6 @@
+{
+  "database": {
+    "instance": "atss-a1f9e-default-rtdb",
+    "rules": "database.rules.json"
+  }
+}

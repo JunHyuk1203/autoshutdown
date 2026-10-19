@@ -2538,7 +2538,7 @@ function _startCustomServerSync() {
             const token = await firebase.auth().currentUser.getIdToken();
             if (!active()) return;
             const address = new URL(ws_url);
-            if (!['ws:', 'wss:'].includes(address.protocol)) throw new Error('잘못된 서버 주소');
+            if (address.protocol !== 'wss:' || address.username || address.password) throw new Error('잘못된 서버 주소');
             const ws = new WebSocket(ws_url);
             const connectionTimeout = setTimeout(() => {
                 if (active()) toggleServerMode('firebase');
@@ -3087,10 +3087,10 @@ function renderScheduleTabs(activeDay) {
         listHtml += `
             <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.04); border-radius: 8px; padding: 8px 12px;">
                 <label style="display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 600; cursor: pointer;">
-                    <input type="checkbox" class="sched-checkbox" data-day="${activeDay}" data-period="${period}" ${isChecked ? 'checked' : ''} style="accent-color: var(--accent-blue);">
-                    <span>${period}</span>
+                    <input type="checkbox" class="sched-checkbox" data-day="${escapeHtml(activeDay)}" data-period="${escapeHtml(period)}" ${isChecked ? 'checked' : ''} style="accent-color: var(--accent-blue);">
+                    <span>${escapeHtml(period)}</span>
                 </label>
-                <select class="cfg-select sched-select" data-day="${activeDay}" data-period="${period}" style="
+                <select class="cfg-select sched-select" data-day="${escapeHtml(activeDay)}" data-period="${escapeHtml(period)}" style="
                     background: #0f0f23;
                     border: 1px solid var(--border-light);
                     color: var(--text-main);
@@ -3345,7 +3345,7 @@ async function triggerSingleCommand(pcId, action) {
     const labels = { shutdown: "종료", sleep: "절전", restart: "재부팅", setup_mode: "초기설정", update: "원격 업데이트", close_active_window: "활성 창 종료" };
     showModal(
         `${labels[action] || action} 확인`,
-        `[${escapeHtml((pcs[pcId] && pcs[pcId].hostname) || pcId)}] PC로 즉시 [${labels[action] || action}] 명령을 전송하시겠습니까?`,
+        `[${(pcs[pcId] && pcs[pcId].hostname) || pcId}] PC로 즉시 [${labels[action] || action}] 명령을 전송하시겠습니까?`,
         async () => {
             closeModal();
             let result;
@@ -3491,7 +3491,8 @@ function showModal(title, msg, onOk, options = {}) {
     _modalExecuting = false;
     _modalReturnFocus = document.activeElement;
     document.getElementById("modal-title").innerText = title;
-    document.getElementById("modal-msg").innerHTML = msg;
+    document.getElementById("modal-msg").textContent = msg;
+    document.getElementById("modal-msg").style.whiteSpace = "pre-line";
     pendingAction = onOk;
 
     const slider = document.getElementById('modal-slide-confirm');
@@ -3878,7 +3879,7 @@ function renderExplorerList(data) {
         const icon = isFolder ? "📁" : "📄";
         const sizeStr = isFolder ? "" : (item.size > 1024*1024 ? (item.size/(1024*1024)).toFixed(1)+'MB' : Math.ceil(item.size/1024)+'KB');
 
-        const safeName = item.name.replace(/\\/g, "\\\\").replace(/'/g, "\\\'").replace(/"/g, "&quot;");
+        const safeName = escapeHtml(item.name);
 
         html += `
             <div style="display:flex; justify-content:space-between; padding:6px 8px; border-bottom:1px solid var(--border-light); cursor:pointer; font-size:12px;"
@@ -3886,7 +3887,7 @@ function renderExplorerList(data) {
                  data-action="selectExplorerItem" data-name="${safeName}" data-isfolder="${isFolder}">
                 <div style="display:flex; gap:6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
                     <span>${icon}</span>
-                    <span>${item.name}</span>
+                    <span>${escapeHtml(item.name)}</span>
                 </div>
                 <div style="color:var(--text-muted); flex-shrink:0;">${sizeStr}</div>
             </div>
@@ -3983,10 +3984,10 @@ function renderWindowsList(list) {
     }
 
     container.innerHTML = list.map((w, i) => {
-        const exe = (w.exe || 'unknown.exe').replace(/</g, '&lt;');
-        const title = (w.title || '(제목 없음)').replace(/</g, '&lt;');
-        const pid = w.pid;
-        const hwnd = w.hwnd;
+        const exe = escapeHtml(w.exe || 'unknown.exe');
+        const title = escapeHtml(w.title || '(제목 없음)');
+        const pid = Number.isSafeInteger(Number(w.pid)) ? Number(w.pid) : 0;
+        const hwnd = Number.isSafeInteger(Number(w.hwnd)) ? Number(w.hwnd) : 0;
 
         let actions = '';
         if (pid && hwnd) {
@@ -4517,8 +4518,9 @@ function renderSecurityLogs() {
                         <div class="pending-user-time">차단 사유: <span style="color:#fca5a5;">${safeReason}</span></div>
                         <div class="pending-user-time">차단 일시: ${time}</div>
                     </div>
-                    <button class="btn-approve" onclick="restoreUser('${uid}', '${safeEmail.replace(/'/g, "\'")}')">♻️ 차단 해제 및 권한 복구</button>
+                    <button class="btn-approve" data-restore-user>♻️ 차단 해제 및 권한 복구</button>
                 `;
+                row.querySelector("[data-restore-user]").addEventListener("click", () => restoreUser(uid, info.email || ""));
                 listEl.appendChild(row);
             }
         } catch (e) {
@@ -4616,7 +4618,7 @@ function loadApprovedUsers() {
 
 async function revokeUser(uid, email) {
     if (!(await _checkAdminPermission())) return;
-    showModal("권한 박탈", `<b>${escapeHtml(email)}</b>의 권한을 박탈하시겠습니까?`, async () => {
+    showModal("권한 박탈", `${email}의 권한을 박탈하시겠습니까?`, async () => {
         closeModal();
         try {
             // 기존 데이터를 유지하면서 approved만 변경
@@ -4715,7 +4717,7 @@ function loadPendingUsers() {
 
 async function approveUser(uid, email) {
     if (!(await _checkAdminPermission())) return;
-    showModal("가입 승인", `<b>${escapeHtml(email)}</b> 가입을 승인하시겠습니까?`, async () => {
+    showModal("가입 승인", `${email} 가입을 승인하시겠습니까?`, async () => {
         closeModal();
         try {
             await firebase.database().ref("/users/" + uid).set({ email, approved: true, role: "user", approvedAt: Date.now() });
@@ -4727,7 +4729,7 @@ async function approveUser(uid, email) {
 
 async function rejectUser(uid, email) {
     if (!(await _checkAdminPermission())) return;
-    showModal("가입 거절", `<b>${escapeHtml(email)}</b> 가입 요청을 거절하시겠습니까?`, async () => {
+    showModal("가입 거절", `${email} 가입 요청을 거절하시겠습니까?`, async () => {
         closeModal();
         try {
             await firebase.database().ref("/users/" + uid).set({ email: email, approved: false, rejectedAt: Date.now() });
@@ -4804,14 +4806,14 @@ async function addPasswordToAccount() {
             const errDiv = document.getElementById('global-error-display');
             if(errDiv) {
                 errDiv.style.display = 'block';
-                errDiv.innerHTML += `<div><b>Error:</b> ${e.message} <br><small>at ${e.filename}:${e.lineno}</small></div><hr>`;
+                errDiv.textContent += `Error: ${e.message} at ${e.filename}:${e.lineno}\n`;
             }
         });
         window.addEventListener('unhandledrejection', function(e) {
             const errDiv = document.getElementById('global-error-display');
             if(errDiv) {
                 errDiv.style.display = 'block';
-                errDiv.innerHTML += `<div><b>Promise Rejection:</b> ${e.reason}</div><hr>`;
+                errDiv.textContent += `Promise Rejection: ${e.reason}\n`;
             }
         });
 

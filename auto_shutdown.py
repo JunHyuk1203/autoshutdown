@@ -4,6 +4,9 @@ import threading
 import base64
 import winreg
 import getpass
+from security import (protect_password, unprotect_password, store_logon_secret,
+                      public_config, remote_config, fresh_command, private_updater_copy, validate_ws_url,
+                      validate_download_url, open_remote_url, kill_remote_process)
 
 def _get_encryption_key():
     import uuid
@@ -11,32 +14,24 @@ def _get_encryption_key():
     return [ord(c) for c in mac]
 
 def encrypt_password(password):
-    if not password: return ""
-    key = _get_encryption_key()
-    encrypted = bytearray()
-    for i, c in enumerate(password.encode('utf-8')):
-        encrypted.append(c ^ key[i % len(key)])
-    return base64.b64encode(encrypted).decode('utf-8')
+    return protect_password(password)
 
 def decrypt_password(encrypted_b64):
-    if not encrypted_b64: return ""
     try:
-        key = _get_encryption_key()
-        encrypted = base64.b64decode(encrypted_b64)
-        decrypted = bytearray()
-        for i, c in enumerate(encrypted):
-            decrypted.append(c ^ key[i % len(key)])
-        return decrypted.decode('utf-8')
+        return unprotect_password(encrypted_b64)
     except Exception:
         return ""
 
 def set_auto_logon(username, password):
     try:
+        store_logon_secret(password)
         key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon", 0, winreg.KEY_SET_VALUE)
         winreg.SetValueEx(key, "AutoAdminLogon", 0, winreg.REG_SZ, "1")
         winreg.SetValueEx(key, "DefaultUserName", 0, winreg.REG_SZ, username)
-        if password:
-            winreg.SetValueEx(key, "DefaultPassword", 0, winreg.REG_SZ, password)
+        try:
+            winreg.DeleteValue(key, "DefaultPassword")
+        except FileNotFoundError:
+            pass
         winreg.CloseKey(key)
         return True
     except Exception as e:
@@ -45,6 +40,7 @@ def set_auto_logon(username, password):
 
 def disable_auto_logon():
     try:
+        store_logon_secret(None)
         key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon", 0, winreg.KEY_SET_VALUE)
         winreg.SetValueEx(key, "AutoAdminLogon", 0, winreg.REG_SZ, "0")
         try:
@@ -56,6 +52,37 @@ def disable_auto_logon():
     except Exception as e:
         print(f"disable_auto_logon error: {e}")
         return False
+
+
+def migrate_saved_credentials():
+    """Upgrade old saves without disabling Windows automatic logon."""
+    for filename in ('config.json', 'schedule_config.json'):
+        path = os.path.join(application_path, filename)
+        if not os.path.isfile(path):
+            continue
+        with open(path, encoding='utf-8') as source:
+            config = json.load(source)
+        value = config.get('encrypted_password', '')
+        if value and not value.startswith('dpapi:'):
+            config['encrypted_password'] = protect_password(unprotect_password(value))
+            import tempfile
+            fd, temporary = tempfile.mkstemp(dir=application_path, suffix='.json')
+            try:
+                with os.fdopen(fd, 'w', encoding='utf-8') as target:
+                    json.dump(config, target, ensure_ascii=False, indent=4)
+                os.replace(temporary, path)
+            finally:
+                if os.path.exists(temporary):
+                    os.remove(temporary)
+    # Migrating a machine-wide Winlogon secret requires elevation.
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r'SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon',
+                            0, winreg.KEY_READ | winreg.KEY_SET_VALUE) as key:
+            value, _ = winreg.QueryValueEx(key, 'DefaultPassword')
+            store_logon_secret(value)
+            winreg.DeleteValue(key, 'DefaultPassword')
+    except FileNotFoundError:
+        pass
 
 import time
 import json
@@ -85,7 +112,7 @@ try:
     def _get_http_session():
         if not hasattr(_http_sessions, 'session'):
             _http_sessions.session = requests.Session()
-            _http_sessions.session.verify = False
+            _http_sessions.session.verify = True
         return _http_sessions.session
     _original_urlopen = urllib.request.urlopen
     
@@ -115,7 +142,15 @@ try:
             
             _global_session = _get_http_session()
             # Only intercept Firebase realtime database requests
-            if "firebaseio.com" in url:
+            if urllib.parse.urlsplit(url).hostname == 'atss-a1f9e-default-rtdb.firebaseio.com':
+                parsed = urllib.parse.urlsplit(url)
+                if parsed.scheme != 'https':
+                    raise ValueError('Firebase requires HTTPS')
+                if not parsed.path.startswith('/update_info'):
+                    # Registration-free PC endpoints must never receive legacy admin secrets.
+                    query = urllib.parse.parse_qs(parsed.query)
+                    query.pop('auth', None)
+                    url = urllib.parse.urlunsplit(parsed._replace(query=urllib.parse.urlencode(query, doseq=True)))
                 try:
                     if method == 'GET':
                         res = _global_session.get(url, headers=headers, timeout=timeout, allow_redirects=True)
@@ -153,9 +188,7 @@ except ImportError:
     PYCAW_AVAILABLE = False
 
 try:
-    _global_ssl_context = ssl._create_unverified_context()
-    _global_ssl_context.verify_mode = ssl.CERT_NONE
-    _global_ssl_context.check_hostname = False
+    _global_ssl_context = ssl.create_default_context()
 except AttributeError:
     _global_ssl_context = None
 
@@ -317,7 +350,7 @@ def run_standalone_autologin_gui():
 
     root.mainloop()
 
-CURRENT_VERSION = "1.1.205"
+CURRENT_VERSION = "1.1.206"
 
 try:
     from pycaw.pycaw import AudioUtilities
@@ -600,7 +633,7 @@ def _take_and_upload_screenshot(central_url, pc_id, db_secret, ssl_context, sct=
 
         if session is not None:
             # requests.Session: keep-alive TCP 재사용 (TLS 핸드셰이크 생략)
-            session.put(ss_url, data=payload_bytes,
+            session.put(ss_url.split('?')[0], data=payload_bytes,
                         headers={'Content-Type': 'application/json'}, timeout=3)
         else:
             req = urllib.request.Request(ss_url, data=payload_bytes, method="PUT",
@@ -630,7 +663,7 @@ def _start_screen_streaming(central_url, pc_id, db_secret, ssl_context):
             import urllib3
             urllib3.disable_warnings()
             session = _requests.Session()
-            session.verify = False
+            session.verify = True
             adapter = _requests.adapters.HTTPAdapter(
                 pool_connections=1, pool_maxsize=1, max_retries=0
             )
@@ -663,7 +696,7 @@ def _start_screen_streaming(central_url, pc_id, db_secret, ssl_context):
                     payload_bytes = item
                     try:
                         if session is not None:
-                            session.put(ss_url, data=payload_bytes,
+                            session.put(ss_url.split('?')[0], data=payload_bytes,
                                         headers={'Content-Type': 'application/json'}, timeout=3)
                         else:
                             req = urllib.request.Request(ss_url, data=payload_bytes, method="PUT",
@@ -1049,13 +1082,13 @@ class AutoShutdownAppV2:
                 ssl_context = None
                 try:
                     import ssl
-                    ssl_context = ssl._create_unverified_context()
+                    ssl_context = ssl.create_default_context()
                 except: pass
                 
                 with urllib.request.urlopen(req, timeout=5, context=ssl_context) as res:
                     ws_url = json.loads(res.read().decode('utf-8'))
                 
-                if not ws_url or not isinstance(ws_url, str) or not ws_url.startswith("ws"):
+                if not ws_url or not isinstance(ws_url, str):
                     time.sleep(10)
                     continue
                     
@@ -1066,8 +1099,8 @@ class AutoShutdownAppV2:
                 if ws_url.startswith("wss://"):
                     connect_kwargs["ssl"] = ssl_context
                     
-                with websockets.sync.client.connect(ws_url, **connect_kwargs) as ws:
-                    # 인증 (클라이언트는 토큰 없이 pc_id만 전송)
+                with websockets.sync.client.connect(validate_ws_url(ws_url), max_size=1048576, **connect_kwargs) as ws:
+                    # PC ID로 연결하며 PC별 등록·토큰은 사용하지 않음
                     auth_msg = {"type": "auth", "role": "client", "pc_id": pc_id}
                     ws.send(json.dumps(auth_msg))
                     
@@ -1126,10 +1159,7 @@ class AutoShutdownAppV2:
                                         browser = payload.get("browser", "default")
                                         if url:
                                             import subprocess
-                                            if browser == "chrome": subprocess.run(['start', 'chrome', url], shell=True)
-                                            elif browser == "edge": subprocess.run(['start', 'msedge', url], shell=True)
-                                            elif browser == "whale": subprocess.run(['start', 'whale', url], shell=True)
-                                            else: subprocess.run(['start', url], shell=True)
+                                            open_remote_url(url, browser)
                                     elif action == 'open_file':
                                         file_path = payload.get("file_path", "")
                                         app_path = payload.get("app_path", "")
@@ -1356,7 +1386,7 @@ class AutoShutdownAppV2:
                 db_secret = current_cfg.get('db_secret', '')  # Firebase DB secret for auth
                 
                 ip = get_local_ip()
-                ssl_context = ssl._create_unverified_context()
+                ssl_context = ssl.create_default_context()
                 
                 try:
                     current_user = os.getlogin()
@@ -1390,7 +1420,7 @@ class AutoShutdownAppV2:
                         'next_event': next_str,
                         'last_seen': datetime.now().strftime('%H:%M:%S'),
                         'last_seen_ts': {'.sv': 'timestamp'},
-                        'config': current_cfg,
+                        'config': public_config(current_cfg),
                         'windows': get_open_windows()
                     }).encode('utf-8')
                 
@@ -1486,7 +1516,7 @@ class AutoShutdownAppV2:
                         if len(processed_push_ids) > 1000:
                             processed_push_ids.clear()
                             
-                        if cmd_ts > 0 and time.time() - cmd_ts > 20.0:
+                        if not fresh_command(cmd_ts):
                             cmd_success = True
                             continue
                             
@@ -1542,7 +1572,7 @@ class AutoShutdownAppV2:
                                         ctypes.windll.user32.PostMessageW(target_hwnd, 0x0010, 0, 0) # WM_CLOSE
                                     except Exception: pass
                                 else:
-                                    os.system(f'taskkill /F /PID {target_pid}')
+                                    kill_remote_process(target_pid)
                                 cmd_success = True
                         elif action == 'bring_to_front' and isinstance(message, dict):
                             target_hwnd = message.get('hwnd')
@@ -1633,7 +1663,7 @@ class AutoShutdownAppV2:
                                     
                                 # 복구된 설정을 GUI 릴로드에도 적용하기 위해 message_clean 딕셔너리 생성
                                 message_clean = {}
-                                for k, v in message.items():
+                                for k, v in remote_config(message).items():
                                     # 요일 스케줄 데이터 처리 (Firebase 우회용 언더바를 원래 슬래시로 De-sanitize 복구)
                                     if k in DAYS and isinstance(v, dict):
                                         if k not in current:
@@ -1661,7 +1691,7 @@ class AutoShutdownAppV2:
                                 # ★ 핵심 수정: set_config 성공 직후 Firebase /pcs/{pc_id}/config를 즉시 갱신
                                 # 기존 로직은 다음 폴링 루프(2초 후)에서야 config를 올려 대시보드에 이전 값이 보이는 문제가 있었음
                                 try:
-                                    updated_cfg = sanitize_rtdb_keys(current)
+                                    updated_cfg = public_config(sanitize_rtdb_keys(current))
                                     cfg_patch_payload = json.dumps({'config': updated_cfg}).encode('utf-8')
                                     cfg_patch_url = f"{central_url.rstrip('/')}/pcs/{pc_id}.json"
                                     cfg_patch_req = urllib.request.Request(
@@ -1706,10 +1736,7 @@ class AutoShutdownAppV2:
                                         )
                                     elif is_url:
                                         # URL without specific app -> use Windows 'start' command (most reliable)
-                                        subprocess.Popen(
-                                            ['cmd', '/c', 'start', '', file_path],
-                                            creationflags=subprocess.CREATE_NO_WINDOW
-                                        )
+                                        open_remote_url(file_path)
                                     else:
                                         # Local file -> os.startfile
                                         os.startfile(file_path)
@@ -2059,9 +2086,7 @@ class AutoShutdownAppV2:
             url = "https://atss-a1f9e-default-rtdb.firebaseio.com/update_info.json"
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
             try:
-                ssl_context = ssl._create_unverified_context()
-                ssl_context.verify_mode = ssl.CERT_NONE
-                ssl_context.check_hostname = False
+                ssl_context = ssl.create_default_context()
             except AttributeError:
                 ssl_context = None
             with urllib.request.urlopen(req, timeout=8, context=ssl_context) as response:
@@ -2134,8 +2159,7 @@ class AutoShutdownAppV2:
 
             # 2. 임시 경로로 복사 (MEIPASS는 프로세스 종료 시 삭제됨)
             import shutil
-            tmp_updater = os.path.join(os.environ.get('TEMP', application_path), f'as_updater_{int(time.time())}.exe')
-            shutil.copy2(src_updater, tmp_updater)
+            tmp_updater = private_updater_copy(src_updater)
             _ulog(f"[updater] Copied updater to: {tmp_updater}")
 
             # 3. 대상 경로: %LOCALAPPDATA%\AutoShutdown\auto_shutdown.exe
@@ -2506,9 +2530,7 @@ class AutoShutdownAppV2:
             url = "https://atss-a1f9e-default-rtdb.firebaseio.com/update_info.json"
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
             try:
-                ssl_context = ssl._create_unverified_context()
-                ssl_context.verify_mode = ssl.CERT_NONE
-                ssl_context.check_hostname = False
+                ssl_context = ssl.create_default_context()
             except AttributeError:
                 ssl_context = None
             with urllib.request.urlopen(req, timeout=8, context=ssl_context) as response:
@@ -2589,9 +2611,7 @@ class AutoShutdownAppV2:
             url = "https://atss-a1f9e-default-rtdb.firebaseio.com/update_info.json"
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
             try:
-                ssl_context = ssl._create_unverified_context()
-                ssl_context.verify_mode = ssl.CERT_NONE
-                ssl_context.check_hostname = False
+                ssl_context = ssl.create_default_context()
             except AttributeError:
                 ssl_context = None
             with urllib.request.urlopen(req, timeout=8, context=ssl_context) as response:
@@ -2788,7 +2808,7 @@ class AutoShutdownAppV2:
         try:
             pc_id = get_pc_id()
             central_url = "https://atss-a1f9e-default-rtdb.firebaseio.com/"
-            ssl_context = ssl._create_unverified_context()
+            ssl_context = ssl.create_default_context()
             
             offline_payload = json.dumps({
                 'status': 'offline',
@@ -2967,11 +2987,7 @@ class AutoShutdownAppV2:
                                 with open(os.path.join(application_path, 'error.log'), 'a', encoding='utf-8') as ef:
                                     ef.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] os.startfile failed: {ex1}. Trying Popen...\n")
                                 # 실패 시 fallback (공백 경로를 안전하게 처리하기 위해 리스트 형태로 전달하고, lnk 실행을 위해 shell=True 유지하되 인용부호 추가)
-                                subprocess.Popen(
-                                    f'"{full_path}"',
-                                    cwd=on_folder,
-                                    shell=True
-                                )
+                                os.startfile(full_path)
                                 
                             launched += 1
                             time.sleep(0.5) # 여러 프로그램 실행 시 포커스 경합 방지
@@ -3365,13 +3381,13 @@ class HeadlessShutdownApp:
                 ssl_context = None
                 try:
                     import ssl
-                    ssl_context = ssl._create_unverified_context()
+                    ssl_context = ssl.create_default_context()
                 except: pass
                 
                 with urllib.request.urlopen(req, timeout=5, context=ssl_context) as res:
                     ws_url = json.loads(res.read().decode('utf-8'))
                 
-                if not ws_url or not isinstance(ws_url, str) or not ws_url.startswith("ws"):
+                if not ws_url or not isinstance(ws_url, str):
                     time.sleep(10)
                     continue
                     
@@ -3382,8 +3398,8 @@ class HeadlessShutdownApp:
                 if ws_url.startswith("wss://"):
                     connect_kwargs["ssl"] = ssl_context
                     
-                with websockets.sync.client.connect(ws_url, **connect_kwargs) as ws:
-                    # 인증 (클라이언트는 토큰 없이 pc_id만 전송)
+                with websockets.sync.client.connect(validate_ws_url(ws_url), max_size=1048576, **connect_kwargs) as ws:
+                    # PC ID로 연결하며 PC별 등록·토큰은 사용하지 않음
                     auth_msg = {"type": "auth", "role": "client", "pc_id": pc_id}
                     ws.send(json.dumps(auth_msg))
                     
@@ -3441,10 +3457,7 @@ class HeadlessShutdownApp:
                                         browser = payload.get("browser", "default")
                                         if url:
                                             import subprocess
-                                            if browser == "chrome": subprocess.run(['start', 'chrome', url], shell=True)
-                                            elif browser == "edge": subprocess.run(['start', 'msedge', url], shell=True)
-                                            elif browser == "whale": subprocess.run(['start', 'whale', url], shell=True)
-                                            else: subprocess.run(['start', url], shell=True)
+                                            open_remote_url(url, browser)
                                     elif action == 'open_file':
                                         file_path = payload.get("file_path", "")
                                         app_path = payload.get("app_path", "")
@@ -3680,7 +3693,7 @@ class HeadlessShutdownApp:
                 current_cfg = sanitize_rtdb_keys(read_runtime_config())
                 
                 ip = get_local_ip()
-                ssl_context = ssl._create_unverified_context()
+                ssl_context = ssl.create_default_context()
                 
                 try:
                     current_user = os.getlogin()
@@ -3714,7 +3727,7 @@ class HeadlessShutdownApp:
                         'next_event': next_str,
                         'last_seen': datetime.now().strftime('%H:%M:%S'),
                         'last_seen_ts': {'.sv': 'timestamp'},
-                        'config': current_cfg
+                        'config': public_config(current_cfg)
                     }).encode('utf-8')
                 
                     patch_url = f"{central_url.rstrip('/')}/pcs/{pc_id}.json"
@@ -3745,7 +3758,7 @@ class HeadlessShutdownApp:
                         cmd = json.loads(res.read().decode('utf-8'))
                         if cmd:
                             cmd_type = 'individual'
-                            _log(f"CMD found (individual): {cmd}")
+                            _log("CMD found (individual)")
                 except Exception as e:
                     _log(f"GET cmd error: {e}")
                         
@@ -3761,7 +3774,7 @@ class HeadlessShutdownApp:
                                 if cmd_ts == getattr(self, 'last_all_cmd_ts', 0) or time.time() - cmd_ts > 300.0:
                                     cmd = None
                                 else:
-                                    _log(f"CMD found (all): {cmd}")
+                                    _log("CMD found (all)")
                                     # 유효한 전체 명령이므로 중복 실행을 막기 위해 타임스탬프 기록
                                     self.last_all_cmd_ts = cmd_ts
                     except Exception as e:
@@ -3792,7 +3805,7 @@ class HeadlessShutdownApp:
                             processed_push_ids.clear()
                         
                         # 10초 이상 지난 오래된 명령 무시 및 삭제
-                        if cmd_ts > 0 and time.time() - cmd_ts > 10.0:
+                        if not fresh_command(cmd_ts, max_age=10):
                             cmd_success = True
                             _log(f"Ignored stale cmd: action={action} (older than 10s)")
                             continue
@@ -3944,7 +3957,7 @@ class HeadlessShutdownApp:
                                             ctypes.windll.user32.PostMessageW(target_hwnd_int, 0x0010, 0, 0)
                                         except Exception: pass
                                     else:
-                                        os.system(f'taskkill /F /PID {target_pid}')
+                                        kill_remote_process(target_pid)
                                     cmd_success = True
                             elif action == 'bring_to_front' and isinstance(message, dict):
                                 target_hwnd = message.get('hwnd')
@@ -4003,7 +4016,7 @@ class HeadlessShutdownApp:
                                         if app_path:
                                             subprocess.Popen([app_path, file_path], creationflags=subprocess.CREATE_NO_WINDOW)
                                         elif is_url:
-                                            subprocess.Popen(['cmd', '/c', 'start', '', file_path], creationflags=subprocess.CREATE_NO_WINDOW)
+                                            open_remote_url(file_path)
                                         else:
                                             os.startfile(file_path)
                                         cmd_success = True
@@ -4019,7 +4032,7 @@ class HeadlessShutdownApp:
                             elif action == 'set_config' and isinstance(message, dict):
                                 _log(f"Executing: set_config with {len(message)} keys")
                                 current = self.load_config()
-                                for k, v in message.items():
+                                for k, v in remote_config(message).items():
                                     if k in DAYS and isinstance(v, dict):
                                         if k not in current:
                                             current[k] = {}
@@ -4036,7 +4049,7 @@ class HeadlessShutdownApp:
                                 cmd_success = True
                             
                                 try:
-                                    updated_cfg = sanitize_rtdb_keys(current)
+                                    updated_cfg = public_config(sanitize_rtdb_keys(current))
                                     cfg_patch_payload = json.dumps({'config': updated_cfg}).encode('utf-8')
                                     cfg_patch_url = f"{central_url.rstrip('/')}/pcs/{pc_id}.json"
                                     cfg_patch_req = urllib.request.Request(
@@ -4076,9 +4089,7 @@ class HeadlessShutdownApp:
             url = "https://atss-a1f9e-default-rtdb.firebaseio.com/update_info.json"
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
             try:
-                ssl_context = ssl._create_unverified_context()
-                ssl_context.verify_mode = ssl.CERT_NONE
-                ssl_context.check_hostname = False
+                ssl_context = ssl.create_default_context()
             except AttributeError:
                 ssl_context = None
             with urllib.request.urlopen(req, timeout=8, context=ssl_context) as response:
@@ -4106,6 +4117,7 @@ class HeadlessShutdownApp:
             return False
 
     def perform_auto_update(self, download_url):
+        validate_download_url(download_url)
         """독립 updater.exe 프로세스를 실행하고 현재 프로세스를 종료한다."""
         _log_path = os.path.join(application_path, 'headless_debug.log')
         def _log(msg):
@@ -4132,11 +4144,7 @@ class HeadlessShutdownApp:
                 return
 
             import shutil
-            tmp_updater = os.path.join(
-                os.environ.get('TEMP', application_path),
-                f'as_updater_{int(time.time())}.exe'
-            )
-            shutil.copy2(src_updater, tmp_updater)
+            tmp_updater = private_updater_copy(src_updater)
             _log(f"[updater] Copied to: {tmp_updater}")
 
             local_app = os.environ.get('LOCALAPPDATA', application_path)
@@ -4156,6 +4164,11 @@ class HeadlessShutdownApp:
             _log(f"[updater] perform_auto_update FAILED: {e}")
 
 if __name__ == "__main__":
+    try:
+        migrate_saved_credentials()
+    except Exception:
+        # A failed migration must not overwrite a previously working login configuration.
+        print('자동로그인 자격 증명 보안 이전 실패: 관리자 권한으로 다시 실행하세요.')
     import sys
     if "--autologin-gui" in sys.argv:
         run_standalone_autologin_gui()

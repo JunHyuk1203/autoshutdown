@@ -27,6 +27,7 @@ _GOOGLE_KEYS_EXPIRES = 0
 # In-memory State
 _pcs = {}
 _admin_connections = set()   # set of websocket objects
+_admin_tokens = {}
 _client_connections = {}     # ws -> { pc_id, ... }
 
 # GUI Log Queue
@@ -54,6 +55,7 @@ def _get_google_public_keys():
             "https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com",
             timeout=5
         )
+        resp.raise_for_status()
         cache_control = resp.headers.get('cache-control', '')
         max_age = 3600
         match = re.search(r'max-age=(\d+)', cache_control)
@@ -64,7 +66,7 @@ def _get_google_public_keys():
         return _GOOGLE_KEYS
     except Exception as e:
         log(f"Error fetching Google keys: {e}")
-        return _GOOGLE_KEYS
+        return {}
 
 def _verify_firebase_token(token):
     keys = _get_google_public_keys()
@@ -83,27 +85,35 @@ def _verify_firebase_token(token):
             public_key,
             algorithms=["RS256"],
             audience="atss-a1f9e",
-            issuer="https://securetoken.google.com/atss-a1f9e"
+            issuer="https://securetoken.google.com/atss-a1f9e",
+            options={"require": ["exp", "iat", "sub", "aud", "iss"]}
         )
         return decoded, None
     except Exception as e:
         return None, str(e)
 
 def _check_auth(token, expected_role="client"):
-    if expected_role == "client":
-        return True, {"uid": "client", "email": "client", "role": "client"}
+    if expected_role not in ('client', 'admin'):
+        return False, 'Invalid role'
+    if expected_role == 'client':
+        return True, {'role': 'client'}
     decoded, err = _verify_firebase_token(token)
     if not decoded:
         return False, err
     email = decoded.get("email", "")
     uid = decoded.get("user_id", decoded.get("sub", ""))
+    if not isinstance(uid, str) or not uid or len(uid) > 128 or re.search(r'[.\[\]#$\/\x00-\x1f]', uid):
+        return False, 'Invalid subject'
+    if decoded.get('email_verified') is not True:
+        return False, 'Verified email required'
     if email.lower() == MASTER_EMAIL.lower():
-        return True, {"uid": uid, "email": email, "role": "admin"}
+        return True, {"uid": uid, "email": email, "role": "admin", 'exp': decoded['exp']}
     try:
-        r = requests.get(f"{FIREBASE_DB_URL}/users/{uid}.json", timeout=3)
+        r = requests.get(f"{FIREBASE_DB_URL}/users/{uid}.json", params={'auth': token}, timeout=3)
+        r.raise_for_status()
         val = r.json()
         if val and val.get("approved") is True:
-            return True, {"uid": uid, "email": email, "role": "admin"}
+            return True, {"uid": uid, "email": email, "role": "admin", 'exp': decoded['exp']}
     except:
         pass
     return False, "Not approved admin"
@@ -117,9 +127,16 @@ async def _broadcast_to_admins(msg_dict):
     payload = json.dumps(msg_dict, ensure_ascii=False)
     async def send_one(ws):
         try:
+            valid, _ = await asyncio.to_thread(_check_auth, _admin_tokens.get(ws, ''), 'admin')
+            if not valid:
+                _admin_connections.discard(ws)
+                _admin_tokens.pop(ws, None)
+                await ws.close(code=1008, reason='Access expired or revoked')
+                return
             await asyncio.wait_for(ws.send(payload), timeout=3)
         except Exception:
             _admin_connections.discard(ws)
+            _admin_tokens.pop(ws, None)
     await asyncio.gather(*(send_one(ws) for ws in tuple(_admin_connections)))
 
 async def _send_to_client(pc_id, msg_dict):
@@ -145,6 +162,8 @@ async def handler(ws):
         # First message must be auth - 10 second timeout
         auth_msg_raw = await asyncio.wait_for(ws.recv(), timeout=10.0)
         auth_msg = json.loads(auth_msg_raw)
+        if not isinstance(auth_msg, dict):
+            return
 
         if auth_msg.get("type") != "auth":
             await ws.send(json.dumps({"type": "auth_result", "status": "fail", "reason": "First message must be auth"}))
@@ -164,13 +183,14 @@ async def handler(ws):
 
         if role == "client":
             pc_id = auth_msg.get("pc_id", "")
-            if not pc_id:
+            if not isinstance(pc_id, str) or pc_id == '__ALL__' or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', pc_id):
                 await ws.send(json.dumps({"type": "auth_result", "status": "fail", "reason": "Missing pc_id"}))
                 return
             _client_connections[ws] = {"pc_id": pc_id}
             log(f"✅ Client Connected: {pc_id} ({client_ip})")
         else:
             _admin_connections.add(ws)
+            _admin_tokens[ws] = token
             log(f"✅ Admin Connected: {user_info.get('email')} ({client_ip})")
             # Send current state to newly connected admin
             await ws.send(json.dumps({"type": "full_state", "data": _pcs}, ensure_ascii=False))
@@ -189,16 +209,27 @@ async def handler(ws):
         async for message in ws:
             try:
                 data = json.loads(message)
+                if role == 'admin' and time.time() >= user_info['exp']:
+                    await ws.close(code=1008, reason='Token expired')
+                    break
+                if not isinstance(data, dict):
+                    continue
                 msg_type = data.get("type")
 
                 if role == "client":
                     if msg_type == "status":
                         payload = data.get("payload", {})
+                        if not isinstance(payload, dict):
+                            continue
                         _pcs[pc_id] = payload
                         await _broadcast_to_admins({"type": "pc_update", "pc_id": pc_id, "data": payload})
 
                 elif role == "admin":
                     if msg_type == "command":
+                        valid, _ = await asyncio.to_thread(_check_auth, token, 'admin')
+                        if not valid:
+                            await ws.close(code=1008, reason='Access revoked')
+                            break
                         target_pc = data.get("target_pc")
                         action = data.get("action")
                         cmd_payload = data.get("payload", {})
@@ -234,11 +265,12 @@ async def handler(ws):
                 await _broadcast_to_admins({"type": "pc_update", "pc_id": pc_id, "data": _pcs[pc_id]})
         elif role == "admin":
             _admin_connections.discard(ws)
+            _admin_tokens.pop(ws, None)
             log(f"❌ Admin Disconnected: {user_info.get('email', 'Unknown')}")
 
 async def main_ws():
     # websockets 16.x: websockets.serve takes (handler, host, port)
-    async with websockets.serve(handler, "0.0.0.0", PORT):
+    async with websockets.serve(handler, "127.0.0.1", PORT, max_size=1048576, max_queue=16):
         log(f"🚀 WebSocket Server started on port {PORT}")
         await asyncio.Future()  # run forever
 
@@ -297,8 +329,13 @@ def run_cloudflare_tunnel():
 
 def update_firebase_url(url):
     try:
+        token = os.environ.get('SMARTPOWER_ADMIN_ID_TOKEN')
+        if not token:
+            log('Firebase URL publication skipped: set SMARTPOWER_ADMIN_ID_TOKEN or publish from an authenticated administrator session.')
+            return
         r = requests.put(
             f"{FIREBASE_DB_URL}/update_info/custom_server_url.json",
+            params={'auth': token},
             json=url,
             timeout=5
         )
